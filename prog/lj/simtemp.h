@@ -67,7 +67,7 @@ enum {
 };
 
 
-static int simtemp_jump(simtemp_t *st, int itp, double ep, int type)
+__inline static int simtemp_jump(simtemp_t *st, int itp, double ep, int type)
 {
   int jtp, ntp = st->ntp;
   double x, r;

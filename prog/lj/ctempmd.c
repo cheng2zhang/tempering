@@ -1,4 +1,4 @@
-/* simulated tempering based on molecular dynamics */
+/* continuous tempering code */
 #include "lj.h"
 #include "ljeos.h"
 #include "simtemp.h"
@@ -22,10 +22,14 @@ double thdt = 0.02; /* strength of the thermostat */
 
 int nsttemp = 10; /* number of steps of trying tempering */
 double tpmin = 2.5; /* minimal temperature */
-double tpdel = 0.1; /* temperature increment */
-int ntp = 12; /* number of temperatures */
-int scale_velocity_after_tempering = 1; /* always set it to 1 */
+double tpdel = 0.02; /* temperature increment */
+int ntp = 60; /* number of temperatures */
 
+double betamin;
+double betamax;
+double betadel;
+double ensfac = 2; /* flat-T distribution: 2, dT/T: 1, flat-beta: 0 */
+double langdt = 0.0001; /* Langevin step size */
 
 
 /* thermostat for half MD step */
@@ -41,16 +45,20 @@ static void thermostat(lj_t *lj, double temp, double thermdt)
 
 
 /* initialize simulated tempering */
-static simtemp_t *init_simtemp(void)
+static simtemp_t *init_conttemp(void)
 {
   int itp;
-  double tp, Fex;
+  double beta, tp, Fex;
   simtemp_t *st;
 
   st = simtemp_open(ntp);
+  betamin = 1 / ( tpmin + ntp * tpdel );
+  betamax = 1 / ( tpmin );
+  betadel = (betamax - betamin) / ntp;
   for ( itp = 0; itp < ntp; itp++ ) {
-    tp = tpmin + tpdel * itp;
-    st->beta[itp] = 1.0 / tp;
+    beta = betamin + (itp + 0.5) * betadel;
+    tp = 1 / beta;
+    st->beta[itp] = beta;
     st->uref[itp] = n * ljeos3d_get(rho, tp, NULL, &Fex, NULL);
     st->lnz[itp] = -st->beta[itp] * Fex * n;
   }
@@ -58,19 +66,21 @@ static simtemp_t *init_simtemp(void)
 }
 
 
+
 /* simulated tempering */
 static int simtempmd(void)
 {
   lj_t *lj;
   simtemp_t *st;
-  int t, itp = 0, jtp;
-  double tp; /* current temperature */
+  int t, itp = 0;
+  double beta, tp; /* current temperature */
 
   lj = lj_open(n, rho, rcdef);
 
-  st = init_simtemp();
+  st = init_conttemp();
   itp = 0; /* initial temperature index */
-  tp = 1 / st->beta[itp];
+  beta = (st->beta[itp] + st->beta[itp+1]) / 2;
+  tp = 1 / beta;
 
   for ( t = 1; t <= nequil + nsteps; t++ ) {
     /* standard MD step */
@@ -83,17 +93,25 @@ static int simtempmd(void)
 
     if ( t % nsttemp == 0 ) {
       /* temperature transition */
-      jtp = simtemp_jump(st, itp, lj->epot,
-          SIMTEMP_JUMP_GLOBAL);
-
-      /* commit to the new temperature */
-      if ( jtp != itp ) {
-        if ( scale_velocity_after_tempering ) {
-          simtemp_vscale(st, itp, jtp, n * D, (double *) lj->v);
-        }
+      double tp1, beta1, s;
+      int i;
+     
+      tp1 = tp + (lj->epot - st->uref[itp] + ensfac * tp) * langdt
+          + sqrt(2 * langdt) * tp * randgaus();
+      beta1 = 1 / tp1;
+      if ( beta1 > betamin && beta1 < betamax ) {
+        /* commit to the new temperature */
+        s = sqrt( tp1 / tp );
+        for ( i = 0; i < lj->n; i++ )
+          vsmul(lj->v[i], s);
         lj->ekin = lj_ekin(lj->v, n);
-        itp = jtp;
-        tp = 1 / st->beta[itp];
+        beta = beta1;
+        tp = tp1;
+        itp = (int) ((beta - betamin) / betadel);
+        if ( itp < 0 || itp >= ntp ) {
+          fprintf(stderr, "beta out of range, beta %g (%g, %g)\n", beta, betamin, betamax);
+          exit(1);
+        }
       }
     }
 
@@ -109,9 +127,6 @@ static int simtempmd(void)
 
 int main(int argc, char **argv)
 {
-  if ( argc > 0 ) {
-    scale_velocity_after_tempering = atoi( argv[1] );
-  }
   simtempmd();
   return 0;
 }
