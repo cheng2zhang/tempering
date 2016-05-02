@@ -93,10 +93,12 @@ static int simtempmd(void)
 
     if ( t % nsttemp == 0 ) {
       /* temperature transition */
-      double tp1, beta1, s;
+      double tp1, beta1, uav, s;
       int i;
-     
-      tp1 = tp + (lj->epot - st->uref[itp] + ensfac * tp) * langdt
+
+      uav = st->usum[itp] / st->hist[itp];
+      //uav = lj->uref[itp];
+      tp1 = tp + (lj->epot - uav + ensfac * tp) * langdt
           + sqrt(2 * langdt) * tp * randgaus();
       beta1 = 1 / tp1;
       if ( beta1 > betamin && beta1 < betamax ) {

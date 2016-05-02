@@ -95,7 +95,7 @@ __inline static int simtemp_jump(simtemp_t *st, int itp, double ep, int type)
 
 
 
-static void simtemp_vscale(simtemp_t *st, int itp, int jtp,
+__inline static void simtemp_vscale(simtemp_t *st, int itp, int jtp,
     int n, double *v)
 {
   double s;
