@@ -17,7 +17,7 @@ enum {
   THERMOSTAT_VRESCALE,
   THERMOSTAT_COUNT
 };
-int thermostat_type = THERMOSTAT_LANGEVIN;
+int thermostat_type = THERMOSTAT_VRESCALE;
 double thdt = 0.02; /* strength of the thermostat */
 
 int nsttemp = 10; /* number of steps of trying tempering */
