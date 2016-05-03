@@ -2228,8 +2228,10 @@ void Controller::adaptTempUpdate(int step, int minimize)
           
       }
       
-      adaptTempT = dT; 
-      broadcast->adaptTemperature.publish(step,adaptTempT);
+      BigReal s = sqrt( dT / adaptTempT );
+      adaptTempT = dT;
+      broadcast->adaptTemperature.publish(step * 2, adaptTempT);
+      broadcast->adaptTemperature.publish(step * 2 + 1, s);
     }
     adaptTempWriteRestart(step);
     if ( ! (step % adaptTempOutFreq) ) {

@@ -1498,9 +1498,12 @@ void Sequencer::adaptTempUpdate(int step)
             adaptTempT = simParams->langevinTemp;
         return;
    }
-   // Get Updated Temperature
-   if ( !(step % simParams->adaptTempFreq ) && (step > simParams->firstTimestep ))
-    adaptTempT = broadcast->adaptTemperature.get(step);
+  // Get Updated Temperature
+  if ( !(step % simParams->adaptTempFreq ) && (step > simParams->firstTimestep )) {
+    adaptTempT = broadcast->adaptTemperature.get(step * 2);
+    BigReal s = broadcast->adaptTemperature.get(step * 2 + 1);
+    rescaleVelocitiesByFactor(s);
+  }
 }
 
 void Sequencer::reassignVelocities(BigReal timestep, int step)
