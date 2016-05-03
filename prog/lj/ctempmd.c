@@ -28,7 +28,7 @@ int ntp = 60; /* number of temperatures */
 double betamin;
 double betamax;
 double betadel;
-double ensfac = 2; /* flat-T distribution: 2, dT/T: 1, flat-beta: 0 */
+double ensfac = 1; /* flat-T distribution: 2, dT/T: 1, flat-beta: 0 */
 double langdt = 0.0001; /* Langevin step size */
 
 
