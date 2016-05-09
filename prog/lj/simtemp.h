@@ -76,9 +76,13 @@ __inline static int simtemp_jump(simtemp_t *st, int itp, double ep, int type)
     /* choose any temperature other than `itp` */
     jtp = ( itp + 1 + (int) (rand01() * (ntp - 1)) ) % ntp;
   } else {
-    jtp = itp + (rand01() > 0.5 ? 1 : -1);
-    if ( jtp < 0 || jtp >= ntp ) {
-      return itp;
+    /* jump to one of the neighbors */
+    if ( rand01() > 0.5 ) {
+      jtp = itp + 1;
+      if ( jtp >= ntp ) return itp;
+    } else {
+      jtp = itp - 1;
+      if ( jtp < 0 ) return itp;
     }
   }
 
