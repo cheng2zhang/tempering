@@ -1,0 +1,663 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath}
+\usepackage{xcolor}
+\usepackage{hyperref}
+
+\hypersetup{
+    colorlinks,
+    linkcolor={red!30!black},
+    citecolor={blue!50!black},
+    urlcolor={blue!80!black}
+}
+
+\begin{document}
+
+\title{Velocity scaling after a temperature transition in a molecular-dynamics-based simulated tempering}
+\author{}
+\date{\vspace{-10ex}}
+\maketitle
+
+Simulated tempering\cite{lyubartsev1992, marinari1992},
+including that variant based on a continuous temperature set-up\cite{zhang2010},
+is based on an expanded ensemble in which
+the temperature is a random variable.
+%
+Unlike the Monte Carlo counterpart,
+the molecular dynamics (MD) implementation of simulated tempering
+is trickier in that the temperature influences
+the sampling in the coordinate-space
+via the velocities and the thermostat.
+%
+More precisely, an MD-based simulated tempering
+is conducted in an extended configuration space
+spanned by the coordinates, $\mathbf r$,
+velocities, $\mathbf v$,
+and (inverse) temperature, $\beta$.
+%
+The sampling in this space is realized
+by three types of moves:
+%
+\begin{enumerate}
+  \item
+    Time evolution of the coordinates, $\mathbf r$, and velocities, $\mathbf v$, by Newton's equation.
+
+  \item
+    Scaling and perturbation of the velocities, $\mathbf v$, by the thermostat.
+
+  \item
+    Change of the reference temperature, $\beta$, of the thermostat
+    under fixed the coordinates, $\mathbf r$.
+\end{enumerate}
+%
+The first two moves constitute
+a regular MD for a constant-temperature canonical ensemble.
+%
+The last, the temperature transition,
+is the addition from simulated tempering.
+%
+Usually, such a temperature move is based on
+the potential energy, $U(\mathbf r)$,
+of the current coordinates, $\mathbf r$.
+%
+For example,
+the Metropolis rule is to accept an unbiased transition
+from $\beta$ to $\beta'$ by probability
+%
+\begin{equation}
+  A(\beta \to \beta')
+  =
+  \min\left\{
+    1,
+    \frac{
+      \exp[ -\beta' \, U(\mathbf r) ] / Z(\beta')
+    }
+    {
+      \exp[ -\beta \, U(\mathbf r) ] / Z(\beta)
+    }
+  \right\}
+  .
+  \label{eq:Tmove_Metropolis}
+\end{equation}
+%
+If the temperature set-up is continuous,
+we can drive the temperature by a Langevin equation\cite{zhang2010},
+%
+\begin{equation}
+  \frac{ d } { dt }
+  \left(
+  \frac{ 1 } { \beta }
+  \right)
+  =
+  U(\mathbf r)
+  -
+  \langle U \rangle_\beta
+  +
+  \frac{ \sqrt 2  } { \beta } \, \xi
+  ,
+  \label{eq:Tmove_Langevin}
+\end{equation}
+%
+where $\xi$ is a unit-variant Gaussian white noise.
+
+
+We want to show in this note that after a successful
+temperature transition from $\beta$ to $\beta'$,
+the velocities, $\mathbf v$, must be multiplied by
+a factor of $\sqrt{ \beta / \beta' }$.
+%
+The reason is that the temperature move
+given by Eq. \eqref{eq:Tmove_Metropolis}
+or \eqref{eq:Tmove_Langevin}
+is based on the potential energy, $U(\mathbf r)$, alone,
+%as a function of the coordinates, $\mathbf r$, only.
+%
+and it only qualifies the coordinates $\mathbf r$
+to enter the new temperature.
+%
+The velocities, $\mathbf v$, are left out of
+the screening process
+and have to be oriented to fit into
+the distribution at the new temperature.
+%
+Below, we shall formulate the above argument
+mathematically in terms of detailed balance.
+
+
+\section{Detailed Balance}
+
+
+We can design a correct temperature transition
+by satisfying detailed balance,
+that is, to ensure the cancellation
+of the mutual probability flows between
+the two configurations before and after
+a successful temperature transition.
+
+Let us first show that a temperature without
+velocity scaling is wrong.
+%
+In this case, the configuration before the temperature transition
+is given by $\mu = (\mathbf r, \mathbf v, \beta)$,
+and that after the transition by
+$\nu = (\mathbf r, \mathbf v, \beta')$.
+%
+We want to check if the detailed balance condition
+between $\mu$ and $\nu$ holds:
+%
+\begin{equation}
+  p_\mu \, A(\mu \to \nu)
+  =
+  p_\nu \, A(\nu \to \mu)
+  .
+\label{eq:db_novs}
+\end{equation}
+%
+Assuming a flat overall temperature distribution,
+$p_\mu$ is just the canonical distribution at temperature, $\beta$:
+%
+\begin{equation}
+  p(\mu)
+  =
+  \frac{
+    \exp\left[
+       -\beta \, U(\mathbf r)
+    \right]
+  }
+  {
+    Z(\beta)
+  }
+  d \mathbf r
+  \frac{
+    \exp\left(
+      -\beta \, \frac{1}{2} \mathbf v \cdot \mathbf M \cdot \mathbf v
+    \right)
+  }
+  {
+    Y(\beta)
+  }
+  d \mathbf v
+  ,
+\label{eq:pmu}
+\end{equation}
+%
+and $p_\nu$ that at temperature $\beta'$:
+%
+\begin{equation}
+  p(\nu)
+  =
+  \frac{
+    \exp\left[
+       -\beta' \, U(\mathbf r)
+    \right]
+  }
+  {
+    Z(\beta')
+  }
+  d \mathbf r
+  \frac{
+    \exp\left(
+      -\beta' \, \frac{1}{2} \mathbf v \cdot \mathbf M \cdot \mathbf v
+    \right)
+  }
+  {
+    Y(\beta')
+  }
+  d \mathbf v
+  .
+\notag
+%\label{eq:pnu}
+\end{equation}
+%
+Here, $Z(\beta)$ and $Y(\beta)$
+are the respective normalization factors in
+the coordinates and velocities spaces,
+%
+\begin{align}
+  Z(\beta)
+  &=
+  \int \exp\left[ -\beta \, U(\mathbf r) \right] \, d\mathbf r
+  ,
+  \notag
+\\
+  Y(\beta)
+  &=
+  \int \exp\left( \right) \, d\mathbf v
+  =
+  \left(
+    \frac{ 2 \, \pi } { \beta }
+  \right)^{ N_f / 2 }
+  \frac{
+    1
+  }
+  {
+    \sqrt{ \det \mathbf M }
+  }
+  ,
+  \label{eq:Ybeta}
+\end{align}
+%
+with $\mathbf M$ being the diagonal mass matrix,
+and $N_f$ being the number of degrees of freedom.
+
+Now using Eqs. \eqref{eq:pmu} and \eqref{eq:Tmove_Metropolis}
+on the left-hand side of Eq. \eqref{eq:db_novs}, we get
+%
+\begin{equation}
+  \min\left\{
+    \frac{
+      \exp\left[ -\beta \, U(\mathbf r) \right]
+    }
+    {
+      Z(\beta)
+    }
+    ,
+    \frac{
+      \exp\left[ -\beta' \, U(\mathbf r) \right]
+    }
+    {
+      Z(\beta')
+    }
+  \right\}
+  \, d \mathbf r \,
+  \frac{
+    \exp\left(
+      -\beta \, \frac{1}{2} \mathbf v \cdot \mathbf M \cdot \mathbf v
+    \right)
+  }
+  {
+    Y(\beta)
+  }
+  d \mathbf v
+  .
+\label{eq:pflow_left}
+\end{equation}
+%
+But for the right-hand side, we get
+%
+\begin{equation}
+  \min\left\{
+    \frac{
+      \exp\left[ -\beta \, U(\mathbf r) \right]
+    }
+    {
+      Z(\beta)
+    }
+    ,
+    \frac{
+      \exp\left[ -\beta' \, U(\mathbf r) \right]
+    }
+    {
+      Z(\beta')
+    }
+  \right\}
+  \, d \mathbf r \,
+  \frac{
+    \exp\left(
+      -\beta' \, \frac{1}{2} \mathbf v \cdot \mathbf M \cdot \mathbf v
+    \right)
+  }
+  {
+    Y(\beta')
+  }
+  d \mathbf v
+  .
+\label{eq:pflow_left}
+\end{equation}
+%
+We see that the two differ by the second factor.
+%
+So the transition without velocity scaling is
+not necessarily correct.
+
+
+\section{Velocity scaling}
+
+Next, let us see how velocity scaling saves the day.
+%
+The key is to establish a detailed balance
+between $\mu = (\mathbf r, \mathbf v, \beta)$
+and the \emph{velocity-scaled} configuration
+$\nu' = (\mathbf r, \mathbf v', \beta')$,
+with
+%
+\begin{equation}
+  \mathbf v'
+  =
+  \sqrt{ \frac{ \beta } { \beta' } }
+  \, \mathbf v
+  ,
+\label{eq:vscale}
+\end{equation}
+%
+being the scaled velocity after a successful transition
+from $\beta$ to $\beta'$.
+%
+Conversely, the scaled velocity of $\mathbf v'$
+after the transition from $\beta'$ to $\beta$ is
+$$
+  \mathbf v''
+  =
+  \sqrt \frac{ \beta' } { \beta } \,
+  \mathbf v'
+  =
+  \mathbf v,
+$$
+which means the velocity scaling scheme also pairs
+$\nu'$ back to $\mu$.
+
+
+To verify detailed balance we have for the forward flow
+%
+\begin{equation}
+  p(\mu) \, A(\mu \to \nu')
+  =
+  \min\left\{
+    \frac{
+      e^{ -\beta \, U(\mathbf r) }
+    }
+    {
+      Z(\beta)
+    }
+    ,
+    \frac{
+      e^{ -\beta' \, U(\mathbf r) }
+    }
+    {
+      Z(\beta')
+    }
+  \right\}
+  \, d \mathbf r \,
+  \frac{
+    \exp\left(
+      -\beta \, \frac{1}{2} \mathbf v \cdot \mathbf M \cdot \mathbf v
+    \right)
+  }
+  {
+    Y(\beta)
+  }
+  d \mathbf v
+  ,
+\label{eq:pflow_left_vs}
+\end{equation}
+%
+which is same as Eq. \eqref{eq:pflow_left}.
+%
+For the backward flow,
+we have
+$$
+  p(\nu')
+  =
+  \frac{
+    \exp\left[
+       -\beta' \, U(\mathbf r)
+    \right]
+  }
+  {
+    Z(\beta')
+  }
+  d \mathbf r
+  \frac{
+    \exp\left(
+      -\beta' \, \frac{1}{2} \mathbf v' \cdot \mathbf M \cdot \mathbf v'
+    \right)
+  }
+  {
+    Y(\beta')
+  }
+  d \mathbf v'
+  ,
+$$
+such that
+%
+\begin{equation}
+  p(\nu') \, A(\nu' \to \mu)
+  =
+  \min\left\{
+    \frac{
+      e^{ -\beta \, U(\mathbf r) }
+    }
+    {
+      Z(\beta)
+    }
+    ,
+    \frac{
+      e^{ -\beta' \, U(\mathbf r) }
+    }
+    {
+      Z(\beta')
+    }
+  \right\}
+  \, d \mathbf r \,
+  \frac{
+    \exp\left(
+      -\beta' \, \frac{1}{2} \mathbf v' \cdot \mathbf M \cdot \mathbf v'
+    \right)
+  }
+  {
+    Y(\beta')
+  }
+  d \mathbf v'
+  .
+\label{eq:pflow_right_vs}
+\end{equation}
+%
+But this time,
+the second factors from Eqs. \eqref{eq:pflow_left_vs}
+and \eqref{eq:pflow_right_vs} agree,
+because we have, from
+Eq. \eqref{eq:vscale},
+%
+$$
+  \beta \, \frac{1}{2} \mathbf v \cdot \mathbf M \cdot \mathbf v
+  =
+  \beta' \, \frac{1}{2} \mathbf v' \cdot \mathbf M \cdot \mathbf v'
+  ,
+$$
+%
+and from Eq. \eqref{eq:Ybeta},
+%
+$$
+  \frac{ d \mathbf v } { Y(\beta) }
+  =
+  \frac{
+    \sqrt { \frac { \beta' } { \beta } }^{ N_f }
+    \, d \mathbf v'
+  }
+  {
+    \left(
+      \frac{ 2 \, \pi } { \beta }
+    \right)^{ N_f / 2 }
+    \frac{ 1 } { \sqrt { \det \mathbf M } }
+  }
+  =
+  \frac{ d \mathbf v' } { Y(\beta') }
+  .
+$$
+%
+In other words, detailed balance is satisfied
+and with velocity scaling,
+we have achieved a correct implementation of temperature transitions.
+
+
+\section{Discussions}
+
+
+Although our demonstration above
+assumes Eq. \eqref{eq:Tmove_Metropolis} as a special case,
+it can be generalized to any potential-energy-based
+temperature moves,
+as long as a \emph{balance} condition
+can be established.\footnote{
+For Eq. \eqref{eq:Tmove_Langevin},
+the balance condition amounts to checking if
+the corresponding Fokker-Planck equation
+for $\tau = 1/\beta$
+permits the desired distribution, $q(\tau)$,
+in the stationary condition.
+%
+The Fokker-Planck equation reads
+$$
+  \frac{ \partial q(\tau) } { \partial \tau }
+  =
+  -\frac{ \partial } { \partial \tau }
+  \left\{
+    [U - \langle U \rangle_\beta] \, q(\tau)
+    -
+    \frac{ \partial } { \partial \tau }
+    \left[ \tau^2 \, q(\tau) \right]
+  \right\}
+  .
+$$
+In the stationary condition, we get
+$ [U - \langle U \rangle_\beta] \, q(\tau)
+    -
+    \frac{ \partial } { \partial \tau }
+    \left[ \tau^2 \, q(\tau) \right] = 0$,
+whose solution is
+$$
+  \tau^2 \, q(\tau) \propto
+  \frac{ \exp[-\beta \, U(\mathbf r)] } { Z(\beta) }.
+$$
+By changing back to the variable $\beta$
+using the conservation of probability,
+$ p(\beta) \, |d\beta| = q(\tau) \, |d\tau|$,
+we get the desired distribution of $\beta$:
+$$
+  p(\beta) = q(\tau) \left| \frac{ d\tau } { d\beta } \right|
+  =
+  \frac{ \exp[-\beta \, U(\mathbf r)] } { Z(\beta) }
+  .
+$$
+}
+%
+\begin{equation}
+  \int
+    \frac{ \exp\left[ -\beta \, U(\mathbf r) \right] }
+         { Z( \beta ) }
+    A(\beta \to \beta') \, d\beta
+  =
+    \frac{ \exp\left[ -\beta' \, U(\mathbf r) \right] }
+         { Z( \beta' ) }
+  .
+\label{eq:beta_balance}
+\end{equation}
+%
+
+One way to avoid velocity scaling is to use the force scaling technique.
+%
+The idea is to treat temperature, $\beta$, as a parameter that
+modifies the effective potential energy as
+%
+\begin{equation}
+  U_\mathrm{eff}(\mathbf r; \beta)
+  =
+  \frac{ \beta } { \beta_0 } \,
+  U(\mathbf r)
+  .
+\label{eq:Ueff}
+\end{equation}
+%
+We can then simulate the system under the effective potential
+with a thermostat tuned to a constant temperature, $\beta_0$.
+%
+For a configuration, $\mu = (\mathbf r, \mathbf v, \beta)$,
+the distribution is given by
+%
+\begin{align}
+  p^\mathrm{fs}(\mu)
+  &=
+  \frac{
+    \exp\left\{
+      -\beta_0 \,
+      \left[
+          U_\mathrm{eff}(\mathbf r; \beta)
+          +\frac{1}{2} \mathbf v \cdot \mathbf M \cdot \mathbf v
+      \right]
+    \right\}
+  }
+  {
+    Z(\beta) \, Y(\beta)
+  }
+  d \mathbf r \,
+  d \mathbf v
+  \notag
+\\
+  &=
+  \frac{
+    \exp\left[
+       -\beta \, U(\mathbf r)
+    \right]
+  }
+  {
+    Z(\beta)
+  }
+  d \mathbf r
+  \frac{
+    \exp\left(
+      -\beta_0 \, \frac{1}{2} \mathbf v \cdot \mathbf M \cdot \mathbf v
+    \right)
+  }
+  {
+    Y(\beta_0)
+  }
+  d \mathbf v
+  .
+\label{eq:pmu_fs}
+\end{align}
+%
+In this way, the velocities always feel the temperature $\beta_0$;
+whereas the coordinates feel the variable temperature $\beta$.
+%
+One can show that the distribution given by Eq. \eqref{eq:pmu_fs}
+satisfies the detailed balance condition, Eq. \eqref{eq:db_novs}
+without velocity scaling,
+and the algorithm is correct.
+%
+To implement this technique, we shall scale the force by
+a factor of $(\beta / \beta_0)$, because from Eq. \eqref{eq:Ueff},
+we have
+%
+$$
+\mathbf F_\mathrm{eff} = \frac{ \beta } { \beta_0 } \, \mathbf F.
+$$
+However, nothing needs to be done on the thermostat or the velocities.
+
+
+
+Another way to avoid the velocity scaling is to replace
+the potential energy $U(\mathbf r)$ by the total energy, $E(\mathbf r)$,
+in Eq. \eqref{eq:Tmove_Metropolis} or \eqref{eq:Tmove_Langevin}.
+%
+For example, Eq. \eqref{eq:Tmove_Metropolis} becomes
+%
+\begin{equation}
+  A_E(\beta \to \beta')
+  =
+  \min\left\{
+    1,
+    \frac{
+      \exp[ -\beta' \, E(\mathbf r, \mathbf v) ] /
+      [Z(\beta') \, Y(\beta')]
+    }
+    {
+      \exp[ -\beta \, E(\mathbf r, \mathbf v) ] /
+      [Z(\beta) \, Y(\beta)]
+    }
+  \right\}
+  .
+\label{eq:Tmove_Metropolis_E}
+\end{equation}
+%
+This, however, is less efficient,
+as it decreases the distribution overlap between the two temperatures.
+%
+For example, with an ideal-gas system, $U(\mathbf r) \equiv 0$,
+the acceptance probability from Eq. \eqref{eq:Tmove_Metropolis}
+is always unity, but that from Eq. \eqref{eq:Tmove_Metropolis_E}
+is not so.
+
+
+\bibliographystyle{abbrv}
+\bibliography{simul}
+\end{document}
+

@@ -13,7 +13,7 @@ $(bins): % : %.c $(deps)
 	$(CC) $< -o $@ $(LM)
 
 clean:
-	rm -rf $(bins) $(bin2ds) $(bins_d) $(bins2ds_d) \
+	rm -rf $(bins) \
 	  a.out *~ .*.un~ */*~ */.*.un~ *.dat *.pos *.log
 	rstrip.py -Rlv
 
