@@ -4,7 +4,7 @@ EPSGP = $(filter-out $(PNGGP), $(GP))
 EPS = $(patsubst %.gp,%.eps, $(EPSGP))
 PDF = $(patsubst %.gp,%.pdf, $(EPSGP))
 PNG = $(patsubst %.gp,%.png, $(PNGGP))
-epsdeps = Makefile $(wildcard ../data/*/*.dat)
+epsdeps = Makefile
 pngdeps = Makefile
 
 all: $(PNG) $(PDF)
