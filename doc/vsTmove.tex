@@ -104,7 +104,10 @@ where $\xi$ is a unit-variant Gaussian white noise.
 We want to show in this note that after a successful
 temperature transition from $\beta$ to $\beta'$,
 the velocities, $\mathbf v$, must be multiplied by
-a factor of $\sqrt{ \beta / \beta' }$.
+a factor of $\sqrt{ \beta / \beta' }$.\footnote{
+A similar scaling is necessary for
+the molecular dynamics implementation of
+parallel tempering or replica exchange\cite{sugita1999}.}
 %
 The reason is that the temperature move
 given by Eq. \eqref{eq:Tmove_Metropolis}
@@ -122,6 +125,7 @@ the distribution at the new temperature.
 %
 Below, we shall formulate the above argument
 mathematically in terms of detailed balance.
+%
 
 
 \section{Detailed Balance}

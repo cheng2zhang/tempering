@@ -1,3 +1,4 @@
+prj=vsTmove
 ver=3.0
 
 figgps=$(wildcard fig/*.gp)
@@ -14,3 +15,10 @@ $(alltexpdf) : %.pdf : %.tex simul.bib $(pdffigs) Makefile
 	bibtex $*
 	pdflatex $<
 	pdflatex $<
+
+zip: vsTmove.zip
+
+vsTmove.zip: vsTmove.tex vsTmove.pdf \
+             simul.bib Makefile README.md \
+	     $(epsfigs) $(pdffigs) $(figgps)
+	zip -r $@ $^
