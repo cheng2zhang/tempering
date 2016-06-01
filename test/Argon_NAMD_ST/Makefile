@@ -8,13 +8,13 @@ cmp.png: cmp.gp vscale.txt novscale.txt
 # use the original NAMD (without velocity scaling after tempering)
 novscale.txt:
 	make clean
-	../../../NAMD_CVS-2016-05-02_Source/Linux-x86_64-g++/namd2 +p2 argon_st.conf
+	../../../NAMD_2.11_Source/Linux-x86_64-g++/namd2 +p2 argon_st.conf
 	tail -n`grep adaptTempBins argon_st.conf | awk '{print $$2}'` argon_st1.rst > $@
 
 # use the modified NAMD (with velocity scaling after tempering)
 vscale.txt:
 	make clean
-	../../../NAMD_modified/Linux-x86_64-g++/namd2 +p2 argon_st.conf
+	../../../NAMD_mods/NAMD_2.11_tempering/Linux-x86_64-g++/namd2 +p2 argon_st.conf
 	tail -n`grep adaptTempBins argon_st.conf | awk '{print $$2}'` argon_st1.rst > $@
 
 clean:

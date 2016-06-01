@@ -59,15 +59,9 @@ protected:
       RequireReduction *min_reduction;
 
     void receivePressure(int step, int minimize = 0);
-    void calcPressure(int step, int minimize,
-      const Tensor& virial_normal_in, const Tensor& virial_nbond_in, const Tensor& virial_slow_in,
-      const Tensor& intVirial_normal, const Tensor& intVirial_nbond, const Tensor& intVirial_slow,
-      const Vector& extForce_normal, const Vector& extForce_nbond, const Vector& extForce_slow);
-
       Tensor pressure_normal;
       Tensor pressure_nbond;
       Tensor pressure_slow;
-      Tensor pressure_amd;
       Tensor virial_amd;
       Tensor groupPressure_normal;
       Tensor groupPressure_nbond;
@@ -109,15 +103,10 @@ protected:
       BigReal goNonnativeEnergy;
       BigReal goTotalEnergy;
 //fepb
-      BigReal bondEnergy; //Moved here for FEP potential difference
-      BigReal angleEnergy;
-      BigReal dihedralEnergy;
-      BigReal improperEnergy;
-      BigReal bondedEnergy_f;
       BigReal electEnergy_f;
       BigReal electEnergySlow_f;
       BigReal ljEnergy_f;
-      BigReal ljEnergy_f_left;  // used by WCA repulsive, [s1,s2]
+      BigReal ljEnergy_f_left;	// used by WCA repulsive, [s1,s2]
       BigReal exp_dE_ByRT;
       BigReal net_dE;
       BigReal dG;
@@ -125,32 +114,24 @@ protected:
       void printFepMessage(int);
       BigReal fepSum;
 //fepe
-      BigReal bondedEnergy_ti_1;
-      BigReal bondedEnergy_ti_2;
+
       BigReal electEnergy_ti_1;
       BigReal electEnergySlow_ti_1;
       BigReal ljEnergy_ti_1;
       BigReal electEnergy_ti_2;
       BigReal electEnergySlow_ti_2;
       BigReal ljEnergy_ti_2;
-      BigReal net_dEdl_bond_1;
-      BigReal net_dEdl_bond_2;
       BigReal net_dEdl_elec_1;
       BigReal net_dEdl_elec_2;
       BigReal net_dEdl_lj_1;
       BigReal net_dEdl_lj_2;
-      BigReal cumAlchWork = 0;
       BigReal electEnergyPME_ti_1;
       BigReal electEnergyPME_ti_2;
       int TiNo;
-      BigReal recent_dEdl_bond_1;
-      BigReal recent_dEdl_bond_2;
       BigReal recent_dEdl_elec_1;
       BigReal recent_dEdl_elec_2;
       BigReal recent_dEdl_lj_1;
       BigReal recent_dEdl_lj_2;
-      BigReal recent_alchWork;
-      BigReal alchWork;
       int recent_TiNo;
       void printTiMessage(int);
 
@@ -182,18 +163,6 @@ protected:
       Tensor langevinPiston_origStrainRate;
       Tensor strainRate_old;  // for langevinPistonBarrier no
       Tensor positionRescaleFactor;  // for langevinPistonBarrier no
-
-    void multigratorPressure(int step, int callNumber);
-    BigReal multigratorXi;
-    BigReal multigratorXiT;
-    Tensor momentumSqrSum;
-    void multigratorTemperature(int step, int callNumber);
-    std::vector<BigReal> multigratorNu;
-    std::vector<BigReal> multigratorNuT;
-    std::vector<BigReal> multigratorOmega;
-    std::vector<BigReal> multigratorZeta;
-    RequireReduction *multigratorReduction;
-    BigReal multigatorCalcEnthalpy(BigReal potentialEnergy, int step, int minimize);
 
     int ldbSteps;
     void rebalanceLoad(int);
@@ -239,7 +208,6 @@ protected:
 //fepe
     ofstream_namd tiFile;
     void outputTiEnergy(int step);
-    BigReal computeAlchWork(const int step);
     void writeTiEnergyData(int step, ofstream_namd &file);
 
     // for checkpoint/revert

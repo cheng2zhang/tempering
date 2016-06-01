@@ -7,8 +7,8 @@
 /*****************************************************************************
  * $Source: /home/cvs/namd/cvsroot/namd2/src/Controller.C,v $
  * $Author: jim $
- * $Date: 2016/04/25 01:39:09 $
- * $Revision: 1.1317 $
+ * $Date: 2015/12/17 21:22:03 $
+ * $Revision: 1.1312 $
  *****************************************************************************/
 
 #include "InfoStream.h"
@@ -198,31 +198,6 @@ Controller::Controller(NamdState *s) :
 #undef AVGXY
     }
     langevinPiston_origStrainRate = langevinPiston_strainRate;
-    if (simParams->multigratorOn) {
-      multigratorXi = 0.0;
-      int n = simParams->multigratorNoseHooverChainLength;
-      BigReal tau = simParams->multigratorTemperatureRelaxationTime;
-      Node *node = Node::Object();
-      Molecule *molecule = node->molecule;
-      BigReal Nf = molecule->num_deg_freedom();
-      BigReal kT0 = BOLTZMANN * simParams->multigratorTemperatureTarget;
-      multigratorNu.resize(n);
-      multigratorNuT.resize(n);
-      multigratorZeta.resize(n);
-      multigratorOmega.resize(n);
-      for (int i=0;i < n;i++) {
-        multigratorNu[i] = 0.0;
-        multigratorZeta[i] = 0.0;
-        if (i == 0) {
-          multigratorOmega[i] = Nf*kT0*tau*tau;
-        } else {
-          multigratorOmega[i] = kT0*tau*tau;
-        }
-      }
-      multigratorReduction = ReductionMgr::Object()->willRequire(REDUCTIONS_MULTIGRATOR,MULTIGRATOR_REDUCTION_MAX_RESERVED);
-    } else {
-      multigratorReduction = NULL;
-    }
     origLattice = state->lattice;
     smooth2_avg = XXXBIGREAL;
     temp_avg = 0;
@@ -249,7 +224,6 @@ Controller::~Controller(void)
     delete ppint;
     delete [] pressureProfileAverage;
     delete random;
-    if (multigratorReduction) delete multigratorReduction;
 }
 
 void Controller::threadRun(Controller* arg)
@@ -463,7 +437,6 @@ void Controller::integrate(int scriptTask) {
     //  (namd_sighandler_t)my_sigint_handler);
     for ( ++step ; step <= numberOfSteps; ++step )
     {
-
         adaptTempUpdate(step);
         rescaleVelocities(step);
 	tcoupleVelocities(step);
@@ -476,12 +449,6 @@ void Controller::integrate(int scriptTask) {
 						correctMomentum(step);
 	langevinPiston2(step);
         reassignVelocities(step);
-
-      multigratorTemperature(step, 1);
-      multigratorPressure(step, 1);
-      multigratorPressure(step, 2);
-      multigratorTemperature(step, 2);
-
         printDynamicsEnergies(step);
         outputFepEnergy(step);
         outputTiEnergy(step);
@@ -760,179 +727,6 @@ void Controller::minimize() {
 
 #undef MOVETO
 #undef CALCULATE
-
-// NOTE: Only isotropic case implemented here!
-void Controller::multigratorPressure(int step, int callNumber) {
-  if (simParams->multigratorOn && !(step % simParams->multigratorPressureFreq)) {
-    BigReal P0 = simParams->multigratorPressureTarget;
-    BigReal kT0 = BOLTZMANN * simParams->multigratorTemperatureTarget;
-    BigReal NG = controlNumDegFreedom;
-    BigReal NGfac = 1.0/sqrt(3.0*NG + 1.0);
-    BigReal tau = simParams->multigratorPressureRelaxationTime;
-    BigReal s = 0.5*simParams->multigratorPressureFreq*simParams->dt/tau;
-    {
-      // Compute new scaling factors and send them to Sequencer
-      BigReal V = state->lattice.volume();
-      BigReal Pinst = trace(controlPressure)/3.0;
-      BigReal PGsum = trace(momentumSqrSum);
-      //
-      multigratorXiT = multigratorXi + 0.5*s*NGfac/kT0*( 3.0*V*(Pinst - P0) + PGsum/NG );
-      BigReal scale = exp(s*NGfac*multigratorXiT);
-      BigReal velScale = exp(-s*NGfac*(1.0 + 1.0/NG)*multigratorXiT);
-      // fprintf(stderr, "%d | T %lf P %lf V %1.3lf\n", step, temperature, Pinst*PRESSUREFACTOR, V);
-      Tensor scaleTensor = Tensor::identity(scale);
-      Tensor volScaleTensor = Tensor::identity(scale);
-      Tensor velScaleTensor = Tensor::identity(velScale);
-      state->lattice.rescale(volScaleTensor);
-      if (callNumber == 1) {
-        broadcast->positionRescaleFactor.publish(step,scaleTensor);
-        broadcast->velocityRescaleTensor.publish(step,velScaleTensor);
-      } else {
-        broadcast->positionRescaleFactor2.publish(step,scaleTensor);
-        broadcast->velocityRescaleTensor2.publish(step,velScaleTensor);      
-      }
-    }
-
-    {
-      // Wait here for Sequencer to finish scaling and force computation
-      reduction->require();
-      Tensor virial_normal;
-      Tensor virial_nbond;
-      Tensor virial_slow;
-      Tensor intVirial_normal;
-      Tensor intVirial_nbond;
-      Tensor intVirial_slow;
-      Vector extForce_normal;
-      Vector extForce_nbond;
-      Vector extForce_slow;
-      GET_TENSOR(momentumSqrSum, reduction, REDUCTION_MOMENTUM_SQUARED);
-      GET_TENSOR(virial_normal, reduction, REDUCTION_VIRIAL_NORMAL);
-      GET_TENSOR(virial_nbond, reduction, REDUCTION_VIRIAL_NBOND);
-      GET_TENSOR(virial_slow, reduction, REDUCTION_VIRIAL_SLOW);
-      GET_TENSOR(intVirial_normal, reduction, REDUCTION_INT_VIRIAL_NORMAL);
-      GET_TENSOR(intVirial_nbond, reduction, REDUCTION_INT_VIRIAL_NBOND);
-      GET_TENSOR(intVirial_slow, reduction, REDUCTION_INT_VIRIAL_SLOW);
-      GET_VECTOR(extForce_normal, reduction, REDUCTION_EXT_FORCE_NORMAL);
-      GET_VECTOR(extForce_nbond, reduction, REDUCTION_EXT_FORCE_NBOND);
-      GET_VECTOR(extForce_slow, reduction, REDUCTION_EXT_FORCE_SLOW);
-      calcPressure(step, 0, virial_normal, virial_nbond, virial_slow,
-        intVirial_normal, intVirial_nbond, intVirial_slow,
-        extForce_normal, extForce_nbond, extForce_slow);
-      if (callNumber == 2) {
-        // Update temperature for the Temperature Cycle that is coming next
-        BigReal kineticEnergy = reduction->item(REDUCTION_CENTERED_KINETIC_ENERGY);
-        temperature = 2.0 * kineticEnergy / ( numDegFreedom * BOLTZMANN );
-      }
-    }
-
-    {
-      // Update pressure integrator
-      BigReal V = state->lattice.volume();
-      BigReal Pinst = trace(controlPressure)/3.0;
-      BigReal PGsum = trace(momentumSqrSum);
-      //
-      multigratorXi = multigratorXiT + 0.5*s*NGfac/kT0*( 3.0*V*(Pinst - P0) + PGsum/NG );
-    }
-
-  }
-}
-
-void Controller::multigratorTemperature(int step, int callNumber) {
-  if (simParams->multigratorOn && !(step % simParams->multigratorTemperatureFreq)) {
-    BigReal tau = simParams->multigratorTemperatureRelaxationTime;
-    BigReal t = 0.5*simParams->multigratorTemperatureFreq*simParams->dt;
-    BigReal kT0 = BOLTZMANN * simParams->multigratorTemperatureTarget;
-    BigReal Nf = numDegFreedom;
-    int n = simParams->multigratorNoseHooverChainLength;
-    BigReal T1, T2, v;
-    {
-      T1 = temperature;
-      BigReal kTinst = BOLTZMANN * temperature;
-      for (int i=n-1;i >= 0;i--) {
-        if (i == 0) {
-          BigReal NuOmega = (n > 1) ? multigratorNuT[1]/multigratorOmega[1] : 0.0;
-          multigratorNuT[0] = exp(-0.5*t*NuOmega)*multigratorNu[0] + 0.5*Nf*t*exp(-0.25*t*NuOmega)*(kTinst - kT0);
-        } else if (i == n-1) {
-          multigratorNuT[n-1] = multigratorNu[n-1] + 0.5*t*(pow(multigratorNu[n-2],2.0)/multigratorOmega[n-2] - kT0);
-        } else {
-          BigReal NuOmega = multigratorNuT[i+1]/multigratorOmega[i+1];
-          multigratorNuT[i] = exp(-0.5*t*NuOmega)*multigratorNu[i] + 
-          0.5*t*exp(-0.25*t*NuOmega)*(pow(multigratorNu[i-1],2.0)/multigratorOmega[i-1] - kT0);
-        }
-      }
-      BigReal velScale = exp(-t*multigratorNuT[0]/multigratorOmega[0]);
-      v = velScale;
-      if (callNumber == 1)
-        broadcast->velocityRescaleFactor.publish(step,velScale);
-      else
-        broadcast->velocityRescaleFactor2.publish(step,velScale);
-    }
-
-    {
-      // Wait here for Sequencer to finish scaling and re-calculating kinetic energy
-      multigratorReduction->require();
-      BigReal kineticEnergy = multigratorReduction->item(MULTIGRATOR_REDUCTION_KINETIC_ENERGY);
-      temperature = 2.0 * kineticEnergy / ( numDegFreedom * BOLTZMANN );
-      T2 = temperature;
-      if (callNumber == 1 && !(step % simParams->multigratorPressureFreq)) {
-        // If this is pressure cycle, receive new momentum product
-        GET_TENSOR(momentumSqrSum, multigratorReduction, MULTIGRATOR_REDUCTION_MOMENTUM_SQUARED);
-      }
-    }
-
-    // fprintf(stderr, "%d | T %lf scale %lf T' %lf\n", step, T1, v, T2);
-
-    {
-      BigReal kTinst = BOLTZMANN * temperature;
-      for (int i=0;i < n;i++) {
-        if (i == 0) {
-          BigReal NuOmega = (n > 1) ? multigratorNuT[1]/multigratorOmega[1] : 0.0;
-          multigratorNu[0] = exp(-0.5*t*NuOmega)*multigratorNuT[0] + 0.5*Nf*t*exp(-0.25*t*NuOmega)*(kTinst - kT0);
-        } else if (i == n-1) {
-          multigratorNu[n-1] = multigratorNuT[n-1] + 0.5*t*(pow(multigratorNu[n-2],2.0)/multigratorOmega[n-2] - kT0);
-        } else {
-          BigReal NuOmega = multigratorNuT[i+1]/multigratorOmega[i+1];
-          multigratorNu[i] = exp(-0.5*t*NuOmega)*multigratorNuT[i] + 
-          0.5*t*exp(-0.25*t*NuOmega)*(pow(multigratorNu[i-1],2.0)/multigratorOmega[i-1] - kT0);
-        }
-        multigratorZeta[i] += t*multigratorNuT[i]/multigratorOmega[i];
-      }
-    }
-
-  }
-}
-
-// Calculates Enthalpy for multigrator
-BigReal Controller::multigatorCalcEnthalpy(BigReal potentialEnergy, int step, int minimize) {
-  Node *node = Node::Object();
-  Molecule *molecule = node->molecule;
-  SimParameters *simParameters = node->simParameters;
-
-  BigReal V = state->lattice.volume();
-  BigReal P0 = simParams->multigratorPressureTarget;
-  BigReal kT0 = BOLTZMANN * simParams->multigratorTemperatureTarget;
-  BigReal NG = controlNumDegFreedom;
-  BigReal Nf = numDegFreedom;
-  BigReal tauV = simParams->multigratorPressureRelaxationTime;
-  BigReal sumZeta = 0.0;
-  for (int i=1;i < simParams->multigratorNoseHooverChainLength;i++) {
-    sumZeta += multigratorZeta[i];
-  }
-  BigReal nuOmegaSum = 0.0;
-  for (int i=0;i < simParams->multigratorNoseHooverChainLength;i++) {
-    nuOmegaSum += multigratorNu[i]*multigratorNu[i]/(2.0*multigratorOmega[i]);
-  }
-  BigReal W = (3.0*NG + 1.0)*kT0*tauV*tauV;
-  BigReal eta = sqrt(kT0*W)*multigratorXi;
-
-  BigReal enthalpy = kineticEnergy + potentialEnergy + eta*eta/(2.0*W) + P0*V + nuOmegaSum + kT0*(Nf*multigratorZeta[0] + sumZeta);
-
-//  if (!(step % 100))
-    // fprintf(stderr, "enthalpy %lf %lf %lf %lf %lf %lf %lf\n", enthalpy,
-    //   kineticEnergy, potentialEnergy, eta*eta/(2.0*W), P0*V, nuOmegaSum, kT0*(Nf*multigratorZeta[0] + sumZeta));
-
-  return enthalpy;
-}
 
 void Controller::berendsenPressure(int step)
 {
@@ -1349,20 +1143,24 @@ void Controller::receivePressure(int step, int minimize)
 
     reduction->require();
 
+    Tensor virial;
     Tensor virial_normal;
     Tensor virial_nbond;
     Tensor virial_slow;
+    Tensor pressure_amd;
 #ifdef ALTVIRIAL
     Tensor altVirial_normal;
     Tensor altVirial_nbond;
     Tensor altVirial_slow;
 #endif
+    Tensor intVirial;
     Tensor intVirial_normal;
     Tensor intVirial_nbond;
     Tensor intVirial_slow;
     Vector extForce_normal;
     Vector extForce_nbond;
     Vector extForce_slow;
+    BigReal volume;
 
 #if 1
     numDegFreedom = molecule->num_deg_freedom();
@@ -1426,8 +1224,6 @@ void Controller::receivePressure(int step, int minimize)
     numGroupDegFreedom << "\n" << endi;
      */
 
-    GET_TENSOR(momentumSqrSum,reduction,REDUCTION_MOMENTUM_SQUARED);
-
     GET_TENSOR(virial_normal,reduction,REDUCTION_VIRIAL_NORMAL);
     GET_TENSOR(virial_nbond,reduction,REDUCTION_VIRIAL_NBOND);
     GET_TENSOR(virial_slow,reduction,REDUCTION_VIRIAL_SLOW);
@@ -1445,11 +1241,11 @@ void Controller::receivePressure(int step, int minimize)
     GET_VECTOR(extForce_normal,reduction,REDUCTION_EXT_FORCE_NORMAL);
     GET_VECTOR(extForce_nbond,reduction,REDUCTION_EXT_FORCE_NBOND);
     GET_VECTOR(extForce_slow,reduction,REDUCTION_EXT_FORCE_SLOW);
-    // APH NOTE: These four lines are now done in calcPressure()
-    // Vector extPosition = lattice.origin();
-    // virial_normal -= outer(extForce_normal,extPosition);
-    // virial_nbond -= outer(extForce_nbond,extPosition);
-    // virial_slow -= outer(extForce_slow,extPosition);
+    Vector extPosition = lattice.origin();
+    virial_normal -= outer(extForce_normal,extPosition);
+    virial_nbond -= outer(extForce_nbond,extPosition);
+    virial_slow -= outer(extForce_slow,extPosition);
+
 
     kineticEnergy = kineticEnergyCentered;
     temperature = 2.0 * kineticEnergyCentered / ( numDegFreedom * BOLTZMANN );
@@ -1465,30 +1261,112 @@ void Controller::receivePressure(int step, int minimize)
       drudeBondTemp = (g_bond!=0 ? (2.*drudeBondKE/(g_bond*BOLTZMANN)) : 0.);
     }
 
-    // Calculate number of degrees of freedom (controlNumDegFreedom)
+    if ( (volume=lattice.volume()) != 0. )
+    {
+
+      if (simParameters->LJcorrection && volume) {
+        // Apply tail correction to pressure
+        //printf("Volume is %f\n", volume);
+        //printf("Applying tail correction of %f to virial\n", molecule->tail_corr_virial / volume);
+        virial_normal += Tensor::identity(molecule->tail_corr_virial / volume);
+      }
+
+      // kinetic energy component included in virials
+      pressure_normal = virial_normal / volume;
+      groupPressure_normal = ( virial_normal - intVirial_normal ) / volume;
+
+      if (simParameters->accelMDOn) {
+        pressure_amd = virial_amd / volume;
+        pressure_normal += pressure_amd;
+        groupPressure_normal +=  pressure_amd;
+      }
+
+      if ( minimize || ! ( step % nbondFreq ) )
+      {
+        pressure_nbond = virial_nbond / volume;
+        groupPressure_nbond = ( virial_nbond - intVirial_nbond ) / volume;
+      }
+
+      if ( minimize || ! ( step % slowFreq ) )
+      {
+        pressure_slow = virial_slow / volume;
+        groupPressure_slow = ( virial_slow - intVirial_slow ) / volume;
+      }
+
+/*
+      iout << "VIRIALS: " << virial_normal << " " << virial_nbond << " " <<
+	virial_slow << " " << ( virial_normal - intVirial_normal ) << " " <<
+	( virial_nbond - intVirial_nbond ) << " " <<
+	( virial_slow - intVirial_slow ) << "\n";
+*/
+
+      pressure = pressure_normal + pressure_nbond + pressure_slow; 
+      groupPressure = groupPressure_normal + groupPressure_nbond +
+						groupPressure_slow;
+    }
+    else
+    {
+      pressure = Tensor();
+      groupPressure = Tensor();
+    }
+
     if ( simParameters->useGroupPressure )
     {
+      controlPressure_normal = groupPressure_normal;
+      controlPressure_nbond = groupPressure_nbond;
+      controlPressure_slow = groupPressure_slow;
+      controlPressure = groupPressure;
       controlNumDegFreedom = molecule->numHydrogenGroups - numFixedGroups;
       if ( ! ( numFixedAtoms || molecule->numConstraints
-  || simParameters->comMove || simParameters->langevinOn ) ) {
+	|| simParameters->comMove || simParameters->langevinOn ) ) {
         controlNumDegFreedom -= 1;
       }
     }
     else
     {
+      controlPressure_normal = pressure_normal;
+      controlPressure_nbond = pressure_nbond;
+      controlPressure_slow = pressure_slow;
+      controlPressure = pressure;
       controlNumDegFreedom = numDegFreedom / 3;
     }
+
     if (simParameters->fixCellDims) {
       if (simParameters->fixCellDimX) controlNumDegFreedom -= 1;
       if (simParameters->fixCellDimY) controlNumDegFreedom -= 1;
       if (simParameters->fixCellDimZ) controlNumDegFreedom -= 1;
     }
 
-    // Calculate pressure tensors using virials
-    calcPressure(step, minimize,
-      virial_normal, virial_nbond, virial_slow,
-      intVirial_normal, intVirial_nbond, intVirial_slow,
-      extForce_normal, extForce_nbond, extForce_slow);
+    if ( simParameters->useFlexibleCell ) {
+      // use symmetric pressure to control rotation
+      // controlPressure_normal = symmetric(controlPressure_normal);
+      // controlPressure_nbond = symmetric(controlPressure_nbond);
+      // controlPressure_slow = symmetric(controlPressure_slow);
+      // controlPressure = symmetric(controlPressure);
+      // only use on-diagonal components for now
+      controlPressure_normal = Tensor::diagonal(diagonal(controlPressure_normal));
+      controlPressure_nbond = Tensor::diagonal(diagonal(controlPressure_nbond));
+      controlPressure_slow = Tensor::diagonal(diagonal(controlPressure_slow));
+      controlPressure = Tensor::diagonal(diagonal(controlPressure));
+      if ( simParameters->useConstantRatio ) {
+#define AVGXY(T) T.xy = T.yx = 0; T.xx = T.yy = 0.5 * ( T.xx + T.yy );\
+		 T.xz = T.zx = T.yz = T.zy = 0.5 * ( T.xz + T.yz );
+        AVGXY(controlPressure_normal);
+        AVGXY(controlPressure_nbond);
+        AVGXY(controlPressure_slow);
+        AVGXY(controlPressure);
+#undef AVGXY
+      }
+    } else {
+      controlPressure_normal =
+		Tensor::identity(trace(controlPressure_normal)/3.);
+      controlPressure_nbond =
+		Tensor::identity(trace(controlPressure_nbond)/3.);
+      controlPressure_slow =
+		Tensor::identity(trace(controlPressure_slow)/3.);
+      controlPressure =
+		Tensor::identity(trace(controlPressure)/3.);
+    }
 
 #ifdef DEBUG_PRESSURE
     iout << iINFO << "Control pressure = " << controlPressure <<
@@ -1507,132 +1385,6 @@ void Controller::receivePressure(int step, int minimize)
              << " GPSLOW " << trace(groupPressure_slow)*PRESSUREFACTOR/3. << "\n"
              << endi;
    }
-}
-
-//
-// Calculates all pressure tensors using virials
-//
-// Sets variables:
-// pressure, pressure_normal, pressure_nbond, pressure_slow
-// groupPressure, groupPressure_normal, groupPressure_nbond, groupPressure_slow
-// controlPressure, controlPressure_normal, controlPressure_nbond, controlPressure_slow
-// pressure_amd
-// 
-void Controller::calcPressure(int step, int minimize,
-  const Tensor& virial_normal_in, const Tensor& virial_nbond_in, const Tensor& virial_slow_in,
-  const Tensor& intVirial_normal, const Tensor& intVirial_nbond, const Tensor& intVirial_slow,
-  const Vector& extForce_normal, const Vector& extForce_nbond, const Vector& extForce_slow) {
-
-  Tensor virial_normal = virial_normal_in;
-  Tensor virial_nbond = virial_nbond_in;
-  Tensor virial_slow = virial_slow_in;
-
-  // Tensor tmp = virial_normal;
-  // fprintf(stderr, "%1.2lf %1.2lf %1.2lf %1.2lf %1.2lf %1.2lf %1.2lf %1.2lf %1.2lf\n",
-  //   tmp.xx, tmp.xy, tmp.xz, tmp.yx, tmp.yy, tmp.yz, tmp.zx, tmp.zy, tmp.zz);
-
-  Node *node = Node::Object();
-  Molecule *molecule = node->molecule;
-  SimParameters *simParameters = node->simParameters;
-  Lattice &lattice = state->lattice;
-
-  BigReal volume;
-
-  Vector extPosition = lattice.origin();
-  virial_normal -= outer(extForce_normal,extPosition);
-  virial_nbond -= outer(extForce_nbond,extPosition);
-  virial_slow -= outer(extForce_slow,extPosition);
-
-  if ( (volume=lattice.volume()) != 0. )
-  {
-
-    if (simParameters->LJcorrection && volume) {
-#ifdef MEM_OPT_VERSION
-      NAMD_bug("LJcorrection not supported in memory optimized build.");
-#else
-      // Apply tail correction to pressure
-      BigReal alchLambda = simParameters->getCurrentLambda(step);
-      virial_normal += Tensor::identity(molecule->getVirialTailCorr(alchLambda) / volume);
-#endif
-    }
-
-    // kinetic energy component included in virials
-    pressure_normal = virial_normal / volume;
-    groupPressure_normal = ( virial_normal - intVirial_normal ) / volume;
-
-    if (simParameters->accelMDOn) {
-      pressure_amd = virial_amd / volume;
-      pressure_normal += pressure_amd;
-      groupPressure_normal +=  pressure_amd;
-    }
-
-    if ( minimize || ! ( step % nbondFreq ) )
-    {
-      pressure_nbond = virial_nbond / volume;
-      groupPressure_nbond = ( virial_nbond - intVirial_nbond ) / volume;
-    }
-
-    if ( minimize || ! ( step % slowFreq ) )
-    {
-      pressure_slow = virial_slow / volume;
-      groupPressure_slow = ( virial_slow - intVirial_slow ) / volume;
-    }
-
-    pressure = pressure_normal + pressure_nbond + pressure_slow; 
-    groupPressure = groupPressure_normal + groupPressure_nbond +
-          groupPressure_slow;
-  }
-  else
-  {
-    pressure = Tensor();
-    groupPressure = Tensor();
-  }
-
-  if ( simParameters->useGroupPressure )
-  {
-    controlPressure_normal = groupPressure_normal;
-    controlPressure_nbond = groupPressure_nbond;
-    controlPressure_slow = groupPressure_slow;
-    controlPressure = groupPressure;
-  }
-  else
-  {
-    controlPressure_normal = pressure_normal;
-    controlPressure_nbond = pressure_nbond;
-    controlPressure_slow = pressure_slow;
-    controlPressure = pressure;
-  }
-
-  if ( simParameters->useFlexibleCell ) {
-    // use symmetric pressure to control rotation
-    // controlPressure_normal = symmetric(controlPressure_normal);
-    // controlPressure_nbond = symmetric(controlPressure_nbond);
-    // controlPressure_slow = symmetric(controlPressure_slow);
-    // controlPressure = symmetric(controlPressure);
-    // only use on-diagonal components for now
-    controlPressure_normal = Tensor::diagonal(diagonal(controlPressure_normal));
-    controlPressure_nbond = Tensor::diagonal(diagonal(controlPressure_nbond));
-    controlPressure_slow = Tensor::diagonal(diagonal(controlPressure_slow));
-    controlPressure = Tensor::diagonal(diagonal(controlPressure));
-    if ( simParameters->useConstantRatio ) {
-#define AVGXY(T) T.xy = T.yx = 0; T.xx = T.yy = 0.5 * ( T.xx + T.yy );\
-   T.xz = T.zx = T.yz = T.zy = 0.5 * ( T.xz + T.yz );
-      AVGXY(controlPressure_normal);
-      AVGXY(controlPressure_nbond);
-      AVGXY(controlPressure_slow);
-      AVGXY(controlPressure);
-#undef AVGXY
-    }
-  } else {
-    controlPressure_normal =
-  Tensor::identity(trace(controlPressure_normal)/3.);
-    controlPressure_nbond =
-  Tensor::identity(trace(controlPressure_nbond)/3.);
-    controlPressure_slow =
-  Tensor::identity(trace(controlPressure_slow)/3.);
-    controlPressure =
-  Tensor::identity(trace(controlPressure)/3.);
-  }
 }
 
 void Controller::rescaleaccelMD(int step, int minimize)
@@ -1661,11 +1413,10 @@ void Controller::rescaleaccelMD(int step, int minimize)
     const BigReal accelMDTalpha = simParams->accelMDTalpha;
     const int accelMDOutFreq = simParams->accelMDOutFreq;
 
-    //BigReal bondEnergy;
-    //BigReal angleEnergy;
-    //BigReal dihedralEnergy;
-    //BigReal improperEnergy;
-    // BKR - bonded terms are now declared globally for easy FEP differencing
+    BigReal bondEnergy;
+    BigReal angleEnergy;
+    BigReal dihedralEnergy;
+    BigReal improperEnergy;
     BigReal crosstermEnergy;
     BigReal boundaryEnergy;
     BigReal miscEnergy;
@@ -2228,10 +1979,10 @@ void Controller::adaptTempUpdate(int step, int minimize)
           
       }
       
-      BigReal s = sqrt( dT / adaptTempT );
-      adaptTempT = dT;
-      broadcast->adaptTemperature.publish(step * 2, adaptTempT);
-      broadcast->adaptTemperature.publish(step * 2 + 1, s);
+      BigReal s = sqrt(dT/adaptTempT);
+      adaptTempT = dT; 
+      broadcast->adaptTemperature.publish(step*2, adaptTempT);
+      broadcast->adaptTemperature.publish(step*2 + 1, s);
     }
     adaptTempWriteRestart(step);
     if ( ! (step % adaptTempOutFreq) ) {
@@ -2500,11 +2251,10 @@ void Controller::printEnergies(int step, int minimize)
     // Drude model ANISO energy is added into BOND energy
     // and THOLE energy is added into ELECT energy
 
-    //BigReal bondEnergy;
-    //BigReal angleEnergy;
-    //BigReal dihedralEnergy;
-    //BigReal improperEnergy;
-    // BKR - bonded terms are now declared globally for easy FEP differencing
+    BigReal bondEnergy;
+    BigReal angleEnergy;
+    BigReal dihedralEnergy;
+    BigReal improperEnergy;
     BigReal crosstermEnergy;
     BigReal boundaryEnergy;
     BigReal miscEnergy;
@@ -2538,15 +2288,12 @@ void Controller::printEnergies(int step, int minimize)
       goTotalEnergy = goNativeEnergy + goNonnativeEnergy;
 
 //fepb
-      bondedEnergy_f = reduction->item(REDUCTION_BONDED_ENERGY_F);
       electEnergy_f = reduction->item(REDUCTION_ELECT_ENERGY_F);
       ljEnergy_f = reduction->item(REDUCTION_LJ_ENERGY_F);
       ljEnergy_f_left = reduction->item(REDUCTION_LJ_ENERGY_F_LEFT);
 
-      bondedEnergy_ti_1 = reduction->item(REDUCTION_BONDED_ENERGY_TI_1);
       electEnergy_ti_1 = reduction->item(REDUCTION_ELECT_ENERGY_TI_1);
       ljEnergy_ti_1 = reduction->item(REDUCTION_LJ_ENERGY_TI_1);
-      bondedEnergy_ti_2 = reduction->item(REDUCTION_BONDED_ENERGY_TI_2);
       electEnergy_ti_2 = reduction->item(REDUCTION_ELECT_ENERGY_TI_2);
       ljEnergy_ti_2 = reduction->item(REDUCTION_LJ_ENERGY_TI_2);
 //fepe
@@ -2566,30 +2313,14 @@ void Controller::printEnergies(int step, int minimize)
     }
 
     if (simParameters->LJcorrection && volume) {
-#ifdef MEM_OPT_VERSION
-      NAMD_bug("LJcorrection not supported in memory optimized build.");
-#else
-      // Apply tail correction to energy.
-      BigReal alchLambda = simParameters->getCurrentLambda(step);
-      BigReal alchLambda2 = simParameters->alchLambda2;
-
-      ljEnergy += molecule->getEnergyTailCorr(alchLambda) / volume;
-      ljEnergy_f += molecule->getEnergyTailCorr(alchLambda2) / volume;
-      ljEnergy_f_left += molecule->getEnergyTailCorr(alchLambda2) / volume;
-      ljEnergy_ti_1 += molecule->tail_corr_dUdl_1 / volume;
-      // NB: Rather than duplicate variables, dUdl_2 is stored as the energy.
-      //     Put another way, dUdl_2 _is_ the energy if alchLambda = 0.
-      ljEnergy_ti_2 += molecule->tail_corr_ener / volume;
-#endif
+      // Apply tail correction to energy
+      //printf("Volume is %f\n", volume);
+      //printf("Applying tail correction of %f to energy\n", molecule->tail_corr_ener / volume);
+      ljEnergy += molecule->tail_corr_ener / volume;
+      ljEnergy_f += molecule->tail_corr_ener / volume;
+      ljEnergy_f_left += molecule->tail_corr_ener / volume;
     }
 
-//fepb BKR - Compute alchemical work if using dynamic lambda.  This is here so
-//           that the cumulative work can be given during a callback.
-    if (simParameters->alchLambdaFreq > 0) {
-        alchWork = computeAlchWork(step);
-        cumAlchWork += alchWork;
-    }
-//fepe
 
     momentum.x = reduction->item(REDUCTION_MOMENTUM_X);
     momentum.y = reduction->item(REDUCTION_MOMENTUM_Y);
@@ -2599,14 +2330,13 @@ void Controller::printEnergies(int step, int minimize)
     angularMomentum.z = reduction->item(REDUCTION_ANGULAR_MOMENTUM_Z);
 
     // Ported by JLai
-    potentialEnergy = (bondEnergy + angleEnergy + dihedralEnergy
-  + improperEnergy + electEnergy + electEnergySlow + ljEnergy
-  + crosstermEnergy + boundaryEnergy + miscEnergy + goTotalEnergy 
-        + groLJEnergy + groGaussEnergy);
+    potentialEnergy = bondEnergy + angleEnergy + dihedralEnergy +
+	improperEnergy + electEnergy + electEnergySlow + ljEnergy +
+	crosstermEnergy + boundaryEnergy + miscEnergy + goTotalEnergy + groLJEnergy + groGaussEnergy;
     // End of port
     totalEnergy = potentialEnergy + kineticEnergy;
-    flatEnergy = (totalEnergy
-        + (1.0/3.0)*(kineticEnergyHalfstep - kineticEnergyCentered));
+    flatEnergy = totalEnergy +
+        (1.0/3.0)*( kineticEnergyHalfstep - kineticEnergyCentered);
     if ( !(step%slowFreq) ) {
       // only adjust based on most accurate energies
       BigReal s = (4.0/3.0)*( kineticEnergyHalfstep - kineticEnergyCentered);
@@ -2616,8 +2346,8 @@ void Controller::printEnergies(int step, int minimize)
         smooth2_avg += 0.0625 * s;
       }
     }
-    smoothEnergy = (flatEnergy + smooth2_avg
-        - (4.0/3.0)*(kineticEnergyHalfstep - kineticEnergyCentered));
+    smoothEnergy = flatEnergy + smooth2_avg -
+        (4.0/3.0)*( kineticEnergyHalfstep - kineticEnergyCentered);
 
     if ( simParameters->outputMomenta && ! minimize &&
          ! ( step % simParameters->outputMomenta ) )
@@ -2703,11 +2433,11 @@ void Controller::printEnergies(int step, int minimize)
       iout << CkNumPes() << " CPUs ";
       {
         BigReal wallPerStep =
-    (CmiWallTimer() - startBenchTime) / simParams->firstLdbStep;
-  BigReal ns = simParams->dt / 1000000.0;
-  BigReal days = 1.0 / (24.0 * 60.0 * 60.0);
-  BigReal daysPerNano = wallPerStep * days / ns;
-  iout << wallPerStep << " s/step " << daysPerNano << " days/ns ";
+		(CmiWallTimer() - startBenchTime) / simParams->firstLdbStep;
+	BigReal ns = simParams->dt / 1000000.0;
+	BigReal days = 1.0 / (24.0 * 60.0 * 60.0);
+	BigReal daysPerNano = wallPerStep * days / ns;
+	iout << wallPerStep << " s/step " << daysPerNano << " days/ns ";
         iout << memusage_MB() << " MB memory\n" << endi;
       }
      }
@@ -2768,25 +2498,6 @@ void Controller::printEnergies(int step, int minimize)
         CALLBACKLIST("VDW_FORCE",pairVDWForce);
         CALLBACKLIST("ELECT_FORCE",pairElectForce);
       }
-      if (simParameters->alchOn) {
-        if (simParameters->alchThermIntOn) {
-          CALLBACKLIST("BOND1", bondedEnergy_ti_1);
-          CALLBACKLIST("ELEC1", electEnergy_ti_1 + electEnergySlow_ti_1 +
-                                electEnergyPME_ti_1);
-          CALLBACKLIST("VDW1", ljEnergy_ti_1);
-          CALLBACKLIST("BOND2", bondedEnergy_ti_2);
-          CALLBACKLIST("ELEC2", electEnergy_ti_2 + electEnergySlow_ti_2 +
-                                electEnergyPME_ti_2);
-          CALLBACKLIST("VDW2", ljEnergy_ti_2);
-          if (simParameters->alchLambdaFreq > 0) {
-            CALLBACKLIST("CUMALCHWORK", cumAlchWork);
-          }
-        } else if (simParameters->alchFepOn) {
-          CALLBACKLIST("BOND2", bondedEnergy_f);
-          CALLBACKLIST("ELEC2", electEnergy_f);
-          CALLBACKLIST("VDW2", ljEnergy_f);
-        } 
-      }
 
       labels << '\0';  values << '\0';  // insane but makes Linux work
       state->callback_labelstring = labels.str();
@@ -2810,12 +2521,7 @@ void Controller::printEnergies(int step, int minimize)
 	" steps.\n" << endi;
       pairlistWarnings = 0;
     }
-
-    BigReal enthalpy;
-    if (simParameters->multigratorOn && ((step % simParameters->outputEnergies) == 0)) {
-      enthalpy = multigatorCalcEnthalpy(potentialEnergy, step, minimize);
-    }
-
+    
     // NO CALCULATIONS OR REDUCTIONS BEYOND THIS POINT!!!
     if ( ! minimize &&  step % simParameters->outputEnergies ) return;
     // ONLY OUTPUT SHOULD OCCUR BELOW THIS LINE!!!
@@ -2892,26 +2598,12 @@ void Controller::printEnergies(int step, int minimize)
 	  //iout << FORMAT("GOAVG");
 	}
 	// End of port -- JLai
-        if (simParameters->alchOn && simParameters->alchThermIntOn) {
-          iout << "     ";
-          iout << FORMAT("BOND1");
-          iout << FORMAT("ELECT1");
-          iout << FORMAT("VDW1");
-          iout << FORMAT("BOND2");
-          iout << FORMAT("ELECT2");
-          iout << "     ";
-          iout << FORMAT("VDW2");
-          if (simParameters->alchLambdaFreq > 0) {
-            iout << FORMAT("LAMBDA");
-            iout << FORMAT("ALCHWORK");
-          }
-        }
-
 	iout << "\n\n" << endi;
     }
 
     // N.B.  HP's aCC compiler merges FORMAT calls in the same expression.
     //       Need separate statements because data returned in static array.
+
     iout << ETITLE(step);
     iout << FORMAT(bondEnergy);
     iout << FORMAT(angleEnergy);
@@ -2965,23 +2657,6 @@ void Controller::printEnergies(int step, int minimize)
       iout << FORMAT(goTotalEnergy);
       //iout << FORMAT("not implemented");
     } // End of port -- JLai
-    if (simParameters->alchOn && simParameters->alchThermIntOn) {
-      iout << "     ";
-      iout << FORMAT(bondedEnergy_ti_1);
-      iout << FORMAT(electEnergy_ti_1 + electEnergySlow_ti_1 + 
-                     electEnergyPME_ti_1);
-      iout << FORMAT(ljEnergy_ti_1);
-      iout << FORMAT(bondedEnergy_ti_2);
-      iout << FORMAT(electEnergy_ti_2 + electEnergySlow_ti_2 +
-                     electEnergyPME_ti_2);
-      iout << "     ";
-      iout << FORMAT(ljEnergy_ti_2);
-      if (simParameters->alchLambdaFreq > 0) {
-        iout << FORMAT(simParameters->getCurrentLambda(step));
-        iout << FORMAT(alchWork);
-      }
-    }
-
     iout << "\n\n" << endi;
 
 #if(CMK_CCS_AVAILABLE && CMK_WEB_MODE)
@@ -3073,7 +2748,7 @@ static char *FEPTITLE(int X)
 static char *TITITLE(int X)
 { 
   static char tmp_string[21];
-  sprintf(tmp_string, "TI:     %7d",X); 
+  sprintf(tmp_string, "TI   %6d ",X);
   return tmp_string;
 }
 
@@ -3091,9 +2766,8 @@ void Controller::outputFepEnergy(int step) {
     exp_dE_ByRT = 0.0;
     net_dE = 0.0;
   }
-  BigReal dE = bondedEnergy_f + electEnergy_f + electEnergySlow_f + ljEnergy_f
-               - (bondEnergy + angleEnergy + dihedralEnergy + improperEnergy 
-                  + electEnergy + electEnergySlow + ljEnergy);
+  BigReal dE = electEnergy_f + electEnergySlow_f + ljEnergy_f
+		- (electEnergy + electEnergySlow + ljEnergy);
   BigReal RT = BOLTZMANN * simParams->alchTemp;
 
   if (alchEnsembleAvg){
@@ -3153,13 +2827,10 @@ void Controller::outputTiEnergy(int step) {
  if (simParams->alchThermIntOn) {
   const int stepInRun = step - simParams->firstTimestep;
   const int alchEquilSteps = simParams->alchEquilSteps;
-  const int stepInSwitch = stepInRun - alchEquilSteps;
-  const int alchLambdaFreq = simParams->alchLambdaFreq;
-
-  if (stepInRun == alchEquilSteps) {
+  const BigReal alchLambda = simParams->alchLambda;
+  
+  if (stepInRun == 0 || stepInRun == alchEquilSteps) {
     TiNo = 0;
-    net_dEdl_bond_1 = 0;
-    net_dEdl_bond_2 = 0;
     net_dEdl_elec_1 = 0;
     net_dEdl_elec_2 = 0;
     net_dEdl_lj_1 = 0;
@@ -3169,150 +2840,62 @@ void Controller::outputTiEnergy(int step) {
     // output of instantaneous dU/dl now replaced with running average
     // over last alchOutFreq steps (except for step 0)
     recent_TiNo = 0;
-    recent_dEdl_bond_1 = 0;
-    recent_dEdl_bond_2 = 0;
     recent_dEdl_elec_1 = 0;
     recent_dEdl_elec_2 = 0;
     recent_dEdl_lj_1 = 0;
     recent_dEdl_lj_2 = 0;
-    recent_alchWork = 0;
   }
   TiNo++;
   recent_TiNo++;
-  net_dEdl_bond_1 += bondedEnergy_ti_1;
-  net_dEdl_bond_2 += bondedEnergy_ti_2;
   // FB - PME is no longer scaled by global lambda, but by the respective
   // lambda as dictated by elecLambdaStart. All electrostatics now go together.
-  net_dEdl_elec_1 += (electEnergy_ti_1 + electEnergySlow_ti_1 
-                      + electEnergyPME_ti_1);
-  net_dEdl_elec_2 += (electEnergy_ti_2 + electEnergySlow_ti_2 
-                      + electEnergyPME_ti_2);
+  net_dEdl_elec_1 += electEnergy_ti_1 + electEnergySlow_ti_1 + electEnergyPME_ti_1;
+  net_dEdl_elec_2 += electEnergy_ti_2 + electEnergySlow_ti_2 + electEnergyPME_ti_2;
   net_dEdl_lj_1 += ljEnergy_ti_1;
   net_dEdl_lj_2 += ljEnergy_ti_2;
-
-  recent_dEdl_bond_1 += bondedEnergy_ti_1;
-  recent_dEdl_bond_2 += bondedEnergy_ti_2;
-  recent_dEdl_elec_1 += (electEnergy_ti_1 + electEnergySlow_ti_1 
-                         + electEnergyPME_ti_1); 
-  recent_dEdl_elec_2 += (electEnergy_ti_2 + electEnergySlow_ti_2 
-                         + electEnergyPME_ti_2); 
+  recent_dEdl_elec_1 += electEnergy_ti_1 + electEnergySlow_ti_1 + electEnergyPME_ti_1; 
+  recent_dEdl_elec_2 += electEnergy_ti_2 + electEnergySlow_ti_2 + electEnergyPME_ti_2; 
   recent_dEdl_lj_1 += ljEnergy_ti_1;
   recent_dEdl_lj_2 += ljEnergy_ti_2;
-  recent_alchWork += alchWork;
 
   if (stepInRun == 0) {
+    BigReal alchElecLambdaStart = simParams->alchElecLambdaStart;
+    BigReal alchVdwLambdaEnd = simParams->alchVdwLambdaEnd;
+    BigReal elec_lambda_1 = (alchLambda <= alchElecLambdaStart)? 0. : \
+            (alchLambda - alchElecLambdaStart) / (1. - alchElecLambdaStart);
+    BigReal elec_lambda_2 = ((1-alchLambda) <= alchElecLambdaStart)? 0. : \
+            ((1-alchLambda) - alchElecLambdaStart) / (1. - alchElecLambdaStart);
+    BigReal vdw_lambda_1 =  (alchLambda >= alchVdwLambdaEnd)? 1. : \
+            alchLambda / alchVdwLambdaEnd; 
+    BigReal vdw_lambda_2 =  ((1-alchLambda) >= alchVdwLambdaEnd)? 1. : \
+            (1-alchLambda) / alchVdwLambdaEnd; 
     if (!tiFile.is_open()) {
+      //tiSum = 0.0;
       NAMD_backup_file(simParams->alchOutFile);
       tiFile.open(simParams->alchOutFile);
-      /* BKR - This has been rather drastically updated to better match stdout.
-         This was necessary for several reasons:
-         1) PME global scaling is obsolete (now removed)
-         2) scaling of bonded terms was added
-         3) alchemical work is now accumulated when switching is active
-       */
       iout << "OPENING TI ENERGY OUTPUT FILE\n" << endi;
-      tiFile << "#TITITLE:    TS";
-      tiFile << FORMAT("BOND1");
-      tiFile << FORMAT("AVGBOND1");
-      tiFile << FORMAT("ELECT1");
-      tiFile << FORMAT("AVGELECT1");
-      tiFile << "     ";
-      tiFile << FORMAT("VDW1");
-      tiFile << FORMAT("AVGVDW1");
-      tiFile << FORMAT("BOND2");
-      tiFile << FORMAT("AVGBOND2");
-      tiFile << FORMAT("ELECT2");
-      tiFile << "     ";
-      tiFile << FORMAT("AVGELECT2");
-      tiFile << FORMAT("VDW2");
-      tiFile << FORMAT("AVGVDW2");
-      if (alchLambdaFreq > 0) {
-        tiFile << FORMAT("ALCHWORK");
-        tiFile << FORMAT("CUMALCHWORK");
-      }
-      tiFile << std::endl;
+      tiFile << "#       STEP      Elec_dU/dl      Elec_avg        vdW_dU/dl      vdw_avg       Elec_dU/dl      Elec_avg      vdW_dU/dl       vdw_avg       PME_dU/dl      PME_avg\n"
+              << "#               <---------------------PARTITION 1------------------------>    <---------------------PARTITION 2--------------------->" 
+              << std::endl;
     }
-
-    if (alchLambdaFreq > 0) {
-      tiFile << "#ALCHEMICAL SWITCHING ACTIVE " 
-             << simParams->alchLambda << " --> " << simParams->alchLambda2
-             << "\n#LAMBDA SCHEDULE: " 
-             << "dL: " << simParams->getLambdaDelta() 
-             << " Freq: " << alchLambdaFreq
-             << "\n#CONSTANT TEMPERATURE: " << simParams->alchTemp << " K"
-             << std::endl;
-    }
-    else {
-      const BigReal alchLambda = simParams->alchLambda;    
-      const BigReal bond_lambda_1 = simParams->getBondLambda(alchLambda);
-      const BigReal bond_lambda_2 = simParams->getBondLambda(1-alchLambda);
-      const BigReal elec_lambda_1 = simParams->getElecLambda(alchLambda);
-      const BigReal elec_lambda_2 = simParams->getElecLambda(1-alchLambda);
-      const BigReal vdw_lambda_1 = simParams->getVdwLambda(alchLambda);
-      const BigReal vdw_lambda_2 = simParams->getVdwLambda(1-alchLambda);
-      tiFile << "#NEW TI WINDOW: "
-       << "LAMBDA " << alchLambda 
-       << "\n#PARTITION 1 BOND LAMBDA " << bond_lambda_1
-       << "\n#PARTITION 1 VDW LAMBDA " << vdw_lambda_1 
-       << "\n#PARTITION 1 ELEC LAMBDA " << elec_lambda_1
-       << "\n#PARTITION 2 BOND LAMBDA " << bond_lambda_2
-       << "\n#PARTITION 2 VDW LAMBDA " << vdw_lambda_2 
-       << "\n#PARTITION 2 ELEC LAMBDA " << elec_lambda_2
-       << "\n#CONSTANT TEMPERATURE: " << simParams->alchTemp << " K"
-       << std::endl;
-    }
+    tiFile << "#NEW TI WINDOW: "
+            << "LAMBDA " << alchLambda 
+            << "\n#PARTITION 1 VDW LAMBDA " << vdw_lambda_1 
+            << "\n#PARTITION 1 ELEC LAMBDA " << elec_lambda_1 
+            << "\n#PARTITION 2 VDW LAMBDA " << vdw_lambda_2 
+            << "\n#PARTITION 2 ELEC LAMBDA " << elec_lambda_2 
+            << "\n" << std::endl;
   }
-
   if (stepInRun == alchEquilSteps) {
     tiFile << "#" << alchEquilSteps << " STEPS OF EQUILIBRATION AT "
-           << "LAMBDA " << simParams->alchLambda << " COMPLETED\n"
-           << "#STARTING COLLECTION OF ENSEMBLE AVERAGE" << std::endl;
-  }
-  if (alchLambdaFreq > 0 && stepInSwitch >= 0 && step != simParams->N ) {
-      // Work is accumulated whenever alchLambda changes. In the current
-      // scheme we always increment lambda _first_, then integrate in time.
-      // Therefore the work is wrt the "old" lambda before the increment.
-      alchWork = computeAlchWork(step);
-      cumAlchWork += alchWork;
+            << "LAMBDA " << simParams->alchLambda << " COMPLETED\n"
+            << "#STARTING COLLECTION OF ENSEMBLE AVERAGE" << std::endl;
   }
   if (simParams->alchOutFreq && ((step%simParams->alchOutFreq)==0)) {
     writeTiEnergyData(step, tiFile);
     tiFile.flush();
   }
  }
-}
-
-/* Work is accumulated whenever alchLambda changes.  In the current scheme we
-   always increment lambda _first_, then integrate in time.  Therefore the work
-   is wrt the "old" lambda before the increment.
-*/
-BigReal Controller::computeAlchWork(const int step) {
-  // alchemical scaling factors for groups 1/2 at the previous lambda
-  const BigReal oldLambda = simParams->getCurrentLambda(step-1);
-  const BigReal bond_lambda_1 = simParams->getBondLambda(oldLambda);
-  const BigReal bond_lambda_2 = simParams->getBondLambda(1-oldLambda);
-  const BigReal elec_lambda_1 = simParams->getElecLambda(oldLambda);
-  const BigReal elec_lambda_2 = simParams->getElecLambda(1-oldLambda);
-  const BigReal vdw_lambda_1 = simParams->getVdwLambda(oldLambda);
-  const BigReal vdw_lambda_2 = simParams->getVdwLambda(1-oldLambda);
-  // alchemical scaling factors for groups 1/2 at the new lambda
-  const BigReal alchLambda = simParams->getCurrentLambda(step);
-  const BigReal bond_lambda_12 = simParams->getBondLambda(alchLambda);
-  const BigReal bond_lambda_22 = simParams->getBondLambda(1-alchLambda);
-  const BigReal elec_lambda_12 = simParams->getElecLambda(alchLambda);
-  const BigReal elec_lambda_22 = simParams->getElecLambda(1-alchLambda);
-  const BigReal vdw_lambda_12 = simParams->getVdwLambda(alchLambda);
-  const BigReal vdw_lambda_22 = simParams->getVdwLambda(1-alchLambda); 
-
-  return ((bond_lambda_12 - bond_lambda_1)*bondedEnergy_ti_1 +
-          (elec_lambda_12 - elec_lambda_1)*
-          (electEnergy_ti_1 + electEnergySlow_ti_1 +  electEnergyPME_ti_1) +
-          (vdw_lambda_12 - vdw_lambda_1)*ljEnergy_ti_1 +
-          (bond_lambda_22 - bond_lambda_2)*bondedEnergy_ti_2 +
-          (elec_lambda_22 - elec_lambda_2)*
-          (electEnergy_ti_2 + electEnergySlow_ti_2 + electEnergyPME_ti_2) + 
-          (vdw_lambda_22 - vdw_lambda_2)*ljEnergy_ti_2
-  );
 }
 
 void Controller::writeFepEnergyData(int step, ofstream_namd &file) {
@@ -3391,24 +2974,14 @@ void Controller::writeFepEnergyData(int step, ofstream_namd &file) {
 //fepe
 void Controller::writeTiEnergyData(int step, ofstream_namd &file) {
   tiFile << TITITLE(step);
-  tiFile << FORMAT(recent_dEdl_bond_1 / recent_TiNo);
-  tiFile << FORMAT(net_dEdl_bond_1 / TiNo);
   tiFile << FORMAT(recent_dEdl_elec_1 / recent_TiNo);
   tiFile << FORMAT(net_dEdl_elec_1/TiNo);
-  tiFile << "     ";
   tiFile << FORMAT(recent_dEdl_lj_1 / recent_TiNo);
   tiFile << FORMAT(net_dEdl_lj_1/TiNo);
-  tiFile << FORMAT(recent_dEdl_bond_2 / recent_TiNo);
-  tiFile << FORMAT(net_dEdl_bond_2 / TiNo);
   tiFile << FORMAT(recent_dEdl_elec_2 / recent_TiNo);
-  tiFile << "     ";
   tiFile << FORMAT(net_dEdl_elec_2/TiNo);
   tiFile << FORMAT(recent_dEdl_lj_2 / recent_TiNo);
   tiFile << FORMAT(net_dEdl_lj_2/TiNo);
-  if (simParams->alchLambdaFreq > 0) {
-    tiFile << FORMAT(recent_alchWork / recent_TiNo);
-    tiFile << FORMAT(cumAlchWork);
-  }
   tiFile << std::endl;
 }
 
