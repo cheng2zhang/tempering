@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title> Simulated tempering on Lennard Jones fluid </title>
+  <link rel="stylesheet" href="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css">
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
+  <script src="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js"></script>
+  <script src="http://cdnjs.cloudflare.com/ajax/libs/dygraph/1.1.1/dygraph-combined.js"></script>
+  <link rel="stylesheet" type="text/css" href="./css/default.css" />
+  <script type="text/javascript" src="./js/util.js"></script>
+  <script type="text/javascript" src="./js/mtrand.js"></script>
+  <script type="text/javascript" src="./js/mouse3d.js"></script>
+  <script type="text/javascript" src="./js/draw.js"></script>
+  <script type="text/javascript" src="./js/hmc.js"></script>
+  <script type="text/javascript" src="./js/wl.js"></script>
+  <script type="text/javascript" src="./js/vct.js"></script>
+  <script type="text/javascript" src="./js/mat.js"></script>
+  <script type="text/javascript" src="./js/mdutil.js"></script>
+  <script type="text/javascript" src="./js/simtemp.js"></script>
+  <script type="text/javascript" src="./js/ljeos.js"></script>
+  <script type="text/javascript" src="./js/ljcore.js"></script>
+  <script type="text/javascript" src="./js/ljdraw.js"></script>
+  <script type="text/javascript" src="./js/ljmain.js"></script>
+</head>
+<body onload="init()">
+
+<div class="wrapper">
+
+<h2 class="center">
+  Simulated tempering on the Lennard-Jones fluid
+</h2>
+
+
+
+<h3>Online demonstration</h3>
+
+<!-- container -->
+<div id="container">
+  <input id="containerscale" type="range" value="500"
+    min="400" max="600" step="4"
+    onchange="resizecontainer('containerscale')">.
+
+  <div id="simulbox">
+    <canvas id="animationbox" width="500" height="500"
+      style="border: 1px solid #cccccc;"
+      onclick="pausesimul2()"></canvas>
+  </div>
+
+  <div id="controlbox" class="form-inline">
+    <span onclick="startsimul()" id="start"
+      class="glyphicon glyphicon-play" style="color: #40dd40;"></span>
+    <span onclick="pausesimul()" id="pause"
+      class="glyphicon glyphicon-pause"></span>
+    <span onclick="stopsimul()" id="stop"
+      class="glyphicon glyphicon-stop" style="color: #dd4020;"></span>
+    <!-- Zoom: -->
+    <input id="animationboxscale" type="range" value="1.0"
+      min="0.05" max="3.0" step="0.01"
+      class="form-control"
+      style="width: 400px; height: 10px; border: 1px solid #cccccc;"
+      onchange="changescale()">
+    <br>
+  </div>
+
+  <div id="histplot" class="plot"></div>
+
+  <div id="vplot" class="plot"></div>
+
+  <nav id="tabsrow" class="navbar navbar-default">
+    <div class="navbar-header">
+      Parameters &nbsp;
+    </div>
+    <ul class="nav navbar-nav" id="tabheadings">
+    <li class="tab" onclick="showtab('system-params')">System</li>
+    <li class="tab" onclick="showtab('md-params')">MD</li>
+    <li class="tab" onclick="showtab('mc-params')">MC</li>
+    <li class="tab" onclick="showtab('wl-params')">Wang-Landau</li>
+    <li class="tab" onclick="showtab('misc-params')">Misc.</li>
+    </ul>
+  </nav>
+
+  <div class="params-panel" id="system-params">
+  <div class="panel-title">System</div>
+  <form class="form-inline">
+
+  <label for="n">
+    Number of particles:
+  </label>
+  <input type="text" size="6" value="55" id="n"
+    class="form-control" onchange="changeparams()">.
+  &nbsp;
+
+  <label for="density">
+    Density:
+  </label>
+  <input type="text" size="6" value="0.5" id="density"
+    class="form-control" onchange="changeparams()">.
+  &nbsp;
+
+  <label for="rcutoff">
+    Cutoff:
+  </label>
+  <input type="text" size="6" value="2.5" id="rcutoff"
+    class="form-control" onchange="changeparams()">.
+  &nbsp;
+  <br>
+
+  <label for="tpmin">
+    Temperature,
+    <span class="math"><i>T</i><sub>min</sub></span>:
+  </label>
+  <input type="text" size="4" value="2.5" id="tpmin"
+    class="form-control" onchange="changeparams()">,
+  <label for="tpmax">
+    <span class="math"><i>T</i><sub>max</sub></span>:
+  </label>
+  <input type="text" size="4" value="3.7" id="tpmax"
+    class="form-control" onchange="changeparams()">,
+  <label for="tpcnt">
+    number:
+  </label>
+  <input type="text" size="4" value="12" id="tpcnt"
+    class="form-control" onchange="changeparams()">.
+  &nbsp;
+
+
+  <label for="simulmethod">
+    Simulation method
+  </label>
+  <select id="simulmethod" class="form-control" onchange="changeparams()">
+    <option value="MC" selected>Monte Carlo (MC)</option>
+    <option value="MD">molecular dynamics (MD)</option>
+  </select>
+  <br>
+
+  </form>
+  </div> <!-- panel -->
+
+
+
+  <div class="params-panel" id="md-params">
+  <div class="panel-title">Molecular dynamics (MD)</div>
+  <form class="form-inline">
+
+  <label for="nstepspersecmd">
+    Number of MD steps per second:
+  </label>
+  <input type="text" size="10" value="2000"
+    id="nstepspersecmd"
+    class="form-control" onchange="changeparams()">.
+  <br>
+
+  <label for="mddt">
+    MD time step:
+  </label>
+  <input type="text" size="6" value="0.002" id="mddt"
+    class="form-control" onchange="changeparams()">.
+  &nbsp;
+
+  <label for="thermostatdt">
+    Thermostat time step:
+  </label>
+  <input type="text" size="6" value="0.1" id="thermostatdt"
+    class="form-control" onchange="changeparams()">.
+  <br>
+  </form>
+  </div>
+
+  <div class="params-panel" id="mc-params">
+  <div class="panel-title">Monte Carlo (MC)</div>
+  <form class="form-inline">
+
+  <label for="nstepspermc">
+    Number of MC steps per second:
+  </label>
+  <input type="text" size="10" value="5000"
+    id="nstepspersecmc"
+    class="form-control" onchange="changeparams()">.
+  <br>
+
+  <label for="mcamp">
+    MC move size:
+  </label>
+  <input type="text" size="6" value="0.5" id="mcamp"
+    class="form-control" onchange="changeparams()">.
+  <br>
+
+  </form>
+  </div>
+
+
+
+  <div class="params-panel" id="wl-params">
+  <div class="panel-title">Wang-Landau updating</div>
+  <form class="form-inline">
+
+  <label for="wl_lnfinit">
+    Initial <span class="math">ln <i>f</i> </span>:
+  </label>
+  <input type="text" size="6" value="1.0"
+    id="wl_lnfinit"
+    class="form-control" onchange="changeparams()">.
+  &nbsp;
+  <br>
+
+  <label for="wl_frac">
+    Multiplicative factor to
+    <span class="math">ln <i>f</i> </span>:
+  </label>
+  <input type="range" value="0.5"
+    min="0.001" max="1.0" step="0.001"
+    style="width: 140px; border: 1px solid #cccccc;"
+    class="form-control" id="wl_frac">.
+  <br>
+
+  <label for="wl_flatness">
+    Histogram flatness to switch stages:
+  </label>
+  <input type="range" value="0.3"
+    min="0.001" max="1.0" step="0.001"
+    style="width: 140px; border: 1px solid #cccccc;"
+    class="form-control" id="wl_flatness">.
+  <br>
+
+
+  </form>
+  </div>
+
+
+  <div class="params-panel" id="misc-params">
+  <div class="panel-title"> Misc. </div>
+  <form class="form-inline">
+  <input type="checkbox" id="orthographic"
+   onchange="paint()">
+  Orthographic.
+  &nbsp;
+  <br>
+
+  </form>
+  </div>
+
+  <div id="sinfo"></div>
+</div> <!-- container -->
+
+
+
+
+
+<h3>Download</h3>
+
+<div class="panel">
+  <p>The source code can be found at
+  <ul>
+    <li>
+      <a href="http://github.com/cheng2zhang/fclus">GitHub</a>
+      (source code).
+    </li>
+    <li>
+      <a href="https://www.dropbox.com/sh/1918tkacrp5stuo/AADMxMNMTKs_Zp1zDHRMObGra">Dropbox</a>
+      (source code plus some extra files).
+    </li>
+    <li>
+      <span class="code">/Bossman/cz1/fclus</span>
+      (Pettitt group internal link).
+    </li>
+  </ul>
+</div>
+
+
+</div> <!-- wrapper of the entire page -->
+</body>
+</html>
