@@ -20,9 +20,11 @@ var nstepspfmd = 10;  // number of steps per frame for MD
 var nstepspsmc = 10000; // number of steps per second for MC
 var nstepspfmc = 1000;  // number of steps per frame for MC
 var simulmethod = "MC";
+var weightmethod = "WL";
+var weightmethod_id = 0; // WL
 var mcamp = 0.2;
 
-var wl_lnf0 = 0.01;
+var wl_lnf0 = 1.0;
 var wl_flatness = 0.3;
 var wl_frac = 0.5;
 
@@ -47,8 +49,6 @@ var mcacc = 0.0;
 var histplot = null;
 var vplot = null;
 
-var color = "#407f10"; // color of ball
-
 
 
 function getparams()
@@ -61,6 +61,14 @@ function getparams()
   rcdef = get_float("rcutoff", 1000.0);
 
   simulmethod = grab("simulmethod").value;
+  weightmethod = grab("weightmethod").value;
+  if ( weightmethod === "WL" ) {
+    weightmethod_id = 0;
+  } else if ( weightmethod === "AVE" ) {
+    weightmethod_id = 1;
+  } else {
+    weightmethod_id = 2;
+  }
   mddt = get_float("mddt", 0.002);
   thdt = get_float("thermostatdt", 0.01);
   nstepspsmd = get_int("nstepspersecmd", 100);
@@ -72,7 +80,7 @@ function getparams()
   nstepspfmc = nstepspsmc * timer_interval / 1000;
   nstepsmc = 0;
 
-  wl_lnf0 = get_float("wl_lnfinit", 0.01);
+  wl_lnf0 = get_float("wl_lnfinit", 1.0);
   wl_flatness = get_float("wl_flatness", 0.3);
   wl_frac = get_float("wl_frac", 0.5);
 
@@ -81,10 +89,38 @@ function getparams()
 
 
 
-function changescale()
+function init_simtemp()
 {
-  mousescale = get_float("animationboxscale");
-  paint();
+  var i, bmin = 1.0/tpmax, bmax = 1.0/tpmin;
+  var eos = new Array(tpcnt);
+
+  // initialize the temperature array
+  beta = new Array(tpcnt);
+  for ( i = 0; i < tpcnt; i++ ) {
+    beta[i] = bmin + (bmax - bmin) * i / (tpcnt - 1);
+    eos[i] = lj_eos3dPVEhBH(rho, 1/beta[i]);
+  }
+
+  var vpot = null;
+  if ( weightmethod === "WL" ) {
+    wl = new WL(0, tpcnt, 1, false, wl_lnf0, wl_flatness, wl_frac, 1.0, 0);
+    vpot = wl.v;
+  } else {
+    wl = null;
+  }
+
+  // create a simulated tempering object
+  simtemp = new SimTemp(beta, vpot);
+
+  // attach the standard data
+  for ( i = 0; i < tpcnt; i++ ) {
+    simtemp.lnzref[i] = -eos[i][2] * beta[i] * n;
+    simtemp.uref[i] = eos[i][0] * n;
+  }
+  for ( i = tpcnt - 1; i >= 0; i-- ) {
+    simtemp.lnzref[i] -= simtemp.lnzref[0];
+  }
+  itp = 0;
 }
 
 
@@ -93,10 +129,12 @@ function changescale()
 function getsinfo()
 {
   var s = "";
-  var flatness = wl.getflatness();
-  s += 'WL stage ' + wl.stage + '.<br>';
-  s += '<span class="math">ln <i>f</i> </span>: ' + wl.lnf.toExponential(3) + '.<br>';
-  s += 'flatness: ' + roundto(flatness * 100, 2) + '%.<br>';
+  if ( weightmethod === "WL" ) {
+    var flatness = wl.getflatness();
+    s += 'WL stage ' + wl.stage + '.<br>';
+    s += '<span class="math">ln <i>f</i> </span>: ' + wl.lnf.toExponential(3) + '.<br>';
+    s += 'flatness: ' + roundto(flatness * 100, 2) + '%.<br>';
+  }
   return s;
 }
 
@@ -106,15 +144,30 @@ function domd()
 {
   var istep, sinfo = "";
 
-  var tp = 2.0;
   for ( istep = 1; istep <= nstepspfmd; istep++ ) {
     lj.vv(mddt);
-    lj.vrescale(tp, thdt);
+    lj.vrescale(1/beta[itp], thdt);
+    // temperature transition
+    var jtp = simtemp.jump(itp, lj.epot, 1, weightmethod_id);
+    if ( jtp != itp ) {
+      var s = Math.sqrt(beta[itp]/beta[jtp]), i;
+      for ( i = 0; i < n; i++ ) {
+        lj.v[i][0] *= s;
+        lj.v[i][1] *= s;
+        lj.v[i][2] *= s;
+      }
+      itp = jtp;
+    }
 
-    //wl.add( lj.csize );
-    wl.updatelnf();
+    simtemp.add(itp, lj.epot);
+    if ( weightmethod === "WL" ) {
+      wl.add( itp );
+      wl.updatelnf();
+    }
   }
-  wl.trimv();
+  if ( weightmethod === "WL" ) {
+    wl.trimv();
+  }
   nstepsmd += nstepspfmd;
   sinfo += "step " + nstepsmd + ".<br>";
   //sinfo += "hmcacc: " + roundto(100.0 * hmcacc / hmctot, 2) + "%.<br>";
@@ -133,16 +186,20 @@ function domc()
     mctot += 1.0;
     mcacc += lj.metro(mcamp, beta[itp]);
     // temperature transition
-    itp = simtemp.jump(itp, lj.epot, 1);
+    itp = simtemp.jump(itp, lj.epot, 1, weightmethod_id);
     simtemp.add(itp, lj.epot);
-    wl.add( itp );
-    if ( wl.updatelnf() ) {
-      console.log("acc", mcacc/mctot, ", amp", mcamp);
-      mctot = 1e-30;
-      mcacc = 0;
+    if ( weightmethod === "WL" ) {
+      wl.add( itp );
+      if ( wl.updatelnf() ) {
+        console.log("acc", mcacc/mctot, ", amp", mcamp);
+        mctot = 1e-30;
+        mcacc = 0;
+      }
     }
   }
-  wl.trimv();
+  if ( weightmethod === "WL" ) {
+    wl.trimv();
+  }
   nstepsmc += nstepspfmc;
   sinfo += "step: " + nstepsmc + ".<br>";
   sinfo += "acc: " + roundto(100.0 * mcacc / mctot, 2) + "%.<br>";
@@ -153,15 +210,14 @@ function domc()
 
 
 // normalize the histogram such that the maximum is 1.0
-function normalize_hist(arr, n)
+function normalize_hist()
 {
-  var hs = newarr(n);
-  var i, m = 0;
+  var n = simtemp.n, hs = newarr(n), i, hm = 0;
   for ( i = 0; i < n; i++ ) {
-    m = Math.max(m, 1.0 * arr[i]);
+    hm = Math.max(hm, 1.0 * simtemp.hist[i]);
   }
   for ( i = 0; i < n; i++ ) {
-    hs[i] = 1.0 * arr[i] / m;
+    hs[i] = 1.0 * simtemp.hist[i] / hm;
   }
   return hs;
 }
@@ -169,15 +225,14 @@ function normalize_hist(arr, n)
 
 
 /* update the histogram plot */
-function updatehistplot(wl)
+function updatehistplot()
 {
   var i;
-  var dat = "Temperature,Histogram (all time),Histogram (this stage)\n";
+  var dat = "Temperature,Histogram\n";
 
-  var chhs = normalize_hist(wl.hh, wl.n);
-  var chs  = normalize_hist(wl.h, wl.n);
-  for ( i = 0; i < wl.n; i++ )
-    dat += "" + (beta[i]) + "," + chhs[i] + "," + chs[i] + "\n";
+  var chs = normalize_hist();
+  for ( i = 0; i < simtemp.n; i++ )
+    dat += "" + beta[i] + "," + chs[i] + "\n";
   if ( histplot === null ) {
     var h = grab("animationbox").height / 2 - 5;
     var w = h * 3 / 2;
@@ -201,14 +256,14 @@ function updatehistplot(wl)
 
 
 
-/* update the cluster potential plot */
-function updatevplot(wl)
+/* update the potential energy plot */
+function updatevplot()
 {
   var i;
   var dat = "Temperature,potential energy,reference\n";
-  for ( i = 0; i < wl.n; i++ ) {
+  for ( i = 0; i < simtemp.n; i++ ) {
     var uave = simtemp.usum[i] / (simtemp.hist[i] + 1e-30) / n;
-    dat += "" + (beta[i]) + "," + uave + ","
+    dat += "" + beta[i] + "," + uave + ","
         + (simtemp.uref[i]/n) + "\n";
   }
   if ( vplot === null ) {
@@ -244,6 +299,14 @@ function paint()
 
 
 
+function changescale()
+{
+  mousescale = get_float("animationboxscale");
+  paint();
+}
+
+
+
 function pulse()
 {
   var sinfo;
@@ -262,8 +325,8 @@ function pulse()
   grab("sinfo").innerHTML = sinfo;
 
   paint();
-  updatehistplot(wl);
-  updatevplot(wl);
+  updatehistplot();
+  updatevplot();
 }
 
 
@@ -300,39 +363,11 @@ function pausesimul()
 }
 
 
-function init_simtemp()
-{
-  var i, bmin = 1.0/tpmax, bmax = 1.0/tpmin;
-  var eos = new Array(tpcnt);
-
-  // initialize the temperature array
-  beta = new Array(tpcnt);
-  for ( i = 0; i < tpcnt; i++ ) {
-    beta[i] = bmin + (bmax - bmin) * i / (tpcnt - 1);
-    eos[i] = lj_eos3dPVEhBH(rho, 1/beta[i]);
-  }
-
-  // create a simulated tempering object
-  simtemp = new SimTemp(beta, wl.v);
-
-  // attach the standard data
-  for ( i = 0; i < tpcnt; i++ ) {
-    simtemp.lnzref[i] = -eos[i][2] * beta[i] * n;
-    simtemp.uref[i] = eos[i][0] * n;
-  }
-  for ( i = tpcnt - 1; i >= 0; i-- ) {
-    simtemp.lnzref[i] -= simtemp.lnzref[0];
-  }
-  itp = 0;
-}
-
-
 
 function startsimul()
 {
   stopsimul();
   getparams();
-  wl = new WL(0, tpcnt - 1, 1, false, wl_lnf0, wl_flatness, wl_frac, 1.0, 0);
   lj = new LJ(n, D, rho, rcdef);
   lj.force();
   init_simtemp();

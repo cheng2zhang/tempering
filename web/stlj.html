@@ -12,7 +12,6 @@
   <script type="text/javascript" src="./js/mtrand.js"></script>
   <script type="text/javascript" src="./js/mouse3d.js"></script>
   <script type="text/javascript" src="./js/draw.js"></script>
-  <script type="text/javascript" src="./js/hmc.js"></script>
   <script type="text/javascript" src="./js/wl.js"></script>
   <script type="text/javascript" src="./js/vct.js"></script>
   <script type="text/javascript" src="./js/mat.js"></script>
@@ -32,8 +31,6 @@
 </h2>
 
 
-
-<h3>Online demonstration</h3>
 
 <!-- container -->
 <div id="container">
@@ -73,9 +70,7 @@
     </div>
     <ul class="nav navbar-nav" id="tabheadings">
     <li class="tab" onclick="showtab('system-params')">System</li>
-    <li class="tab" onclick="showtab('md-params')">MD</li>
-    <li class="tab" onclick="showtab('mc-params')">MC</li>
-    <li class="tab" onclick="showtab('wl-params')">Wang-Landau</li>
+    <li class="tab" onclick="showtab('md-params')">MD/MC</li>
     <li class="tab" onclick="showtab('misc-params')">Misc.</li>
     </ul>
   </nav>
@@ -132,6 +127,17 @@
     <option value="MC" selected>Monte Carlo (MC)</option>
     <option value="MD">molecular dynamics (MD)</option>
   </select>
+  &nbsp;
+  <br>
+
+  <label for="weightmethod">
+    Weight-determination method
+  </label>
+  <select id="weightmethod" class="form-control" onchange="changeparams()">
+    <option value="WL">Wang-Landau</option>
+    <option value="AVE">Average energy</option>
+    <option value="AVEM">Average energy (modified)</option>
+  </select>
   <br>
 
   </form>
@@ -140,8 +146,8 @@
 
 
   <div class="params-panel" id="md-params">
-  <div class="panel-title">Molecular dynamics (MD)</div>
   <form class="form-inline">
+  <div class="panel-title">Molecular dynamics (MD)</div>
 
   <label for="nstepspersecmd">
     Number of MD steps per second:
@@ -164,12 +170,8 @@
   <input type="text" size="6" value="0.1" id="thermostatdt"
     class="form-control" onchange="changeparams()">.
   <br>
-  </form>
-  </div>
 
-  <div class="params-panel" id="mc-params">
   <div class="panel-title">Monte Carlo (MC)</div>
-  <form class="form-inline">
 
   <label for="nstepspermc">
     Number of MC steps per second:
@@ -185,15 +187,13 @@
   <input type="text" size="6" value="0.5" id="mcamp"
     class="form-control" onchange="changeparams()">.
   <br>
-
   </form>
   </div>
 
 
-
-  <div class="params-panel" id="wl-params">
-  <div class="panel-title">Wang-Landau updating</div>
+  <div class="params-panel" id="misc-params">
   <form class="form-inline">
+  <div class="panel-title">Wang-Landau updating</div>
 
   <label for="wl_lnfinit">
     Initial <span class="math">ln <i>f</i> </span>:
@@ -223,14 +223,7 @@
     class="form-control" id="wl_flatness">.
   <br>
 
-
-  </form>
-  </div>
-
-
-  <div class="params-panel" id="misc-params">
   <div class="panel-title"> Misc. </div>
-  <form class="form-inline">
   <input type="checkbox" id="orthographic"
    onchange="paint()">
   Orthographic.
@@ -239,6 +232,7 @@
 
   </form>
   </div>
+
 
   <div id="sinfo"></div>
 </div> <!-- container -->
@@ -253,15 +247,11 @@
   <p>The source code can be found at
   <ul>
     <li>
-      <a href="http://github.com/cheng2zhang/fclus">GitHub</a>
+      <a href="http://github.com/cheng2zhang/tempering">GitHub</a>
       (source code).
     </li>
     <li>
-      <a href="https://www.dropbox.com/sh/1918tkacrp5stuo/AADMxMNMTKs_Zp1zDHRMObGra">Dropbox</a>
-      (source code plus some extra files).
-    </li>
-    <li>
-      <span class="code">/Bossman/cz1/fclus</span>
+      <span class="code">/Bossman/cz1/tempering</span>
       (Pettitt group internal link).
     </li>
   </ul>

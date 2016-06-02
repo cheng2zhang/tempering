@@ -26,9 +26,9 @@ function SimTemp(beta, lnz)
 
 
 
-SimTemp.prototype.jump = function(itp, ep, type)
+SimTemp.prototype.jump = function(itp, ep, type, ave)
 {
-  var jtp, n = this.n;
+  var jtp, n = this.n, dlnz;
 
   if ( type == 1 ) {
     // choose any temperature other than `itp`
@@ -44,9 +44,23 @@ SimTemp.prototype.jump = function(itp, ep, type)
     }
   }
 
+  var dbeta = this.beta[itp] - this.beta[jtp];
+  if ( !ave ) {
+    dlnz = this.lnz[itp] - this.lnz[jtp];
+  } else {
+    if ( ave === 1 ) {
+      var eav1 = this.usum[itp] / this.hist[itp];
+      var eav2 = (this.hist[jtp] > 0) ? this.usum[jtp] / this.hist[jtp] : eav1;
+      dlnz = -dbeta * 0.5 * (eav1 + eav2);
+    } else {
+      var eav = (this.usum[itp] + this.usum[jtp])
+              / (this.hist[itp] + this.hist[jtp]);
+      dlnz = -dbeta * eav;
+    }
+  }
+
   // compute the acceptance probability
-  var x = (this.beta[itp] - this.beta[jtp]) * ep
-        + this.lnz[itp] - this.lnz[jtp];
+  var x = dbeta * ep + dlnz;
   if ( x > 0 ) {
     return jtp;
   } else {
@@ -54,6 +68,7 @@ SimTemp.prototype.jump = function(itp, ep, type)
     return r < Math.exp(x) ? jtp : itp;
   }
 }
+
 
 
 SimTemp.prototype.add = function(itp, ep)
