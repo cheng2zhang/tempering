@@ -1195,9 +1195,8 @@ void Sequencer::adaptTempUpdate(int step)
    // Get Updated Temperature
    if ( !(step % simParams->adaptTempFreq ) && (step > simParams->firstTimestep ))
    {
-    adaptTempT = broadcast->adaptTemperature.get(step*2);
-    BigReal s = broadcast->adaptTemperature.get(step*2 + 1);
-    rescaleVelocitiesByFactor(s);
+    rescaleVelocitiesByFactor( broadcast->adaptTempScale.get(step) );
+    adaptTempT = broadcast->adaptTemperature.get(step);
    }
 }
 

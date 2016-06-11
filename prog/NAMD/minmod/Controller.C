@@ -1979,10 +1979,10 @@ void Controller::adaptTempUpdate(int step, int minimize)
           
       }
       
-      BigReal s = sqrt(dT/adaptTempT);
+      // dT is the new adaptTempT
+      broadcast->adaptTempScale.publish(step,sqrt(dT/adaptTempT));
       adaptTempT = dT; 
-      broadcast->adaptTemperature.publish(step*2, adaptTempT);
-      broadcast->adaptTemperature.publish(step*2 + 1, s);
+      broadcast->adaptTemperature.publish(step,adaptTempT);
     }
     adaptTempWriteRestart(step);
     if ( ! (step % adaptTempOutFreq) ) {
