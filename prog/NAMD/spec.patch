@@ -1,0 +1,371 @@
+diff -u -wdB spec_old/Broadcasts.h spec_new/Broadcasts.h
+--- spec_old/Broadcasts.h	2015-03-03 11:54:14.000000000 -0600
++++ spec_new/Broadcasts.h	2016-06-16 12:13:25.618145505 -0500
+@@ -47,7 +47,9 @@
+   scriptBarrierTag,
+   traceBarrierTag,
+   accelMDRescaleFactorTag,
++  adaptTempScaleTag, //Tag for adaptive tempering velocity scaling factor
+   adaptTemperatureTag, //Tag for adaptive tempering temperature updates to Sequencer
++  specIDTag, // Tag for indices of special atoms
+ #ifdef MEASURE_NAMD_WITH_PAPI
+   papiMeasureTag,
+ #endif
+@@ -68,7 +70,9 @@
+   SimpleBroadcastObject<int> scriptBarrier;
+   SimpleBroadcastObject<int> traceBarrier;
+   SimpleBroadcastObject<Vector> accelMDRescaleFactor;
++  SimpleBroadcastObject<BigReal> adaptTempScale; 
+   SimpleBroadcastObject<BigReal> adaptTemperature; 
++  SimpleBroadcastObject<int> specID;
+ #ifdef MEASURE_NAMD_WITH_PAPI
+   SimpleBroadcastObject<int> papiMeasureBarrier;
+ #endif
+@@ -83,7 +87,9 @@
+     cycleBarrier(cycleBarrierTag, ldObjPtr),
+ #endif
+     accelMDRescaleFactor(accelMDRescaleFactorTag, ldObjPtr),
++    adaptTempScale(adaptTempScaleTag, ldObjPtr), 
+     adaptTemperature(adaptTemperatureTag, ldObjPtr), 
++    specID(specIDTag, ldObjPtr),
+     scriptBarrier(scriptBarrierTag, ldObjPtr),
+ #ifdef MEASURE_NAMD_WITH_PAPI
+ 	papiMeasureBarrier(papiMeasureTag, ldObjPtr),
+diff -u -wdB spec_old/CollectionMaster.C spec_new/CollectionMaster.C
+--- spec_old/CollectionMaster.C	2012-01-28 16:04:27.000000000 -0600
++++ spec_new/CollectionMaster.C	2016-06-16 12:13:25.621145533 -0500
+@@ -43,6 +43,45 @@
+ {
+ }
+ 
++void CollectionMaster::receiveSpecPositions(CollectVectorMsg *msg)
++{
++  specPositions.submitData(msg, numSpec);
++  delete msg;
++  
++  CollectVectorInstance *c;
++  while ( ( c = specPositions.removeReady() ) ) { disposeSpecPositions(c); }
++}
++
++void CollectionMaster::enqueueSpecPositions(int seq, Lattice &lattice)
++{
++  specPositions.enqueue(seq,lattice);
++
++  CollectVectorInstance *c;
++  while ( ( c = specPositions.removeReady() ) ) { disposeSpecPositions(c); }
++}
++
++void CollectionMaster::disposeSpecPositions(CollectVectorInstance *c)
++{
++    int seq = c->seq;
++    int size = c->data.size();
++    if ( ! size ) size = c->fdata.size();
++    Vector *data = c->data.begin();
++    FloatVector *fdata = c->fdata.begin();
++    //for ( int k = 0; k < c->data.size(); k++ )
++    //  CkPrintf("CollectionMaster %d: %d, %g, %g, %g\n", seq, k, data[k].x, data[k].y, data[k].z);
++
++    // Compute the end-to-end distance from the positions
++    int numAtoms = c->data.size(), k;
++    Vector del(0, 0, 0), endtoend(0, 0, 0);
++    for ( k = 0; k < numAtoms - 1; k++ ) {
++      endtoend += c->lattice.delta(data[k+1], data[k]); 
++    }
++    BigReal dist = endtoend.length();
++    CkPrintf("step %d, end-to-end distance %g: (%g, %g, %g)\n",
++        seq, dist, endtoend.x, endtoend.y, endtoend.z);
++    c->free();
++}
++
+ void CollectionMaster::receivePositions(CollectVectorMsg *msg)
+ {
+ #ifndef MEM_OPT_VERSION
+diff -u -wdB spec_old/CollectionMaster.ci spec_new/CollectionMaster.ci
+--- spec_old/CollectionMaster.ci	2011-05-20 15:17:45.000000000 -0500
++++ spec_new/CollectionMaster.ci	2016-06-16 12:13:25.625145570 -0500
+@@ -35,6 +35,7 @@
+     entry void startNextRoundOutputForce(double totalT);
+     entry void wrapCoorFinished();
+     
++    entry void receiveSpecPositions(CollectVectorMsg *);
+   };
+ }
+ 
+diff -u -wdB spec_old/CollectionMaster.h spec_new/CollectionMaster.h
+--- spec_old/CollectionMaster.h	2015-11-04 11:20:25.000000000 -0600
++++ spec_new/CollectionMaster.h	2016-06-16 12:13:25.623145552 -0500
+@@ -297,6 +297,13 @@
+ 
+   };
+ #endif
++
++  int numSpec; // size of `specPositions', to be set in the Controller
++  CollectVectorSequence specPositions; // to hold positions of special atoms
++  void receiveSpecPositions(CollectVectorMsg *msg);
++  void enqueueSpecPositions(int seq, Lattice &lattice);
++  void disposeSpecPositions(CollectVectorInstance *c);
++
+ private:
+ 
+   CollectVectorSequence positions;
+diff -u -wdB spec_old/CollectionMgr.C spec_new/CollectionMgr.C
+--- spec_old/CollectionMgr.C	2015-09-04 17:20:02.000000000 -0500
++++ spec_new/CollectionMgr.C	2016-06-16 12:13:25.612145448 -0500
+@@ -32,6 +32,38 @@
+ {
+ }
+ 
++void CollectionMgr::submitSpecPositions(int seq, FullAtomList &a,
++				Lattice l, int prec)
++{  
++  int numAtoms = a.size();
++  AtomIDList aid(numAtoms);
++  PositionList d(numAtoms);
++  for ( int i=0; i<numAtoms; ++i ) {
++    aid[i] = a[i].id;
++    d[i] = l.reverse_transform(a[i].position,a[i].transform);
++    //CkPrintf("CollectionMgr::submitSpecPositions %d: %d, atom %d, %g %g %g\n", seq, i, aid[i], d[i].x, d[i].y, d[i].z);
++  }
++  CollectVectorInstance *c;
++  if ( ( c = specPositions.submitData(seq,aid,d,prec) ) )
++  {
++    int aid_size = c->aid.size();
++    int data_size = c->data.size();
++    int fdata_size = c->fdata.size();
++    CollectVectorMsg *msg
++      = new (aid_size, data_size, fdata_size,0) CollectVectorMsg;
++    msg->seq = c->seq;
++    msg->aid_size = aid_size;
++    msg->data_size = data_size;
++    msg->fdata_size = fdata_size;
++    memcpy(msg->aid,c->aid.begin(),aid_size*sizeof(AtomID));
++    memcpy(msg->data,c->data.begin(),data_size*sizeof(Vector));
++    memcpy(msg->fdata,c->fdata.begin(),fdata_size*sizeof(FloatVector));
++    CProxy_CollectionMaster cm(master);
++    cm.receiveSpecPositions(msg);
++    c->free();
++  }
++}
++
+ #ifdef MEM_OPT_VERSION
+ //1. record the dest output rank of each atom
+ //2. distribute the atoms to the corresponding output procs
+diff -u -wdB spec_old/CollectionMgr.h spec_new/CollectionMgr.h
+--- spec_old/CollectionMgr.h	2013-09-06 14:11:36.000000000 -0500
++++ spec_new/CollectionMgr.h	2016-06-16 12:13:25.613145457 -0500
+@@ -138,6 +138,9 @@
+     ResizeArray<CollectVectorInstance*> data;
+ 
+   };
++  CollectVectorSequence specPositions;
++  void submitSpecPositions(int seq, FullAtomList &a, Lattice l, int prec=2);
++
+ private:
+ 
+   CkChareID master;
+diff -u -wdB spec_old/Controller.C spec_new/Controller.C
+--- spec_old/Controller.C	2015-12-17 15:22:03.000000000 -0600
++++ spec_new/Controller.C	2016-06-16 12:13:25.624145561 -0500
+@@ -388,6 +388,44 @@
+   typedef void (*namd_sighandler_t)(int);
+ }
+ 
++// initialize special atoms
++void Controller::specInit(int scriptTask, int step)
++{
++  // set the number of special positions
++  Molecule *mol = Node::Object()->molecule;
++  ResizeArray<int> specIDs;
++
++  // here our sepcial atoms are the CA atoms
++  // scan all atoms and search for atom names of "CA"
++  #ifdef MEM_OPT_VERSION
++  AtomNameIdx *atomNames = mol->getAtomNames();
++  for ( int i = 0; i < mol->numAtoms; i++ ) {
++    Index idx = atomNames[i].atomnameIdx;
++    if ( strcasecmp(atomNamePool[idx], "CA") == 0 ) {
++      specIDs.add(i);
++    }
++  }
++  #else
++  AtomNameInfo *atomNames = mol->getAtomNames();
++  for ( int i = 0; i < mol->numAtoms; i++ ) {
++    if ( strcasecmp(atomNames[i].atomname, "CA") == 0 ) {
++      specIDs.add(i);
++    }
++  }
++  #endif
++  
++  // print out the special atoms
++  for ( int i = 0; i < specIDs.size(); i++ )
++    CkPrintf("CA %d: %d\n", i+1, specIDs[i]);
++
++  // publish the IDs of special atoms
++  collection->numSpec = specIDs.size();
++  broadcast->specID.publish(0, collection->numSpec);
++  for ( int k = 0; k < collection->numSpec; k++ ) {
++    broadcast->specID.publish(k + 1, specIDs[k]);
++  }
++}
++
+ void Controller::integrate(int scriptTask) {
+     char traceNote[24];
+   
+@@ -406,6 +444,8 @@
+       slowFreq = simParams->nonbondedFrequency;
+     if ( step >= numberOfSteps ) slowFreq = nbondFreq = 1;
+ 
++    specInit(scriptTask, step);
++
+   if ( scriptTask == SCRIPT_RUN ) {
+ 
+     reassignVelocities(step);  // only for full-step velecities
+@@ -444,6 +484,11 @@
+ 	langevinPiston1(step);
+         rescaleaccelMD(step);
+ 	enqueueCollections(step);  // after lattice scaling!
++
++        // request positions of the special atoms, the results
++        // may not be immediately available after the call
++        collection->enqueueSpecPositions(step, state->lattice);
++
+ 	receivePressure(step);
+         if ( zeroMomentum && dofull && ! (step % slowFreq) )
+ 						correctMomentum(step);
+@@ -1891,6 +1936,8 @@
+         dT += adaptTempT;
+         // Check again, if not then keep original adaptTempTor assign random.
+         if ( dT > 1./adaptTempBetaMin ) {
++          dT = adaptTempT;
++          /*
+           if (!simParams->adaptTempRandom) {             
+              //iout << iWARN << "ADAPTEMP: " << step << " T= " << dT 
+              //     << " K higher than adaptTempTmax."
+@@ -1905,8 +1952,11 @@
+              dT = adaptTempBetaMin +  random->uniform()*(adaptTempBetaMax-adaptTempBetaMin);             
+              dT = 1./dT;
+           }
++          */
+         } 
+         else if ( dT  < 1./adaptTempBetaMax ) {
++          dT = adaptTempT;
++          /*
+           if (!simParams->adaptTempRandom) {            
+             //iout << iWARN << "ADAPTEMP: " << step << " T= "<< dT 
+             //     << " K lower than adaptTempTmin."
+@@ -1920,6 +1970,7 @@
+             dT = adaptTempBetaMin +  random->uniform()*(adaptTempBetaMax-adaptTempBetaMin);
+             dT = 1./dT;
+           }
++          */
+         }
+         else if (adaptTempAutoDt) {
+           //update temperature step size counter
+@@ -1979,6 +2030,8 @@
+           
+       }
+       
++      // dT is the new adaptTempT
++      broadcast->adaptTempScale.publish(step,sqrt(dT/adaptTempT));
+       adaptTempT = dT; 
+       broadcast->adaptTemperature.publish(step,adaptTempT);
+     }
+diff -u -wdB spec_old/Controller.h spec_new/Controller.h
+--- spec_old/Controller.h	2015-10-12 10:48:41.000000000 -0500
++++ spec_new/Controller.h	2016-06-16 12:13:25.613145457 -0500
+@@ -256,6 +256,9 @@
+    BigReal adaptTempDtMax;
+    ofstream_namd adaptTempRestartFile;
+   
++    // special atoms
++    void specInit(int scriptTask, int step);
++
+ private:
+     CthThread thread;
+     static void threadRun(Controller*);
+diff -u -wdB spec_old/Sequencer.C spec_new/Sequencer.C
+--- spec_old/Sequencer.C	2016-06-01 17:24:35.531579311 -0500
++++ spec_new/Sequencer.C	2016-06-16 12:13:25.617145495 -0500
+@@ -256,6 +256,14 @@
+ 
+     const int reassignFreq = simParams->reassignFreq;
+ 
++    int numSpec = 0;
++    numSpec = broadcast->specID.get(0);
++    //CkPrintf("Sequencer %d specPositions\n", numSpecPositions);
++    ResizeArray<int> specIDs(numSpec);
++    for ( int k = 0; k < numSpec; k++ ) {
++      specIDs[k] = broadcast->specID.get(k+1);
++    }
++
+   if ( scriptTask == SCRIPT_RUN ) {
+ 
+ //    printf("Doing initial rattle\n");
+@@ -437,6 +445,10 @@
+ 
+ 	submitReductions(step);
+ 	submitCollections(step);
++
++        // submit special atoms
++        submitSpecPositions(step, specIDs);
++
+        //Update adaptive tempering temperature
+         adaptTempUpdate(step);
+ 
+@@ -1194,8 +1206,11 @@
+    }
+    // Get Updated Temperature
+    if ( !(step % simParams->adaptTempFreq ) && (step > simParams->firstTimestep ))
++   {
++    rescaleVelocitiesByFactor( broadcast->adaptTempScale.get(step) );
+     adaptTempT = broadcast->adaptTemperature.get(step);
+ }
++}
+ 
+ void Sequencer::reassignVelocities(BigReal timestep, int step)
+ {
+@@ -1952,6 +1967,32 @@
+   }
+ }
+ 
++void Sequencer::submitSpecPositions(int step, ResizeArray<int> &specIDs)
++{
++  int numSpec = specIDs.size(), cnt = 0;
++  FullAtom *a = patch->atom.begin();
++  FullAtom *b = new FullAtom [numSpec];
++  FullAtomList al;
++
++  for ( int i = 0; i < patch->numAtoms; i++ ) {
++    int gid = a[i].id;
++    // see if gid is a special atom
++    for ( int j = 0; j < numSpec; j++ ) {
++      if ( specIDs[j] == gid ) {
++        b[cnt] = a[i]; // copy the atom information
++        b[cnt].id = j; // modify the ID to the special ID
++        al.add(b[cnt]);
++        cnt++;
++      }
++    }
++  }
++
++  //for ( int k = 0; k < al.size(); k++ )
++  //  CkPrintf("Sequencer::submitSpecPositions %d: %d, atom %d, %g %g %g\n", step, k, al[k].id, al[k].position.x, al[k].position.y, al[k].position.z);
++  collection->submitSpecPositions(step, al, patch->lattice);
++  delete[] b;
++}
++
+ void Sequencer::runComputeObjects(int migration, int pairlists)
+ {
+   if ( migration ) pairlistsAreValid = 0;
+diff -u -wdB spec_old/Sequencer.h spec_new/Sequencer.h
+--- spec_old/Sequencer.h	2013-10-30 13:26:16.000000000 -0500
++++ spec_new/Sequencer.h	2016-06-16 12:13:25.621145533 -0500
+@@ -47,6 +47,8 @@
+     void submitMinimizeReductions(int, BigReal fmax2);
+     void submitCollections(int step, int zeroVel = 0);
+ 
++    void submitSpecPositions(int step, ResizeArray<int> &specIDs);
++
+     void submitMomentum(int step);
+     void correctMomentum(int step, BigReal drifttime);
+ 
