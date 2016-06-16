@@ -1891,6 +1891,8 @@ void Controller::adaptTempUpdate(int step, int minimize)
         dT += adaptTempT;
         // Check again, if not then keep original adaptTempTor assign random.
         if ( dT > 1./adaptTempBetaMin ) {
+          dT = adaptTempT;
+          /*
           if (!simParams->adaptTempRandom) {             
              //iout << iWARN << "ADAPTEMP: " << step << " T= " << dT 
              //     << " K higher than adaptTempTmax."
@@ -1905,8 +1907,11 @@ void Controller::adaptTempUpdate(int step, int minimize)
              dT = adaptTempBetaMin +  random->uniform()*(adaptTempBetaMax-adaptTempBetaMin);             
              dT = 1./dT;
           }
+          */
         } 
         else if ( dT  < 1./adaptTempBetaMax ) {
+          dT = adaptTempT;
+          /*
           if (!simParams->adaptTempRandom) {            
             //iout << iWARN << "ADAPTEMP: " << step << " T= "<< dT 
             //     << " K lower than adaptTempTmin."
@@ -1920,6 +1925,7 @@ void Controller::adaptTempUpdate(int step, int minimize)
             dT = adaptTempBetaMin +  random->uniform()*(adaptTempBetaMax-adaptTempBetaMin);
             dT = 1./dT;
           }
+          */
         }
         else if (adaptTempAutoDt) {
           //update temperature step size counter

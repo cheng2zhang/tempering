@@ -18,4 +18,3 @@ make minmod.patch
 To use the patch
 ```
 patch -b -p3 < minmod.patch
-```
