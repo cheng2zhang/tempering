@@ -5,6 +5,7 @@ Subdirectory  | Description
 --------------|---------------------
 original      | Original files from the NAMD source on 2016/05/02
 minmod        | minimal corrections to the original version
+spec          | also report end-to-end distance of C-alpha atoms in every step
 
 
 ## Patches

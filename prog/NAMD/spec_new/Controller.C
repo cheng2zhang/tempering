@@ -393,37 +393,7 @@ void Controller::specInit(int scriptTask, int step)
 {
   // set the number of special positions
   Molecule *mol = Node::Object()->molecule;
-  ResizeArray<int> specIDs;
-
-  // here our sepcial atoms are the CA atoms
-  // scan all atoms and search for atom names of "CA"
-  #ifdef MEM_OPT_VERSION
-  AtomNameIdx *atomNames = mol->getAtomNames();
-  for ( int i = 0; i < mol->numAtoms; i++ ) {
-    Index idx = atomNames[i].atomnameIdx;
-    if ( strcasecmp(atomNamePool[idx], "CA") == 0 ) {
-      specIDs.add(i);
-    }
-  }
-  #else
-  AtomNameInfo *atomNames = mol->getAtomNames();
-  for ( int i = 0; i < mol->numAtoms; i++ ) {
-    if ( strcasecmp(atomNames[i].atomname, "CA") == 0 ) {
-      specIDs.add(i);
-    }
-  }
-  #endif
-  
-  // print out the special atoms
-  for ( int i = 0; i < specIDs.size(); i++ )
-    CkPrintf("CA %d: %d\n", i+1, specIDs[i]);
-
-  // publish the IDs of special atoms
-  collection->numSpec = specIDs.size();
-  broadcast->specID.publish(0, collection->numSpec);
-  for ( int k = 0; k < collection->numSpec; k++ ) {
-    broadcast->specID.publish(k + 1, specIDs[k]);
-  }
+  collection->numSpec = mol->spcnt;
 }
 
 void Controller::integrate(int scriptTask) {

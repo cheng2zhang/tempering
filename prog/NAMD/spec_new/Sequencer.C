@@ -256,14 +256,6 @@ void Sequencer::integrate(int scriptTask) {
 
     const int reassignFreq = simParams->reassignFreq;
 
-    int numSpec = 0;
-    numSpec = broadcast->specID.get(0);
-    //CkPrintf("Sequencer %d specPositions\n", numSpecPositions);
-    ResizeArray<int> specIDs(numSpec);
-    for ( int k = 0; k < numSpec; k++ ) {
-      specIDs[k] = broadcast->specID.get(k+1);
-    }
-
   if ( scriptTask == SCRIPT_RUN ) {
 
 //    printf("Doing initial rattle\n");
@@ -447,7 +439,7 @@ void Sequencer::integrate(int scriptTask) {
 	submitCollections(step);
 
         // submit special atoms
-        submitSpecPositions(step, specIDs);
+        submitSpecPositions(step);
 
        //Update adaptive tempering temperature
         adaptTempUpdate(step);
@@ -1967,30 +1959,26 @@ void Sequencer::submitCollections(int step, int zeroVel)
   }
 }
 
-void Sequencer::submitSpecPositions(int step, ResizeArray<int> &specIDs)
+void Sequencer::submitSpecPositions(int step)
 {
-  int numSpec = specIDs.size(), cnt = 0;
-  FullAtom *a = patch->atom.begin();
-  FullAtom *b = new FullAtom [numSpec];
-  FullAtomList al;
+  Molecule *mol = Node::Object()->molecule;
+  FullAtom *a = patch->atom.begin(), ai;
+  FullAtomList specArr;
 
   for ( int i = 0; i < patch->numAtoms; i++ ) {
-    int gid = a[i].id;
-    // see if gid is a special atom
-    for ( int j = 0; j < numSpec; j++ ) {
-      if ( specIDs[j] == gid ) {
-        b[cnt] = a[i]; // copy the atom information
-        b[cnt].id = j; // modify the ID to the special ID
-        al.add(b[cnt]);
-        cnt++;
+    // see if local atom i is a special atom
+    for ( int j = 0; j < mol->spcnt; j++ ) {
+      if ( mol->specids[j] == a[i].id ) {
+        ai = a[i]; // copy the atom information
+        ai.id = j; // modify the ID to the special ID
+        specArr.add( ai );
       }
     }
   }
 
   //for ( int k = 0; k < al.size(); k++ )
   //  CkPrintf("Sequencer::submitSpecPositions %d: %d, atom %d, %g %g %g\n", step, k, al[k].id, al[k].position.x, al[k].position.y, al[k].position.z);
-  collection->submitSpecPositions(step, al, patch->lattice);
-  delete[] b;
+  collection->submitSpecPositions(step, specArr, patch->lattice);
 }
 
 void Sequencer::runComputeObjects(int migration, int pairlists)

@@ -1,36 +1,30 @@
 diff -u -wdB spec_old/Broadcasts.h spec_new/Broadcasts.h
 --- spec_old/Broadcasts.h	2015-03-03 11:54:14.000000000 -0600
-+++ spec_new/Broadcasts.h	2016-06-16 12:13:25.618145505 -0500
-@@ -47,7 +47,9 @@
++++ spec_new/Broadcasts.h	2016-06-20 14:18:18.304178137 -0500
+@@ -47,6 +47,7 @@
    scriptBarrierTag,
    traceBarrierTag,
    accelMDRescaleFactorTag,
 +  adaptTempScaleTag, //Tag for adaptive tempering velocity scaling factor
    adaptTemperatureTag, //Tag for adaptive tempering temperature updates to Sequencer
-+  specIDTag, // Tag for indices of special atoms
  #ifdef MEASURE_NAMD_WITH_PAPI
    papiMeasureTag,
- #endif
-@@ -68,7 +70,9 @@
+@@ -68,6 +69,7 @@
    SimpleBroadcastObject<int> scriptBarrier;
    SimpleBroadcastObject<int> traceBarrier;
    SimpleBroadcastObject<Vector> accelMDRescaleFactor;
 +  SimpleBroadcastObject<BigReal> adaptTempScale; 
    SimpleBroadcastObject<BigReal> adaptTemperature; 
-+  SimpleBroadcastObject<int> specID;
  #ifdef MEASURE_NAMD_WITH_PAPI
    SimpleBroadcastObject<int> papiMeasureBarrier;
- #endif
-@@ -83,7 +87,9 @@
+@@ -83,6 +85,7 @@
      cycleBarrier(cycleBarrierTag, ldObjPtr),
  #endif
      accelMDRescaleFactor(accelMDRescaleFactorTag, ldObjPtr),
 +    adaptTempScale(adaptTempScaleTag, ldObjPtr), 
      adaptTemperature(adaptTemperatureTag, ldObjPtr), 
-+    specID(specIDTag, ldObjPtr),
      scriptBarrier(scriptBarrierTag, ldObjPtr),
  #ifdef MEASURE_NAMD_WITH_PAPI
- 	papiMeasureBarrier(papiMeasureTag, ldObjPtr),
 diff -u -wdB spec_old/CollectionMaster.C spec_new/CollectionMaster.C
 --- spec_old/CollectionMaster.C	2012-01-28 16:04:27.000000000 -0600
 +++ spec_new/CollectionMaster.C	2016-06-16 12:13:25.621145533 -0500
@@ -165,8 +159,8 @@ diff -u -wdB spec_old/CollectionMgr.h spec_new/CollectionMgr.h
    CkChareID master;
 diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 --- spec_old/Controller.C	2015-12-17 15:22:03.000000000 -0600
-+++ spec_new/Controller.C	2016-06-16 12:13:25.624145561 -0500
-@@ -388,6 +388,44 @@
++++ spec_new/Controller.C	2016-06-20 14:03:04.487667586 -0500
+@@ -388,6 +388,14 @@
    typedef void (*namd_sighandler_t)(int);
  }
  
@@ -175,43 +169,13 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +{
 +  // set the number of special positions
 +  Molecule *mol = Node::Object()->molecule;
-+  ResizeArray<int> specIDs;
-+
-+  // here our sepcial atoms are the CA atoms
-+  // scan all atoms and search for atom names of "CA"
-+  #ifdef MEM_OPT_VERSION
-+  AtomNameIdx *atomNames = mol->getAtomNames();
-+  for ( int i = 0; i < mol->numAtoms; i++ ) {
-+    Index idx = atomNames[i].atomnameIdx;
-+    if ( strcasecmp(atomNamePool[idx], "CA") == 0 ) {
-+      specIDs.add(i);
-+    }
-+  }
-+  #else
-+  AtomNameInfo *atomNames = mol->getAtomNames();
-+  for ( int i = 0; i < mol->numAtoms; i++ ) {
-+    if ( strcasecmp(atomNames[i].atomname, "CA") == 0 ) {
-+      specIDs.add(i);
-+    }
-+  }
-+  #endif
-+  
-+  // print out the special atoms
-+  for ( int i = 0; i < specIDs.size(); i++ )
-+    CkPrintf("CA %d: %d\n", i+1, specIDs[i]);
-+
-+  // publish the IDs of special atoms
-+  collection->numSpec = specIDs.size();
-+  broadcast->specID.publish(0, collection->numSpec);
-+  for ( int k = 0; k < collection->numSpec; k++ ) {
-+    broadcast->specID.publish(k + 1, specIDs[k]);
-+  }
++  collection->numSpec = mol->spcnt;
 +}
 +
  void Controller::integrate(int scriptTask) {
      char traceNote[24];
    
-@@ -406,6 +444,8 @@
+@@ -406,6 +414,8 @@
        slowFreq = simParams->nonbondedFrequency;
      if ( step >= numberOfSteps ) slowFreq = nbondFreq = 1;
  
@@ -220,7 +184,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
    if ( scriptTask == SCRIPT_RUN ) {
  
      reassignVelocities(step);  // only for full-step velecities
-@@ -444,6 +484,11 @@
+@@ -444,6 +454,11 @@
  	langevinPiston1(step);
          rescaleaccelMD(step);
  	enqueueCollections(step);  // after lattice scaling!
@@ -232,7 +196,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  	receivePressure(step);
          if ( zeroMomentum && dofull && ! (step % slowFreq) )
  						correctMomentum(step);
-@@ -1891,6 +1936,8 @@
+@@ -1891,6 +1906,8 @@
          dT += adaptTempT;
          // Check again, if not then keep original adaptTempTor assign random.
          if ( dT > 1./adaptTempBetaMin ) {
@@ -241,7 +205,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
            if (!simParams->adaptTempRandom) {             
               //iout << iWARN << "ADAPTEMP: " << step << " T= " << dT 
               //     << " K higher than adaptTempTmax."
-@@ -1905,8 +1952,11 @@
+@@ -1905,8 +1922,11 @@
               dT = adaptTempBetaMin +  random->uniform()*(adaptTempBetaMax-adaptTempBetaMin);             
               dT = 1./dT;
            }
@@ -253,7 +217,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
            if (!simParams->adaptTempRandom) {            
              //iout << iWARN << "ADAPTEMP: " << step << " T= "<< dT 
              //     << " K lower than adaptTempTmin."
-@@ -1920,6 +1970,7 @@
+@@ -1920,6 +1940,7 @@
              dT = adaptTempBetaMin +  random->uniform()*(adaptTempBetaMax-adaptTempBetaMin);
              dT = 1./dT;
            }
@@ -261,7 +225,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
          }
          else if (adaptTempAutoDt) {
            //update temperature step size counter
-@@ -1979,6 +2030,8 @@
+@@ -1979,6 +2000,8 @@
            
        }
        
@@ -283,36 +247,88 @@ diff -u -wdB spec_old/Controller.h spec_new/Controller.h
  private:
      CthThread thread;
      static void threadRun(Controller*);
+diff -u -wdB spec_old/Molecule.C spec_new/Molecule.C
+--- spec_old/Molecule.C	2015-12-07 16:17:19.000000000 -0600
++++ spec_new/Molecule.C	2016-06-17 21:20:01.975836809 -0500
+@@ -5297,6 +5297,38 @@
+   }
+ #endif
+ 
++  {
++    ResizeArray<int> specIDs;
++
++    // here our sepcial atoms are the CA atoms
++    // scan all atoms and search for atom names of "CA"
++    #ifdef MEM_OPT_VERSION
++    for ( int i = 0; i < numAtoms; i++ ) {
++      Index idx = atomNames[i].atomnameIdx;
++      if ( strcasecmp(atomNamePool[idx], "CA") == 0 ) {
++        specIDs.add(i);
++      }
++    }
++    #else
++    for ( int i = 0; i < numAtoms; i++ ) {
++      if ( strcasecmp(atomNames[i].atomname, "CA") == 0 ) {
++        specIDs.add(i);
++      }
++    }
++    #endif
++    
++    spcnt = specIDs.size();
++    specids = new int[spcnt];
++    // print out the special atoms
++    for ( int i = 0; i < spcnt; i++ ) {
++      specids[i] = specIDs[i];
++      CkPrintf("Mol CA %d: %d\n", i+1, specIDs[i]);
++    }
++    
++    msg->put(spcnt);
++    msg->put(spcnt, specids);
++  }
++
+   // Broadcast the message to the other nodes
+   msg->end();
+   delete msg;
+@@ -5758,6 +5790,10 @@
+   }
+ #endif
+ 
++  msg->get(spcnt);
++  specids = new int[spcnt];
++  msg->get(spcnt, specids);
++
+       //  Now free the message 
+       delete msg;
+ 
+diff -u -wdB spec_old/Molecule.h spec_new/Molecule.h
+--- spec_old/Molecule.h	2015-12-03 11:02:22.000000000 -0600
++++ spec_new/Molecule.h	2016-06-20 13:58:29.525793216 -0500
+@@ -1266,6 +1266,10 @@
+ 
+ #endif
+ 
++public:
++// special-atom stuff
++int spcnt, *specids;
++
+ // Go stuff
+ public:
+ 
 diff -u -wdB spec_old/Sequencer.C spec_new/Sequencer.C
 --- spec_old/Sequencer.C	2016-06-01 17:24:35.531579311 -0500
-+++ spec_new/Sequencer.C	2016-06-16 12:13:25.617145495 -0500
-@@ -256,6 +256,14 @@
- 
-     const int reassignFreq = simParams->reassignFreq;
- 
-+    int numSpec = 0;
-+    numSpec = broadcast->specID.get(0);
-+    //CkPrintf("Sequencer %d specPositions\n", numSpecPositions);
-+    ResizeArray<int> specIDs(numSpec);
-+    for ( int k = 0; k < numSpec; k++ ) {
-+      specIDs[k] = broadcast->specID.get(k+1);
-+    }
-+
-   if ( scriptTask == SCRIPT_RUN ) {
- 
- //    printf("Doing initial rattle\n");
-@@ -437,6 +445,10 @@
++++ spec_new/Sequencer.C	2016-06-20 14:29:05.330986026 -0500
+@@ -437,6 +437,10 @@
  
  	submitReductions(step);
  	submitCollections(step);
 +
 +        // submit special atoms
-+        submitSpecPositions(step, specIDs);
++        submitSpecPositions(step);
 +
         //Update adaptive tempering temperature
          adaptTempUpdate(step);
  
-@@ -1194,8 +1206,11 @@
+@@ -1194,8 +1198,11 @@
     }
     // Get Updated Temperature
     if ( !(step % simParams->adaptTempFreq ) && (step > simParams->firstTimestep ))
@@ -324,34 +340,30 @@ diff -u -wdB spec_old/Sequencer.C spec_new/Sequencer.C
  
  void Sequencer::reassignVelocities(BigReal timestep, int step)
  {
-@@ -1952,6 +1967,32 @@
+@@ -1952,6 +1959,28 @@
    }
  }
  
-+void Sequencer::submitSpecPositions(int step, ResizeArray<int> &specIDs)
++void Sequencer::submitSpecPositions(int step)
 +{
-+  int numSpec = specIDs.size(), cnt = 0;
-+  FullAtom *a = patch->atom.begin();
-+  FullAtom *b = new FullAtom [numSpec];
-+  FullAtomList al;
++  Molecule *mol = Node::Object()->molecule;
++  FullAtom *a = patch->atom.begin(), ai;
++  FullAtomList specArr;
 +
 +  for ( int i = 0; i < patch->numAtoms; i++ ) {
-+    int gid = a[i].id;
-+    // see if gid is a special atom
-+    for ( int j = 0; j < numSpec; j++ ) {
-+      if ( specIDs[j] == gid ) {
-+        b[cnt] = a[i]; // copy the atom information
-+        b[cnt].id = j; // modify the ID to the special ID
-+        al.add(b[cnt]);
-+        cnt++;
++    // see if local atom i is a special atom
++    for ( int j = 0; j < mol->spcnt; j++ ) {
++      if ( mol->specids[j] == a[i].id ) {
++        ai = a[i]; // copy the atom information
++        ai.id = j; // modify the ID to the special ID
++        specArr.add( ai );
 +      }
 +    }
 +  }
 +
 +  //for ( int k = 0; k < al.size(); k++ )
 +  //  CkPrintf("Sequencer::submitSpecPositions %d: %d, atom %d, %g %g %g\n", step, k, al[k].id, al[k].position.x, al[k].position.y, al[k].position.z);
-+  collection->submitSpecPositions(step, al, patch->lattice);
-+  delete[] b;
++  collection->submitSpecPositions(step, specArr, patch->lattice);
 +}
 +
  void Sequencer::runComputeObjects(int migration, int pairlists)
@@ -359,12 +371,12 @@ diff -u -wdB spec_old/Sequencer.C spec_new/Sequencer.C
    if ( migration ) pairlistsAreValid = 0;
 diff -u -wdB spec_old/Sequencer.h spec_new/Sequencer.h
 --- spec_old/Sequencer.h	2013-10-30 13:26:16.000000000 -0500
-+++ spec_new/Sequencer.h	2016-06-16 12:13:25.621145533 -0500
++++ spec_new/Sequencer.h	2016-06-20 14:25:49.286354315 -0500
 @@ -47,6 +47,8 @@
      void submitMinimizeReductions(int, BigReal fmax2);
      void submitCollections(int step, int zeroVel = 0);
  
-+    void submitSpecPositions(int step, ResizeArray<int> &specIDs);
++    void submitSpecPositions(int step);
 +
      void submitMomentum(int step);
      void correctMomentum(int step, BigReal drifttime);
