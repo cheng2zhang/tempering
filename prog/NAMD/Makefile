@@ -2,8 +2,9 @@
 dir_orig   = ~/lwork/NAMD_2.11_Source/src
 dir_minmod = ~/lwork/NAMD_mods/NAMD_2.11_tempering/src
 dir_spec   = ~/lwork/NAMD_mods/NAMD_2.11_spec/src
+dir_thstat = ~/lwork/NAMD_mods/NAMD_2.11_thstat/src
 
-all: minmod.patch spec.patch
+all: minmod.patch spec.patch thstat.patch
 
 minmod.patch::
 	ln -f `diff -wdBqr --exclude="*~" --exclude=".*" $(dir_orig) $(dir_minmod) | cut -f2 -d" "` minmod_old/
@@ -16,4 +17,10 @@ spec.patch::
 	ln -f `diff -wdBqr --exclude="*~" --exclude=".*" $(dir_orig) $(dir_spec) | cut -f4 -d" "` spec_new/
 	git add spec_*/*
 	diff -u -wdB spec_old spec_new > $@; [ $$? -eq 1 ]
+
+thstat.patch::
+	ln -f `diff -wdBqr --exclude="*~" --exclude=".*" $(dir_orig) $(dir_thstat) | cut -f2 -d" "` thstat_old/
+	ln -f `diff -wdBqr --exclude="*~" --exclude=".*" $(dir_orig) $(dir_thstat) | cut -f4 -d" "` thstat_new/
+	git add thstat_*/*
+	diff -u -wdB thstat_old thstat_new > $@; [ $$? -eq 1 ]
 
