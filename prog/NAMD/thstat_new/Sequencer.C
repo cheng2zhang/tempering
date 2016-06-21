@@ -229,7 +229,9 @@ void Sequencer::integrate(int scriptTask) {
     else if (simParams->rescaleFreq > 0)
         adaptTempT = simParams->rescaleTemp;
     else if (simParams->langRescaleOn)
-        adaptTempT = simParams->langRescaleTemp;    
+        adaptTempT = simParams->langRescaleTemp;
+    else if (simParams->tNHCOn)
+        adaptTempT = simParams->tNHCTemp;
 
     int &doMolly = patch->flags.doMolly;
     doMolly = simParams->mollyOn && doFullElectrostatics;

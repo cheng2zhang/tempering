@@ -541,6 +541,8 @@ public:
         BigReal adaptTempCgamma;               //  Cgamma variable for adaptive bin averaging Cgamma = 0 is normal Averaging. 1 > Cgamma >= 0
         Bool adaptTempLangevin;                //  Couple to Langevin Thermostat
         Bool adaptTempRescale;                 //  Couple to Vel. Rescaling
+        Bool adaptTempLangRescale;             //  Couple to Langevin-style velocity rescaling thermostat
+        Bool adaptTempTNHC;                     //  Couple to Nose-Hoover chain thermostat
         char adaptTempInFile[128];             //  Restart information for adaptTemp to read
         char adaptTempRestartFile[128];        //  File to write restart information
         int  adaptTempRestartFreq;             //  Frequency of writing restart output

@@ -1422,6 +1422,8 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
    opts.range("adaptTempCgamma", NOT_NEGATIVE);
    opts.optionalB("adaptTempMD","adaptTempLangevin","Send adaptTemp temperature to langevin thermostat",&adaptTempLangevin,TRUE);
    opts.optionalB("adaptTempMD","adaptTempRescaling","Send adaptTemp temperature to velocity rescaling thermostat", &adaptTempRescale,TRUE);
+   opts.optionalB("adaptTempMD","adaptTempLangRescale","Send adaptTemp temperature to Langevin-style velocity rescaling thermostat", &adaptTempLangRescale,TRUE);
+   opts.optionalB("adaptTempMD","adaptTempTNHC","Send adaptTemp temperature to Nose-Hoover chain thermostat",&adaptTempTNHC,TRUE);
    opts.optional("adaptTempMD", "adaptTempInFile", "File containing restart information for adaptTemp", adaptTempInFile);
    opts.optional("adaptTempMD", "adaptTempRestartFile", "File for writing adaptTemp restart information", adaptTempRestartFile);
    opts.require("adaptTempRestartFile","adaptTempRestartFreq", "Frequency of writing restart file", &adaptTempRestartFreq,0);
@@ -3028,9 +3030,15 @@ void SimParameters::check_config(ParseOptions &opts, ConfigList *config, char *&
    }
    // END LA
 
-   if (tCoupleOn && opts.defined("rescaleFreq") )
+   int thstat_cnt = 0;
+   if ( tCoupleOn ) thstat_cnt++;
+   if ( opts.defined("rescaleFreq") ) thstat_cnt++;
+   if ( langRescaleOn ) thstat_cnt++;
+   if ( tNHCOn ) thstat_cnt++;
+
+   if ( thstat_cnt > 1 )
    {
-      NAMD_die("Temperature coupling and temperature rescaling are mutually exclusive");
+      NAMD_die("Temperature coupling, temperature rescaling, Langevin-style velocity rescaling thermostat, and Nose-Hoover chain thermostat are mutually exclusive");
    }
 
    if (globalOn && CkNumPes() > 1)
@@ -3072,8 +3080,8 @@ void SimParameters::check_config(ParseOptions &opts, ConfigList *config, char *&
       maximumMove = 0.75 * pairlistDist/stepsPerCycle;
    }
    if (adaptTempOn) {
-     if (!adaptTempRescale && !adaptTempLangevin) 
-        NAMD_die("Adaptive tempering needs to be coupled to either the Langevin thermostat or velocity rescaling.");
+     if (!adaptTempRescale && !adaptTempLangevin && !adaptTempLangRescale && !adaptTempTNHC) 
+        NAMD_die("Adaptive tempering needs to be coupled to one of following: Langevin thermostat, velocity rescaling, Langevin velocity rescaling thermostat, and Nose-Hoover chain thermostat.");
      if (opts.defined("adaptTempInFile") && (opts.defined("adaptTempTmin") ||
                                              opts.defined("adaptTempTmax") ||
                                              adaptTempBins != 0)) 
@@ -3227,6 +3235,8 @@ void SimParameters::check_config(ParseOptions &opts, ConfigList *config, char *&
      else if (reassignFreq > 0)	alchTemp = reassignTemp;
      else if (langevinOn) 	alchTemp = langevinTemp;
      else if (tCoupleOn) 	alchTemp = tCoupleTemp;
+     else if (langRescaleOn)    alchTemp = tNHCTemp;
+     else if (tNHCOn)           alchTemp = tNHCTemp;
      else NAMD_die("Alchemical FEP can be performed only in constant temperature simulations\n");
 
      if (reassignFreq > 0 && reassignIncr != 0)
@@ -3857,6 +3867,16 @@ void SimParameters::check_config(ParseOptions &opts, ConfigList *config, char *&
    if (!opts.defined("tcouple"))
    {
   tCoupleTemp = 0.0;
+   }
+
+   if (!opts.defined("langRescale"))
+   {
+     langRescaleTemp = 0.0;
+   }
+
+   if (!opts.defined("tNHC"))
+   {
+     tNHCTemp = 0.0;
    }
 
    if (HydrogenBonds)
@@ -4926,6 +4946,27 @@ if ( openatomOn )
       iout << iINFO << "TEMPERATURE COUPLING ACTIVE\n";
       iout << iINFO << "COUPLING TEMPERATURE   "
          << tCoupleTemp << "\n";
+      iout << endi;
+   }
+
+   if (langRescaleOn)
+   {
+      iout << iINFO << "LANGEVIN-STYLE VELOCITY RESCALING THERMOSTAT ACTIVE\n";
+      iout << iINFO << "  TARGET TEMPERATURE   " << langRescaleTemp << " K\n";
+      iout << iINFO << "  INVERSE VISCOCITY    " << langRescaleDt << " fs\n";
+      iout << iINFO << "  RESCALING FREQ       " << langRescaleFreq << "\n";
+      iout << endi;
+   }
+
+   if (tNHCOn)
+   {
+      iout << iINFO << "NOSE-HOOVER CHAIN THERMOSTAT ACTIVE\n";
+      iout << iINFO << "  TARGET TEMPERATURE   " << tNHCTemp << " K\n";
+      iout << iINFO << "  CHAIN LENGTH         " << tNHCLen << "\n";
+      iout << iINFO << "  OSCILLATION PERIOD   " << tNHCPeriod << " fs\n";
+      if ( tNHCFileReadMass ) {
+        iout << iINFO << "  READ MASS FROM       " << tNHCFile << "\n";
+      }
       iout << endi;
    }
 
