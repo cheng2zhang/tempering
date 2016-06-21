@@ -4952,20 +4952,20 @@ if ( openatomOn )
    if (langRescaleOn)
    {
       iout << iINFO << "LANGEVIN-STYLE VELOCITY RESCALING THERMOSTAT ACTIVE\n";
-      iout << iINFO << "  TARGET TEMPERATURE   " << langRescaleTemp << " K\n";
-      iout << iINFO << "  INVERSE VISCOCITY    " << langRescaleDt << " fs\n";
-      iout << iINFO << "  RESCALING FREQ       " << langRescaleFreq << "\n";
+      iout << iINFO << "    TARGET TEMPERATURE " << langRescaleTemp << " K\n";
+      iout << iINFO << "    INVERSE VISCOSITY  " << langRescaleDt << " fs\n";
+      iout << iINFO << "    RESCALING FREQ     " << langRescaleFreq << "\n";
       iout << endi;
    }
 
    if (tNHCOn)
    {
       iout << iINFO << "NOSE-HOOVER CHAIN THERMOSTAT ACTIVE\n";
-      iout << iINFO << "  TARGET TEMPERATURE   " << tNHCTemp << " K\n";
-      iout << iINFO << "  CHAIN LENGTH         " << tNHCLen << "\n";
-      iout << iINFO << "  OSCILLATION PERIOD   " << tNHCPeriod << " fs\n";
+      iout << iINFO << "    TARGET TEMPERATURE " << tNHCTemp << " K\n";
+      iout << iINFO << "    CHAIN LENGTH       " << tNHCLen << "\n";
+      iout << iINFO << "    OSCILLATION PERIOD " << tNHCPeriod << " fs\n";
       if ( tNHCFileReadMass ) {
-        iout << iINFO << "  READ MASS FROM       " << tNHCFile << "\n";
+        iout << iINFO << "    READ MASS FROM     " << tNHCFile << "\n";
       }
       iout << endi;
    }

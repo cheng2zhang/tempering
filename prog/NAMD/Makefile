@@ -24,3 +24,5 @@ thstat.patch::
 	git add thstat_*/*
 	diff -u -wdB thstat_old thstat_new > $@; [ $$? -eq 1 ]
 
+NAMD_thstat.zip::
+	zip -r $@ thstat_* Nose*.pdf vrescal*.pdf ../../test/alanin/*.conf

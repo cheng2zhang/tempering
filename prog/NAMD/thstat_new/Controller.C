@@ -1178,7 +1178,7 @@ void Controller::tNHCInit(void)
   // reference mass choices, see Appendix B of JCP 97 (4) 2635
   BigReal mass2 = per * per * kT;
   BigReal mass1 = mass2 * dof;
-  CkPrintf("%d %g %g\n", dof, mass1, mass2);
+  CkPrintf("NHC %d %g %g\n", dof, mass1, mass2);
 
   for ( i = 0; i < nnhc; i++ ) {
     tNHCzeta[i] = 0;
