@@ -1,30 +1,3 @@
-diff -u -wdB spec_old/Broadcasts.h spec_new/Broadcasts.h
---- spec_old/Broadcasts.h	2015-03-03 11:54:14.000000000 -0600
-+++ spec_new/Broadcasts.h	2016-06-20 14:18:18.304178137 -0500
-@@ -47,6 +47,7 @@
-   scriptBarrierTag,
-   traceBarrierTag,
-   accelMDRescaleFactorTag,
-+  adaptTempScaleTag, //Tag for adaptive tempering velocity scaling factor
-   adaptTemperatureTag, //Tag for adaptive tempering temperature updates to Sequencer
- #ifdef MEASURE_NAMD_WITH_PAPI
-   papiMeasureTag,
-@@ -68,6 +69,7 @@
-   SimpleBroadcastObject<int> scriptBarrier;
-   SimpleBroadcastObject<int> traceBarrier;
-   SimpleBroadcastObject<Vector> accelMDRescaleFactor;
-+  SimpleBroadcastObject<BigReal> adaptTempScale; 
-   SimpleBroadcastObject<BigReal> adaptTemperature; 
- #ifdef MEASURE_NAMD_WITH_PAPI
-   SimpleBroadcastObject<int> papiMeasureBarrier;
-@@ -83,6 +85,7 @@
-     cycleBarrier(cycleBarrierTag, ldObjPtr),
- #endif
-     accelMDRescaleFactor(accelMDRescaleFactorTag, ldObjPtr),
-+    adaptTempScale(adaptTempScaleTag, ldObjPtr), 
-     adaptTemperature(adaptTemperatureTag, ldObjPtr), 
-     scriptBarrier(scriptBarrierTag, ldObjPtr),
- #ifdef MEASURE_NAMD_WITH_PAPI
 diff -u -wdB spec_old/CollectionMaster.C spec_new/CollectionMaster.C
 --- spec_old/CollectionMaster.C	2012-01-28 16:04:27.000000000 -0600
 +++ spec_new/CollectionMaster.C	2016-06-16 12:13:25.621145533 -0500
@@ -159,7 +132,7 @@ diff -u -wdB spec_old/CollectionMgr.h spec_new/CollectionMgr.h
    CkChareID master;
 diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 --- spec_old/Controller.C	2015-12-17 15:22:03.000000000 -0600
-+++ spec_new/Controller.C	2016-06-20 14:03:04.487667586 -0500
++++ spec_new/Controller.C	2016-06-22 16:04:14.983230080 -0500
 @@ -388,6 +388,14 @@
    typedef void (*namd_sighandler_t)(int);
  }
@@ -225,15 +198,6 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
          }
          else if (adaptTempAutoDt) {
            //update temperature step size counter
-@@ -1979,6 +2000,8 @@
-           
-       }
-       
-+      // dT is the new adaptTempT
-+      broadcast->adaptTempScale.publish(step,sqrt(dT/adaptTempT));
-       adaptTempT = dT; 
-       broadcast->adaptTemperature.publish(step,adaptTempT);
-     }
 diff -u -wdB spec_old/Controller.h spec_new/Controller.h
 --- spec_old/Controller.h	2015-10-12 10:48:41.000000000 -0500
 +++ spec_new/Controller.h	2016-06-16 12:13:25.613145457 -0500
@@ -316,7 +280,7 @@ diff -u -wdB spec_old/Molecule.h spec_new/Molecule.h
  
 diff -u -wdB spec_old/Sequencer.C spec_new/Sequencer.C
 --- spec_old/Sequencer.C	2016-06-01 17:24:35.531579311 -0500
-+++ spec_new/Sequencer.C	2016-06-20 14:29:05.330986026 -0500
++++ spec_new/Sequencer.C	2016-06-22 16:05:05.906621580 -0500
 @@ -437,6 +437,10 @@
  
  	submitReductions(step);
@@ -328,19 +292,19 @@ diff -u -wdB spec_old/Sequencer.C spec_new/Sequencer.C
         //Update adaptive tempering temperature
          adaptTempUpdate(step);
  
-@@ -1194,8 +1198,11 @@
+@@ -1194,7 +1198,11 @@
     }
     // Get Updated Temperature
     if ( !(step % simParams->adaptTempFreq ) && (step > simParams->firstTimestep ))
 +   {
-+    rescaleVelocitiesByFactor( broadcast->adaptTempScale.get(step) );
++    BigReal adaptTempTOld = adaptTempT;
      adaptTempT = broadcast->adaptTemperature.get(step);
++    rescaleVelocitiesByFactor( sqrt(adaptTempT/adaptTempTOld) );
++   }
  }
-+}
  
  void Sequencer::reassignVelocities(BigReal timestep, int step)
- {
-@@ -1952,6 +1959,28 @@
+@@ -1952,6 +1960,28 @@
    }
  }
  

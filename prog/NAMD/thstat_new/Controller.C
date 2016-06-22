@@ -413,13 +413,14 @@ void Controller::integrate(int scriptTask) {
 
     reassignVelocities(step);  // only for full-step velecities
     rescaleaccelMD(step);
-    adaptTempUpdate(step); // Init adaptive tempering;
 
     receivePressure(step);
     if ( zeroMomentum && dofull && ! (step % slowFreq) )
 						correctMomentum(step);
-    langRescaleVelocities(step, TRUE);
-    tNHCRescaleVelocities(step, TRUE);
+    // they shouldn't be called
+    //langRescaleVelocities(step, TRUE);
+    //tNHCRescaleVelocities(step, TRUE);
+    adaptTempUpdate(step); // Init adaptive tempering;
 
     printFepMessage(step);
     printTiMessage(step);
@@ -443,7 +444,6 @@ void Controller::integrate(int scriptTask) {
     //  (namd_sighandler_t)my_sigint_handler);
     for ( ++step ; step <= numberOfSteps; ++step )
     {
-        adaptTempUpdate(step);
         rescaleVelocities(step);
 	tcoupleVelocities(step);
 	langRescaleVelocities(step, FALSE);
@@ -460,9 +460,14 @@ void Controller::integrate(int scriptTask) {
 	
         langRescaleVelocities(step, TRUE);
 	tNHCRescaleVelocities(step, TRUE);
+        //CkPrintf("### step %d, Controller before adaptTemp, temperature %g\n", step, temperature);
+        adaptTempUpdate(step);
+        //CkPrintf("### step %d, Controller after  adaptTemp, temperature %g\n", step, temperature);
         printDynamicsEnergies(step);
         outputFepEnergy(step);
         outputTiEnergy(step);
+        tpcnt += 1;
+        tpsum += temperature;
         if(traceIsOn()){
             traceUserEvent(eventEndOfTimeStep);
             sprintf(traceNote, "s:%d", step);
@@ -473,6 +478,7 @@ void Controller::integrate(int scriptTask) {
   //   NAMD_quit();
   // }
         outputExtendedSystem(step);
+        //CkPrintf("$$$ step %d, temperature %g\n", step, temperature);
 #if CYCLE_BARRIER
         cycleBarrier(!((step+1) % stepsPerCycle),step);
 #elif  PME_BARRIER
@@ -505,6 +511,7 @@ void Controller::integrate(int scriptTask) {
 	}
 #endif
 	 
+        //CkPrintf("step %d\n", step);
         rebalanceLoad(step);
 
 #if  PME_BARRIER
@@ -514,6 +521,7 @@ void Controller::integrate(int scriptTask) {
     // signal(SIGINT, oldhandler);
     
     tNHCDone(step);
+    CkPrintf("tp ave. %g\n", tpsum/tpcnt);
 }
 
 
@@ -1127,9 +1135,7 @@ void Controller::tcoupleVelocities(int step)
 // Bussi, Donadio, and Parrinello, JCP 126, 014101 (2007)
 void Controller::langRescaleVelocities(int step, Bool isPrev)
 {
-  if ( simParams->langRescaleOn
-    && (  simParams->langRescaleFreq > 0 
-       && step % simParams->langRescaleFreq == 0 )  ) {
+  if ( simParams->langRescaleOn ) {
     BigReal tp = simParams->langRescaleTemp;
     // use the temperature from adaptive tempering, if any
     if ( simParams->adaptTempOn && simParams->adaptTempRescale
@@ -1138,10 +1144,10 @@ void Controller::langRescaleVelocities(int step, Bool isPrev)
       tp = adaptTempT;
     }
     tp *= BOLTZMANN;
-    BigReal dt = simParams->langRescaleFreq * simParams->dt / simParams->langRescaleDt;
+
+    BigReal dt = simParams->dt / simParams->langRescaleDt;
     dt *= 0.5; // two half steps
     BigReal c = exp(-dt);
-    BigReal factor;
 
     // integrate two half steps
     int dof = numDegFreedom; // Node::Object()->molecule->num_deg_freedom();
@@ -1151,15 +1157,20 @@ void Controller::langRescaleVelocities(int step, Bool isPrev)
     BigReal ek2 = ek1 + (1 - c) * ((r2 + r * r) * tp / 2 - ek1);
                 + 2 * r * sqrt(c * (1 - c) * ek1 * tp / 2);
     if ( ek2 < 0 ) ek2 = 0;
-    factor = sqrt( ek2 / ek1 );
+    BigReal fac2 = ek2 / ek1;
+    BigReal factor = sqrt( fac2 );
     //CkPrintf("Controller step %d, freq %d, dt %g/%g, tp %g/%g, c %g, fac %g r2 + r*r %g, %d, ek %g(%g) -> %g(%g)\n",
     //    step, simParams->langRescaleFreq, simParams->dt, dt, tp, tp/BOLTZMANN, c, factor, r2 + r*r, dof, ek1, 2*ek1/dof/BOLTZMANN, ek2, 2*ek2/dof/BOLTZMANN);
     if ( !isPrev ) {
       broadcast->langRescaleFactor.publish(step, factor * langRescaleFactorPrev);
     } else {
+      // save it for the scaling in the next step
       langRescaleFactorPrev = factor;
-      temperature *= factor * factor;
     }
+    temperature *= fac2;
+    kineticEnergy *= fac2;
+    kineticEnergyCentered *= fac2;
+    kineticEnergyHalfstep *= fac2;
   }
 }
 
@@ -1242,10 +1253,14 @@ void Controller::tNHCRescaleVelocities(int step, Bool isPrev)
       broadcast->tNHCRescaleFactor.publish(step, factor * tNHCRescaleFactorPrev);
     } else {
       tNHCRescaleFactorPrev = factor;
-      temperature *= factor * factor;
     }
 
-    mvv *= factor * factor;
+    BigReal fac2 = factor * factor;
+    temperature *= fac2;
+    kineticEnergy *= fac2;
+    kineticEnergyCentered *= fac2;
+    kineticEnergyHalfstep *= fac2;
+    mvv *= fac2;
 
     for ( j = 0; j < nnhc; j++ ) {
       s = ( j == nnhc - 1 ) ? 1 : exp(-tNHCzeta[j+1]*dt*0.25);
@@ -2186,9 +2201,22 @@ void Controller::adaptTempUpdate(int step, int minimize)
           
       }
       
-      broadcast->adaptTempScale.publish(step, sqrt(dT/adaptTempT));
+      BigReal tScale = dT / adaptTempT;
+      BigReal vScale = sqrt(tScale);
+      if ( simParams->langRescaleOn ) {
+        langRescaleFactorPrev *= vScale;
+      } else if ( simParams->tNHCOn ) {
+        tNHCRescaleFactorPrev *= vScale;
+      }
       adaptTempT = dT; 
       broadcast->adaptTemperature.publish(step,adaptTempT);
+      // temperature is to be used for the Langevin velocity-rescaling
+      // and NH-chain thermostats, so it needs to be updated.
+      temperature *= tScale;
+      kineticEnergy *= tScale;
+      kineticEnergyCentered *= tScale;
+      kineticEnergyHalfstep *= tScale;
+      //CkPrintf("### step %d, Controller within adaptTemp, scale %g\n", step, sqrt(tScale));
     }
     adaptTempWriteRestart(step);
     if ( ! (step % adaptTempOutFreq) ) {

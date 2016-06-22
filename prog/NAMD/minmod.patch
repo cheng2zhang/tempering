@@ -1,33 +1,6 @@
-diff -u -wdB minmod_old/Broadcasts.h minmod_new/Broadcasts.h
---- minmod_old/Broadcasts.h	2015-03-03 11:54:14.000000000 -0600
-+++ minmod_new/Broadcasts.h	2016-06-16 12:24:37.469069362 -0500
-@@ -47,6 +47,7 @@
-   scriptBarrierTag,
-   traceBarrierTag,
-   accelMDRescaleFactorTag,
-+  adaptTempScaleTag, //Tag for adaptive tempering velocity scaling factor
-   adaptTemperatureTag, //Tag for adaptive tempering temperature updates to Sequencer
- #ifdef MEASURE_NAMD_WITH_PAPI
-   papiMeasureTag,
-@@ -68,6 +69,7 @@
-   SimpleBroadcastObject<int> scriptBarrier;
-   SimpleBroadcastObject<int> traceBarrier;
-   SimpleBroadcastObject<Vector> accelMDRescaleFactor;
-+  SimpleBroadcastObject<BigReal> adaptTempScale; 
-   SimpleBroadcastObject<BigReal> adaptTemperature; 
- #ifdef MEASURE_NAMD_WITH_PAPI
-   SimpleBroadcastObject<int> papiMeasureBarrier;
-@@ -83,6 +85,7 @@
-     cycleBarrier(cycleBarrierTag, ldObjPtr),
- #endif
-     accelMDRescaleFactor(accelMDRescaleFactorTag, ldObjPtr),
-+    adaptTempScale(adaptTempScaleTag, ldObjPtr), 
-     adaptTemperature(adaptTemperatureTag, ldObjPtr), 
-     scriptBarrier(scriptBarrierTag, ldObjPtr),
- #ifdef MEASURE_NAMD_WITH_PAPI
 diff -u -wdB minmod_old/Controller.C minmod_new/Controller.C
 --- minmod_old/Controller.C	2015-12-17 15:22:03.000000000 -0600
-+++ minmod_new/Controller.C	2016-06-16 12:24:37.470069313 -0500
++++ minmod_new/Controller.C	2016-06-22 15:59:57.879448701 -0500
 @@ -1891,6 +1891,8 @@
          dT += adaptTempT;
          // Check again, if not then keep original adaptTempTor assign random.
@@ -57,27 +30,18 @@ diff -u -wdB minmod_old/Controller.C minmod_new/Controller.C
          }
          else if (adaptTempAutoDt) {
            //update temperature step size counter
-@@ -1979,6 +1985,8 @@
-           
-       }
-       
-+      // dT is the new adaptTempT
-+      broadcast->adaptTempScale.publish(step,sqrt(dT/adaptTempT));
-       adaptTempT = dT; 
-       broadcast->adaptTemperature.publish(step,adaptTempT);
-     }
 diff -u -wdB minmod_old/Sequencer.C minmod_new/Sequencer.C
 --- minmod_old/Sequencer.C	2016-06-01 17:24:35.531579311 -0500
-+++ minmod_new/Sequencer.C	2016-06-16 12:24:37.471069264 -0500
-@@ -1194,8 +1194,11 @@
++++ minmod_new/Sequencer.C	2016-06-22 15:58:54.953742221 -0500
+@@ -1194,7 +1194,11 @@
     }
     // Get Updated Temperature
     if ( !(step % simParams->adaptTempFreq ) && (step > simParams->firstTimestep ))
 +   {
-+    rescaleVelocitiesByFactor( broadcast->adaptTempScale.get(step) );
++    BigReal adaptTempTOld = adaptTempT;
      adaptTempT = broadcast->adaptTemperature.get(step);
++    rescaleVelocitiesByFactor( sqrt(adaptTempT / adaptTempTOld) );
++   }
  }
-+}
  
  void Sequencer::reassignVelocities(BigReal timestep, int step)
- {

@@ -1190,9 +1190,6 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
    opts.optional("langrescale", "langRescaleDt",
     "Inverse viscosity in femtoseconds for Langevin velocity-rescaling thermostat",
     &langRescaleDt, 20.0);
-   opts.optional("main", "langRescaleFreq", "Number of steps between "
-    "Langevin velocity rescaling steps", &langRescaleFreq, 1);
-   opts.range("langRescaleFreq", POSITIVE);
 
    //  Get parameters for the Nose-Hoover chain thermostat
    //  Nose-Hoover chains: The canonical ensemble via continuous dynamics 
@@ -4954,7 +4951,6 @@ if ( openatomOn )
       iout << iINFO << "LANGEVIN-STYLE VELOCITY RESCALING THERMOSTAT ACTIVE\n";
       iout << iINFO << "    TARGET TEMPERATURE " << langRescaleTemp << " K\n";
       iout << iINFO << "    INVERSE VISCOSITY  " << langRescaleDt << " fs\n";
-      iout << iINFO << "    RESCALING FREQ     " << langRescaleFreq << "\n";
       iout << endi;
    }
 

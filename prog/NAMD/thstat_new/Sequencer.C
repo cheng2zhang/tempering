@@ -443,7 +443,9 @@ void Sequencer::integrate(int scriptTask) {
 	submitReductions(step);
 	submitCollections(step);
        //Update adaptive tempering temperature
+        //CkPrintf("### step %d, Sequencer  before adaptTemp\n", step);
         adaptTempUpdate(step);
+        //CkPrintf("### step %d, Sequencer  after  adaptTemp\n", step);
 
 #if CYCLE_BARRIER
         cycleBarrier(!((step+1) % stepsPerCycle), step);
@@ -1200,8 +1202,11 @@ void Sequencer::adaptTempUpdate(int step)
    // Get Updated Temperature
    if ( !(step % simParams->adaptTempFreq ) && (step > simParams->firstTimestep ))
    {
-    rescaleVelocitiesByFactor( broadcast->adaptTempScale.get(step) );
+    BigReal adaptTempTOld = adaptTempT;
     adaptTempT = broadcast->adaptTemperature.get(step);
+    if ( !simParams->langRescaleOn && !simParams->tNHCOn )
+      rescaleVelocitiesByFactor( sqrt(adaptTempT / adaptTempTOld) );
+    //CkPrintf("### step %d, Sequencer  within adaptTemp, scale %g\n", step, vScale);
    }
 }
 
@@ -1299,9 +1304,7 @@ void Sequencer::tcoupleVelocities(BigReal dt_fs, int step)
 
 void Sequencer::langRescaleVelocities(int step)
 {
-  if ( simParams->langRescaleOn 
-    && (  simParams->langRescaleFreq > 0 
-       && step % simParams->langRescaleFreq == 0 ) ) {
+  if ( simParams->langRescaleOn ) {
     FullAtom *a = patch->atom.begin();
     BigReal factor = broadcast->langRescaleFactor.get(step);
     for ( int i = 0; i < patch->numAtoms; ++i )

@@ -1985,8 +1985,6 @@ void Controller::adaptTempUpdate(int step, int minimize)
           
       }
       
-      // dT is the new adaptTempT
-      broadcast->adaptTempScale.publish(step,sqrt(dT/adaptTempT));
       adaptTempT = dT; 
       broadcast->adaptTemperature.publish(step,adaptTempT);
     }
