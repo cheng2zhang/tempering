@@ -74,7 +74,7 @@ protected:
     void reloadCharges();
 
     BigReal adaptTempT;         // adaptive tempering temperature
-    void adaptTempUpdate(int); // adaptive tempering temperature update
+    Bool adaptTempUpdate(int); // adaptive tempering temperature update
 
     void rescaleVelocities(int);
     void rescaleaccelMD(int, int, int); // for accelMD

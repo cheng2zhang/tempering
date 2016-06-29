@@ -21,4 +21,4 @@ vscale.txt:
 	tail -n`grep adaptTempBins argon_st.conf | awk '{print $$2}'` argon_st1.rst > $@
 
 clean:
-	rm -f argon_st[1-9]* FFTW_NAMD_* *~
+	rm -f argon_st[1-9]* FFTW_NAMD_* ke.dat *~

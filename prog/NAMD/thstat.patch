@@ -1,0 +1,1141 @@
+diff -u -wdB thstat_old/Broadcasts.h thstat_new/Broadcasts.h
+--- thstat_old/Broadcasts.h	2015-03-03 11:54:14.000000000 -0600
++++ thstat_new/Broadcasts.h	2016-06-24 20:30:01.254516805 -0500
+@@ -39,6 +39,8 @@
+   velocityRescaleFactorTag,
+   positionRescaleFactorTag,
+   tcoupleCoefficientTag,
++  langRescaleFactorTag,
++  tNHCRescaleFactorTag,
+   minimizeCoefficientTag,
+   momentumCorrectionTag,
+ #if USE_BARRIER
+@@ -60,6 +62,8 @@
+   SimpleBroadcastObject<BigReal> velocityRescaleFactor;
+   SimpleBroadcastObject<Tensor> positionRescaleFactor;
+   SimpleBroadcastObject<BigReal> tcoupleCoefficient;
++  SimpleBroadcastObject<BigReal> langRescaleFactor;
++  SimpleBroadcastObject<BigReal> tNHCRescaleFactor;
+   SimpleBroadcastObject<BigReal> minimizeCoefficient;
+   SimpleBroadcastObject<Vector> momentumCorrection;
+ #if USE_BARRIER
+@@ -77,6 +81,8 @@
+     velocityRescaleFactor(velocityRescaleFactorTag, ldObjPtr),
+     positionRescaleFactor(positionRescaleFactorTag, ldObjPtr),
+     tcoupleCoefficient(tcoupleCoefficientTag, ldObjPtr),
++    langRescaleFactor(langRescaleFactorTag, ldObjPtr),
++    tNHCRescaleFactor(tNHCRescaleFactorTag, ldObjPtr),
+     minimizeCoefficient(minimizeCoefficientTag, ldObjPtr),
+     momentumCorrection(momentumCorrectionTag, ldObjPtr),
+ #if USE_BARRIER
+diff -u -wdB thstat_old/CollectionMaster.C thstat_new/CollectionMaster.C
+--- thstat_old/CollectionMaster.C	2012-01-28 16:04:27.000000000 -0600
++++ thstat_new/CollectionMaster.C	2016-06-29 14:45:02.554478243 -0500
+@@ -43,6 +43,27 @@
+ {
+ }
+ 
++void CollectionMaster::receiveHi(int seq)
++{
++  hi.submitData(seq);
++  CollectHiInstance *c = hi.removeReady(seq);
++  if ( c != 0 ) { // collected Hi's from all nodes
++    CthAwaken(hiThread);
++    hiThread = 0;
++  }
++}
++
++void CollectionMaster::enqueueHi(int seq)
++{
++  CollectHiInstance *c = hi.removeReady(seq);
++  if ( c == 0 ) { // lock the thread
++    hiThread = CthSelf();
++    CthSuspend();
++  } else { // already collected Hi's from all nodes
++    c->free(); // empty the spot, but don't actually free the memory
++  }
++}
++
+ void CollectionMaster::receivePositions(CollectVectorMsg *msg)
+ {
+ #ifndef MEM_OPT_VERSION
+diff -u -wdB thstat_old/CollectionMaster.ci thstat_new/CollectionMaster.ci
+--- thstat_old/CollectionMaster.ci	2011-05-20 15:17:45.000000000 -0500
++++ thstat_new/CollectionMaster.ci	2016-06-28 17:08:20.468799483 -0500
+@@ -35,6 +35,7 @@
+     entry void startNextRoundOutputForce(double totalT);
+     entry void wrapCoorFinished();
+     
++    entry void receiveHi(int seq);
+   };
+ }
+ 
+diff -u -wdB thstat_old/CollectionMaster.h thstat_new/CollectionMaster.h
+--- thstat_old/CollectionMaster.h	2015-11-04 11:20:25.000000000 -0600
++++ thstat_new/CollectionMaster.h	2016-06-29 14:45:21.298546497 -0500
+@@ -297,6 +297,61 @@
+ 
+   };
+ #endif
++
++  class CollectHiInstance
++  {
++  public:
++    CollectHiInstance(void) : seq(-10) { ; }
++    void free() { seq = -10; }
++    int notfree() { return seq != -10; }
++    void reset(int s) {
++      seq = s;
++      remaining = PatchMap::Object()->numNodesWithPatches(); 
++    }
++    int seq;
++    int remaining;
++  };
++
++  class CollectHiSequence
++  {
++  public:
++    ResizeArray<CollectHiInstance *> data;
++
++    void submitData(int seq) {
++      CollectHiInstance **c, **c_e = data.end();
++      for( c = data.begin(); c != c_e && (*c)->seq != seq; ++c )
++        ;
++      if ( c == c_e ) { // the sequence does not exist
++        // try to find an empty spot in the array
++        for( c = data.begin(); c != c_e && (*c)->notfree(); ++c )
++          ;
++        if ( c == c_e ) { // no empty spot exists, append one
++          data.add(new CollectHiInstance);
++          c = data.end() - 1;
++        }
++        (*c)->reset(seq);
++      }
++      (*c)->remaining--;
++    }
++
++    // return nonzero if all nodes have submitted data for step `seq'
++    CollectHiInstance* removeReady(int seq) {
++      CollectHiInstance *o = 0, **c, **c_e = data.end();
++      for( c = data.begin(); c != c_e && (*c)->seq != seq; ++c )
++        ;
++      int remaining = 0;
++      if ( c != c_e && (remaining = (*c)->remaining) == 0 )
++        o = *c;
++      return o;
++    }
++
++    CollectHiSequence() { ; }
++  };
++
++public:
++  void receiveHi(int seq);
++  void enqueueHi(int seq);
++
+ private:
+ 
+   CollectVectorSequence positions;
+@@ -304,6 +359,8 @@
+   CollectVectorSequence forces;
+   int posTimings, velTimings, forceTimings;
+   FILE *dataStreamFile;
++  CollectHiSequence hi;
++  CthThread hiThread;
+ 
+ #ifdef MEM_OPT_VERSION
+   int wrapCoorDoneCnt;
+diff -u -wdB thstat_old/CollectionMgr.C thstat_new/CollectionMgr.C
+--- thstat_old/CollectionMgr.C	2015-09-04 17:20:02.000000000 -0500
++++ thstat_new/CollectionMgr.C	2016-06-28 17:20:02.815520446 -0500
+@@ -305,6 +305,16 @@
+ }
+ #endif
+ 
++void CollectionMgr::submitHi(int seq) {  
++  CollectHiInstance *c = hi.submitData(seq);
++  if ( c != 0 ) {
++    // all HomePatches on the Node have submitted data
++    CProxy_CollectionMaster cm(master);
++    cm.receiveHi(c->seq);
++    c->free();
++  }
++}
++
+ void CollectionMgr::sendDataStream(const char *data) {
+   DataStreamMsg *msg = new DataStreamMsg;
+   msg->data.resize(strlen(data)+1);
+diff -u -wdB thstat_old/CollectionMgr.h thstat_new/CollectionMgr.h
+--- thstat_old/CollectionMgr.h	2013-09-06 14:11:36.000000000 -0500
++++ thstat_new/CollectionMgr.h	2016-06-28 17:12:27.855082506 -0500
+@@ -138,6 +138,50 @@
+     ResizeArray<CollectVectorInstance*> data;
+ 
+   };
++
++
++
++  class CollectHiInstance
++  {
++  public:
++    CollectHiInstance(void) : seq(-10) { ; }
++    void free() { seq = -10; }
++    int notfree() { return ( seq != -10 ); }
++    void reset(int s) {
++      seq = s;
++      remaining = PatchMap::Object()->numHomePatches();
++    }
++    int seq;
++    int remaining;
++  };
++
++  class CollectHiSequence
++  {
++  public:
++    ResizeArray<CollectHiInstance*> data;
++
++    CollectHiInstance* submitData(int seq) {
++      CollectHiInstance **c, **c_e = data.end();
++      for ( c = data.begin(); c != c_e && (*c)->seq != seq; ++c )
++        ;
++      if ( c == c_e ) { // CollectHiInstance for the sequence `seq' does not exist
++        // try to find an empty spot in the array
++        for ( c = data.begin(); c != c_e && (*c)->notfree(); ++c )
++          ;
++        if ( c == c_e ) { // no empty spot exists, append one
++         data.add(new CollectHiInstance);
++         c = data.end() - 1;
++        }
++        (*c)->reset(seq);
++      }
++      if ( --(*c)->remaining == 0 ) {
++        return *c;
++      } else {
++        return 0;
++      }
++    }
++  };
++
+ private:
+ 
+   CkChareID master;
+@@ -146,6 +190,9 @@
+   CollectVectorSequence velocities;
+   CollectVectorSequence forces;
+ 
++  CollectHiSequence hi;
++public:
++  void submitHi(int);
+ };
+ 
+ #endif
+diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
+--- thstat_old/Controller.C	2015-12-17 15:22:03.000000000 -0600
++++ thstat_new/Controller.C	2016-06-29 16:03:40.311987648 -0500
+@@ -406,15 +406,22 @@
+       slowFreq = simParams->nonbondedFrequency;
+     if ( step >= numberOfSteps ) slowFreq = nbondFreq = 1;
+ 
++    langRescaleFactorPrev = 1;
++    tNHCInit();
++
+   if ( scriptTask == SCRIPT_RUN ) {
+ 
+     reassignVelocities(step);  // only for full-step velecities
+     rescaleaccelMD(step);
+-    adaptTempUpdate(step); // Init adaptive tempering;
+ 
+     receivePressure(step);
+     if ( zeroMomentum && dofull && ! (step % slowFreq) )
+ 						correctMomentum(step);
++    // they shouldn't be called
++    //langRescaleVelocities(step, TRUE);
++    //tNHCRescaleVelocities(step, TRUE);
++    adaptTempUpdate(step); // Init adaptive tempering;
++
+     printFepMessage(step);
+     printTiMessage(step);
+     printDynamicsEnergies(step);
+@@ -429,6 +436,7 @@
+     rebalanceLoad(step);
+ 
+   }
++    keHistInit();
+ 
+     // Handling SIGINT doesn't seem to be working on Lemieux, and it
+     // sometimes causes the net-xxx versions of NAMD to segfault on exit, 
+@@ -437,9 +445,10 @@
+     //  (namd_sighandler_t)my_sigint_handler);
+     for ( ++step ; step <= numberOfSteps; ++step )
+     {
+-        adaptTempUpdate(step);
+         rescaleVelocities(step);
+ 	tcoupleVelocities(step);
++	langRescaleVelocities(step, FALSE);
++	tNHCRescaleVelocities(step, FALSE);
+ 	berendsenPressure(step);
+ 	langevinPiston1(step);
+         rescaleaccelMD(step);
+@@ -449,6 +458,11 @@
+ 						correctMomentum(step);
+ 	langevinPiston2(step);
+         reassignVelocities(step);
++	
++        langRescaleVelocities(step, TRUE);
++        tNHCRescaleVelocities(step, TRUE);
++        Bool scaled = adaptTempUpdate(step);
++        keHistUpdate(step);
+         printDynamicsEnergies(step);
+         outputFepEnergy(step);
+         outputTiEnergy(step);
+@@ -493,7 +507,11 @@
+ 		}
+ 	}
+ #endif
+-	 
++        if ( scaled && ldbSteps == 1 ) {
++          // collect Hi's if we're about to rebalance load
++          collection->enqueueHi(step);
++        }
++	//if ( ldbSteps == 1 ) CkPrintf("step %d, before rebalanceLoad(), Controller PE %d/%d, thread %p\n", step, CkMyPe(), CkNumPes(), CthSelf());
+         rebalanceLoad(step);
+ 
+ #if  PME_BARRIER
+@@ -501,6 +519,9 @@
+ #endif
+     }
+     // signal(SIGINT, oldhandler);
++    
++    tNHCDone(step);
++    keHistDone(step);
+ }
+ 
+ 
+@@ -1110,6 +1131,270 @@
+   }
+ }
+ 
++// Ref.: Canonical sampling through velocity rescaling
++// Bussi, Donadio, and Parrinello, JCP 126, 014101 (2007)
++void Controller::langRescaleVelocities(int step, Bool isPrev)
++{
++  if ( simParams->langRescaleOn ) {
++    BigReal tp = simParams->langRescaleTemp;
++    // use the temperature from adaptive tempering, if any
++    if ( simParams->adaptTempOn && simParams->adaptTempRescale
++     && (step > simParams->adaptTempFirstStep )
++     && (!(simParams->adaptTempLastStep > 0) || step < simParams->adaptTempLastStep )) {
++      tp = adaptTempT;
++    }
++    tp *= BOLTZMANN;
++
++    BigReal dt = simParams->dt / simParams->langRescaleDt;
++    dt *= 0.5; // doing a half time step, called twice in an MD step
++    BigReal c = exp(-dt);
++
++    // integrate two half steps
++    int dof = numDegFreedom;
++    if ( dof <= 0 ) dof = Node::Object()->molecule->num_deg_freedom();
++    BigReal r = random->gaussian();
++    BigReal r2 = random->chisqr(dof - 1);
++    BigReal ek1 = BOLTZMANN * temperature * dof * 0.5;
++    BigReal ek2 = ek1 + (1 - c) * ((r2 + r * r) * 0.5 * tp - ek1)
++                + 2 * r * sqrt(c * (1 - c) * ek1 * 0.5 * tp);
++    if ( ek2 < 0 ) ek2 = 0;
++    BigReal fac2 = ek2 / ek1;
++    BigReal factor = sqrt( fac2 );
++    if ( !isPrev ) {
++      broadcast->langRescaleFactor.publish(step, factor * langRescaleFactorPrev);
++    } else {
++      // save it for the scaling in the next step
++      langRescaleFactorPrev = factor;
++    }
++    temperature *= fac2;
++    kineticEnergy *= fac2;
++    kineticEnergyCentered *= fac2;
++  }
++}
++
++void Controller::tNHCInit(void)
++{
++  if ( !simParams->tNHCOn ) return;
++
++  int nnhc = simParams->tNHCLen, i;
++  tNHCzeta = new BigReal [nnhc];
++  tNHCmass = new BigReal [nnhc];
++
++  // Note: numDegFreedom has not been set yet
++  int dof = Node::Object()->molecule->num_deg_freedom();
++  BigReal per = simParams->tNHCPeriod / (2 * M_PI);
++  BigReal kT = BOLTZMANN * simParams->tNHCTemp;
++  // reference mass choices, see Appendix B of JCP 97 (4) 2635
++  BigReal mass2 = per * per * kT;
++  BigReal mass1 = mass2 * dof;
++
++  for ( i = 0; i < nnhc; i++ ) {
++    tNHCzeta[i] = 0;
++    tNHCmass[i] = ( i == 0 ) ? mass1 : mass2;
++  }
++
++  // try to load the chain variables, ok if it fails
++  tNHCLoad();
++  CkPrintf("NHC %d, mass1 %g, mass2 %g\n", dof, mass1, mass2);
++  for ( i = 0; i < nnhc; i++ )
++    CkPrintf("NHC %d: zeta %g, mass %g\n", i+1, tNHCzeta[i], tNHCmass[i]);
++  tNHCRescaleFactorPrev = 1.0;
++}
++
++void Controller::tNHCDone(int step)
++{
++  if ( simParams->tNHCOn ) {
++    tNHCSave(step);
++    delete[] tNHCzeta;
++    delete[] tNHCmass;
++  }
++}
++
++// Nose-Hoover chain thermostat
++// Ref.: Nose-Hoover chains: The canonical ensemble via continuous dynamics 
++// Glenn J. Martyna, Michael L. Klein, and Mark Tuckerman, JCP 97 (4) 2635
++void Controller::tNHCRescaleVelocities(int step, Bool isPrev)
++{
++  if ( simParams->tNHCOn ) {
++    BigReal tp = simParams->tNHCTemp;
++    // use the temperature from adaptive tempering, if any
++    if ( simParams->adaptTempOn && simParams->adaptTempRescale
++     && (step > simParams->adaptTempFirstStep )
++     && (!(simParams->adaptTempLastStep > 0) || step < simParams->adaptTempLastStep )) {
++      tp = adaptTempT;
++    }
++    tp *= BOLTZMANN;
++
++    Real dt = simParams->dt * 0.5; // only for half step
++    int dof = numDegFreedom;
++    if ( dof <= 0 ) dof = Node::Object()->molecule->num_deg_freedom();
++    int nnhc = simParams->tNHCLen, i, j, k;
++    BigReal s, GQ, mvv, factor;
++
++    mvv = BOLTZMANN * temperature * dof;
++    for ( j = nnhc - 1; j >= 0; j-- ) {
++      s = ( j == nnhc - 1 ) ? 1 : exp(-tNHCzeta[j+1]*dt*0.25);
++      if ( j == 0 ) {
++        GQ = mvv - dof * tp;
++      } else {
++        GQ = tNHCmass[j-1] * tNHCzeta[j-1] * tNHCzeta[j-1] - tp;
++      }
++      tNHCzeta[j] = (tNHCzeta[j] * s + GQ /tNHCmass[j] * dt*0.5) * s;
++    }
++
++    // velocity scaling factor
++    factor = exp( -tNHCzeta[0] * dt );
++    if ( !isPrev ) {
++      broadcast->tNHCRescaleFactor.publish(step, factor * tNHCRescaleFactorPrev);
++    } else {
++      tNHCRescaleFactorPrev = factor;
++    }
++
++    BigReal fac2 = factor * factor;
++    temperature *= fac2;
++    kineticEnergy *= fac2;
++    kineticEnergyCentered *= fac2;
++    mvv *= fac2;
++
++    for ( j = 0; j < nnhc; j++ ) {
++      s = ( j == nnhc - 1 ) ? 1 : exp(-tNHCzeta[j+1]*dt*0.25);
++      if ( j == 0 ) {
++        GQ = mvv - dof * tp;
++      } else {
++        GQ = tNHCmass[j-1] * tNHCzeta[j-1] * tNHCzeta[j-1] - tp;
++      }
++      tNHCzeta[j] = (tNHCzeta[j] * s + GQ /tNHCmass[j] * dt*0.5) * s;
++    }
++
++    if ( simParams->tNHCFileFreq > 0 && step % simParams->tNHCFileFreq == 0 )
++      tNHCSave(step);
++  }
++}
++
++void Controller::tNHCSave(int step)
++{
++  if ( !simParams->tNHCOn ) return;
++
++  FILE *fp;
++  int i, nnhc = simParams->tNHCLen;
++
++  if ( (fp = fopen(simParams->tNHCFile, "w")) == NULL ) {
++    iout << "Error: cannot write " << simParams->tNHCFile << "\n" << endi;
++    return;
++  }
++  fprintf(fp, "%d %d\n", nnhc, step);
++  for ( i = 0; i < nnhc; i++ )
++    fprintf(fp, "%.14f ", tNHCzeta[i]);
++  fprintf(fp, "\n");
++  for ( i = 0; i < nnhc; i++ )
++    fprintf(fp, "%g ", tNHCmass[i]);
++  fprintf(fp, "\n");
++  fclose(fp);
++}
++
++void Controller::tNHCLoad(void)
++{
++  if ( !simParams->tNHCOn ) return;
++
++  FILE *fp;
++  int i, nnhc, step;
++
++  if ( (fp = fopen(simParams->tNHCFile, "r")) == NULL ) {
++    iout << "Cannot read " << simParams->tNHCFile << "\n" << endi;
++    return;
++  }
++  fscanf(fp, "%d%d", &nnhc, &step);
++  if ( nnhc != simParams->tNHCLen ) {
++    iout << "Error: NH-chain length mismatch " << nnhc
++         << " vs. " << simParams->tNHCLen << "\n" << endi;
++    return;
++  }
++  for ( i = 0; i < nnhc; i++ )
++    fscanf(fp, "%lf", &tNHCzeta[i]);
++
++  if ( simParams->tNHCFileReadMass ) {
++    for ( i = 0; i < nnhc; i++ )
++      fscanf(fp, "%lf", &tNHCmass[i]);
++  }
++
++  fclose(fp);
++}
++
++void Controller::keHistInit(void)
++{
++  BigReal keHistTemp = simParams->thermostatTemp();
++  BigReal ke = BOLTZMANN * keHistTemp * numDegFreedom / 2;
++  keHistBinMax = (int) (5.0 * ke / simParams->keHistBin);
++  CkPrintf("keHistInit: temperature %g, dof %d, keHistBinMax %d\n", keHistTemp, numDegFreedom, keHistBinMax);
++  keHist = new BigReal [keHistBinMax];
++  int i;
++  for ( i = 0; i < keHistBinMax; i++ ) keHist[i] = 0;
++  keHistLoad(); // try to load the previous histogram
++}
++
++void Controller::keHistUpdate(int step)
++{
++  BigReal ke = BOLTZMANN * temperature * numDegFreedom / 2;
++  if ( simParams->adaptTempOn ) {
++    ke *= simParams->thermostatTemp() / adaptTempT;
++  }
++  int i = (int) ( ke / simParams->keHistBin );
++  if ( i < keHistBinMax ) keHist[i] += 1;
++  if ( step > 0 && step % simParams->keHistFileFreq == 0 ) {
++    keHistSave(step);
++  }
++}
++
++void Controller::keHistSave(int step)
++{
++  FILE *fp = fopen(simParams->keHistFile, "w");
++  if ( fp == NULL ) return;
++  fprintf(fp, "# %d %d\n", numDegFreedom, step);
++  int i;
++  BigReal tot = 0;
++  for ( i = 0; i < keHistBinMax; i++ )
++    tot += keHist[i];
++
++  // normalization of the reference curve
++  BigReal norm = (numDegFreedom % 2) ? 0.5 * log(M_PI) : 0;
++  for ( i = 2 - numDegFreedom % 2; i < numDegFreedom; i += 2 )
++    norm += log(i*0.5);
++  BigReal tp = simParams->thermostatTemp() * BOLTZMANN;
++  BigReal dk = simParams->keHistBin;
++  for ( i = 0; i < keHistBinMax; i++ ) {
++    if ( keHist[i] <= 0 ) continue;
++    double hist = keHist[i] / ( dk * tot );
++    double ke = (i + 0.5) * dk;
++    double histref = exp(log(ke/tp) * (numDegFreedom*0.5-1) -ke/tp - norm) / tp;
++    fprintf(fp, "%g\t%g\t%g\t%g\n", (i + 0.5) * dk, hist, histref, keHist[i]);
++  }
++  fclose(fp);
++}
++
++void Controller::keHistLoad(void)
++{
++  FILE *fp = fopen(simParams->keHistFile, "r");
++  if ( fp == NULL ) return;
++  char buf[128];
++
++  fgets(buf, sizeof buf, fp);
++  while ( fgets(buf, sizeof buf, fp) ) {
++    double ke, hist1, hist2, hist;
++    sscanf(buf, "%lf%lf%lf%lf", &ke, &hist1, &hist2, &hist);
++    int i = (int) (ke / simParams->keHistBin);
++    keHist[i] = hist;
++  }
++  fclose(fp);
++  iout << "Loaded previous histogram from "
++       << simParams->keHistFile << ".\n" << endi;
++}
++
++void Controller::keHistDone(int step)
++{
++  keHistSave(step);
++  delete[] keHist;
++}
++
+ static char *FORMAT(BigReal X)
+ {
+   static char tmp_string[25];
+@@ -1636,11 +1921,7 @@
+       adaptTempCg = simParams->adaptTempCgamma;   
+       adaptTempDt  = simParams->adaptTempDt;
+       adaptTempDBeta = (adaptTempBetaMax - adaptTempBetaMin)/(adaptTempBins);
+-      adaptTempT = simParams->initialTemp; 
+-      if (simParams->langevinOn)
+-        adaptTempT = simParams->langevinTemp;
+-      else if (simParams->rescaleFreq > 0)
+-        adaptTempT = simParams->rescaleTemp;
++      adaptTempT = simParams->thermostatTemp();
+       for(int j = 0; j < adaptTempBins; ++j){
+           adaptTempPotEnergyAveNum[j] = 0.;
+           adaptTempPotEnergyAveDen[j] = 0.;
+@@ -1697,17 +1978,18 @@
+     }
+ }    
+ 
+-void Controller::adaptTempUpdate(int step, int minimize)
++Bool Controller::adaptTempUpdate(int step, int minimize)
+ {
++    Bool scaled = FALSE;
+     //Beta = 1./T
+-    if ( !simParams->adaptTempOn ) return;
++    if ( !simParams->adaptTempOn ) return scaled;
+     int j = 0;
+     if (step == simParams->firstTimestep) {
+         adaptTempInit(step);
+-        return;
++        return scaled;
+     }
+     if ( minimize || (step < simParams->adaptTempFirstStep ) || 
+-        ( simParams->adaptTempLastStep > 0 && step > simParams->adaptTempLastStep )) return;
++        ( simParams->adaptTempLastStep > 0 && step > simParams->adaptTempLastStep )) return scaled;
+     const int adaptTempOutFreq  = simParams->adaptTempOutFreq;
+     const bool adaptTempDebug  = simParams->adaptTempDebug;
+     //Calculate Current inverse temperature and bin 
+@@ -1720,6 +2002,11 @@
+                               << " adaptTempDBeta: " << adaptTempDBeta 
+                                << " betaMin:" << adaptTempBetaMin 
+                                << " betaMax: " << adaptTempBetaMax << "\n";
++    if ( adaptTempBin < 0 ) {
++      adaptTempBin = 0;
++    } else if ( adaptTempBin >= adaptTempBins ) {
++      adaptTempBin = adaptTempBins - 1;
++    }
+     adaptTempPotEnergySamples[adaptTempBin] += 1;
+     BigReal gammaAve = 1.-adaptTempCg/adaptTempPotEnergySamples[adaptTempBin];
+ 
+@@ -1890,6 +2177,10 @@
+         dT += random->gaussian()*sqrt(2.*adaptTempDt)*adaptTempT;
+         dT += adaptTempT;
+         // Check again, if not then keep original adaptTempTor assign random.
++        if ( dT > 1./adaptTempBetaMin || dT < 1./adaptTempBetaMax ) {
++          dT = adaptTempT;
++        }
++        /* the adaptTempRandom scheme is invalid
+         if ( dT > 1./adaptTempBetaMin ) {
+           if (!simParams->adaptTempRandom) {             
+              //iout << iWARN << "ADAPTEMP: " << step << " T= " << dT 
+@@ -1921,6 +2212,7 @@
+             dT = 1./dT;
+           }
+         }
++        */
+         else if (adaptTempAutoDt) {
+           //update temperature step size counter
+           //FOR "TRUE" ADAPTIVE TEMPERING 
+@@ -1979,8 +2271,21 @@
+           
+       }
+       
++      BigReal tScale = dT / adaptTempT;
++      BigReal vScale = sqrt(tScale);
++      if ( simParams->langRescaleOn ) {
++        langRescaleFactorPrev *= vScale;
++      } else if ( simParams->tNHCOn ) {
++        tNHCRescaleFactorPrev *= vScale;
++      }
+       adaptTempT = dT; 
+       broadcast->adaptTemperature.publish(step,adaptTempT);
++      scaled = TRUE;
++      // temperature is to be used for the Langevin velocity-rescaling
++      // and NH-chain thermostats, so it needs to be updated.
++      temperature *= tScale;
++      kineticEnergy *= tScale;
++      kineticEnergyCentered *= tScale;
+     }
+     adaptTempWriteRestart(step);
+     if ( ! (step % adaptTempOutFreq) ) {
+@@ -1991,7 +2296,7 @@
+              << " ENERGYVAR " << std::setprecision(10) << potEnergyVariance;
+         iout << "\n" << endi;
+    }
+-   
++   return scaled;
+ }
+ 
+ 
+@@ -3147,6 +3452,7 @@
+     ldbSteps = LdbCoordinator::Object()->getNumStepsToRun();
+   }
+   if ( ! --ldbSteps ) {
++    //CkPrintf("Controller: rebalancing %d, thread %p\n", step, CthSelf());
+     startBenchTime -= CmiWallTimer();
+ 	Node::Object()->outputPatchComputeMaps("before_ldb", step);
+     LdbCoordinator::Object()->rebalance(this);	
+diff -u -wdB thstat_old/Controller.h thstat_new/Controller.h
+--- thstat_old/Controller.h	2015-10-12 10:48:41.000000000 -0500
++++ thstat_new/Controller.h	2016-06-29 14:43:08.981437326 -0500
+@@ -155,6 +155,27 @@
+       int rescaleVelocities_numTemps;
+     void reassignVelocities(int);
+     void tcoupleVelocities(int);
++    void langRescaleVelocities(int, Bool);
++    BigReal langRescaleFactorPrev;
++    void tNHCInit(void);
++    void tNHCDone(int);
++    void tNHCRescaleVelocities(int, Bool);
++    void tNHCSave(int);
++    void tNHCLoad(void);
++    BigReal tNHCRescaleFactorPrev;
++    BigReal *tNHCzeta;
++    BigReal *tNHCmass;
++    void keHistInit(void);
++    void keHistDone(int);
++    void keHistUpdate(int);
++    // save the kinetic energy to file
++    // the first column is the kinetic energy
++    // the second and third columns are the
++    // normalized histogram and the reference value
++    void keHistSave(int);
++    void keHistLoad(void);
++    BigReal *keHist;
++    int keHistBinMax;
+     void berendsenPressure(int);
+       // Tensor berendsenPressure_avg;
+       // int berendsenPressure_count;
+@@ -232,7 +253,7 @@
+ 
+ //JS for adaptive temperature sampling
+    void adaptTempInit(int step);
+-   void adaptTempUpdate(int step, int minimize = 0);
++   Bool adaptTempUpdate(int step, int minimize = 0);
+    void adaptTempWriteRestart(int step);
+    BigReal *adaptTempPotEnergyAveNum;
+    BigReal *adaptTempPotEnergyAveDen;
+diff -u -wdB thstat_old/Random.h thstat_new/Random.h
+--- thstat_old/Random.h	2003-02-10 16:41:19.000000000 -0600
++++ thstat_new/Random.h	2016-06-28 18:39:15.828526375 -0500
+@@ -140,6 +140,43 @@
+     return Vector( gaussian(), gaussian(), gaussian() );
+   }
+ 
++  // return a number from a gamma distribution of k degrees
++  BigReal gamma(BigReal k)
++  {
++    Bool lt1 = FALSE;
++    BigReal a, b, x, v, u;
++
++    if ( k <= 0 ) return 0;
++    if ( k < 1 ) {
++      lt1 = TRUE;
++      k += 1;
++    }
++    a = k - 1./3;
++    b = 1./3/sqrt(a);
++
++    for ( ; ; ) {
++      do {
++        x = gaussian();
++        v = 1 + b * x;
++      } while ( v <= 0 );
++      v *= v * v;
++      x *= x;
++      u = uniform();
++      if ( u <= 1 - 0.331 * x * x ) break;
++      u = log(u);
++      if ( u <= 0.5 * x + a * (1 - v + log(v)) ) break;
++    }
++
++    x = a * v;
++    if ( lt1 ) x *= pow(1. - uniform(), 1./(k - 1));
++    return x;
++  }
++
++  BigReal chisqr(BigReal k)
++  {
++    return gamma( k * 0.5 ) * 2;
++  }
++
+   // return a random long
+   long integer(void) {
+     skip();
+diff -u -wdB thstat_old/Sequencer.C thstat_new/Sequencer.C
+--- thstat_old/Sequencer.C	2016-06-01 17:24:35.531579311 -0500
++++ thstat_new/Sequencer.C	2016-06-29 13:16:26.284528636 -0500
+@@ -223,12 +223,7 @@
+ 
+     // Is adaptive tempering on?
+     const Bool adaptTempOn = simParams->adaptTempOn;
+-    adaptTempT = simParams->initialTemp;
+-    if (simParams->langevinOn)
+-        adaptTempT = simParams->langevinTemp;
+-    else if (simParams->rescaleFreq > 0)
+-        adaptTempT = simParams->rescaleTemp;
+-        
++    adaptTempT = simParams->thermostatTemp();
+ 
+     int &doMolly = patch->flags.doMolly;
+     doMolly = simParams->mollyOn && doFullElectrostatics;
+@@ -325,6 +320,8 @@
+     {
+       rescaleVelocities(step);
+       tcoupleVelocities(timestep,step);
++      langRescaleVelocities(step);
++      tNHCRescaleVelocities(step);
+       berendsenPressure(step);
+ 
+       if ( ! commOnly ) {
+@@ -438,7 +435,12 @@
+ 	submitReductions(step);
+ 	submitCollections(step);
+        //Update adaptive tempering temperature
+-        adaptTempUpdate(step);
++        Bool scaled = adaptTempUpdate(step);
++        if ( scaled && ldbSteps == 1 ) {
++          // submit Hi's if we're about to rebalance load
++          collection->submitHi(step);
++          //CkPrintf("Sequencer step %d, thread %p\n", step, CthSelf());
++        }
+ 
+ #if CYCLE_BARRIER
+         cycleBarrier(!((step+1) % stepsPerCycle), step);
+@@ -471,6 +473,7 @@
+             sprintf(traceNote, "%s%d",tracePrefix,step); 
+             traceUserSuppliedNote(traceNote);
+         }
++        //if ( ldbSteps == 1 ) CkPrintf("step %d, before rebalanceLoad(), Sequencer PE %d/%d, thread %p\n", step, CkMyPe(), CkNumPes(), CthSelf());
+ 	rebalanceLoad(step);
+ 
+ #if PME_BARRIER
+@@ -1182,19 +1185,28 @@
+ 
+ }
+ 
+-void Sequencer::adaptTempUpdate(int step)
++Bool Sequencer::adaptTempUpdate(int step)
+ {
++   Bool scaled = FALSE;
++
+    //check if adaptive tempering is enabled and in the right timestep range
+-   if (!simParams->adaptTempOn) return;
++   if (!simParams->adaptTempOn) return scaled;
+    if ( (step < simParams->adaptTempFirstStep ) || 
+      ( simParams->adaptTempLastStep > 0 && step > simParams->adaptTempLastStep )) {
+-        if (simParams->langevinOn) // restore langevin temperature
+-            adaptTempT = simParams->langevinTemp;
+-        return;
++        // restore the temperature of the active thermostat
++        adaptTempT = simParams->thermostatTemp();
++        return scaled;
+    }
+    // Get Updated Temperature
+    if ( !(step % simParams->adaptTempFreq ) && (step > simParams->firstTimestep ))
++   {
++    BigReal adaptTempTOld = adaptTempT;
+     adaptTempT = broadcast->adaptTemperature.get(step);
++    scaled = TRUE;
++    if ( !simParams->langRescaleOn && !simParams->tNHCOn )
++      rescaleVelocitiesByFactor( sqrt(adaptTempT / adaptTempTOld) );
++   }
++   return scaled;
+ }
+ 
+ void Sequencer::reassignVelocities(BigReal timestep, int step)
+@@ -1289,6 +1301,26 @@
+   }
+ }
+ 
++void Sequencer::langRescaleVelocities(int step)
++{
++  if ( simParams->langRescaleOn ) {
++    FullAtom *a = patch->atom.begin();
++    BigReal factor = broadcast->langRescaleFactor.get(step);
++    for ( int i = 0; i < patch->numAtoms; ++i )
++      a[i].velocity *= factor;
++  }
++}
++
++void Sequencer::tNHCRescaleVelocities(int step)
++{
++  if ( simParams->tNHCOn ) {
++    FullAtom *a = patch->atom.begin();
++    BigReal factor = broadcast->tNHCRescaleFactor.get(step);
++    for ( int i = 0; i < patch->numAtoms; ++i )
++      a[i].velocity *= factor;
++  }
++}
++
+ void Sequencer::saveForce(const int ftag)
+ {
+   patch->saveForce(ftag);
+@@ -2127,6 +2159,7 @@
+     ldbSteps = LdbCoordinator::Object()->getNumStepsToRun();
+   }
+   if ( ! --ldbSteps ) {
++    //CkPrintf("Sequencer : rebalancing %d, thread %p\n", timestep, CthSelf());
+     patch->submitLoadStats(timestep);
+     ldbCoordinator->rebalance(this,patch->getPatchID());
+     pairlistsAreValid = 0;
+diff -u -wdB thstat_old/Sequencer.h thstat_new/Sequencer.h
+--- thstat_old/Sequencer.h	2013-10-30 13:26:16.000000000 -0500
++++ thstat_new/Sequencer.h	2016-06-27 10:49:39.798623810 -0500
+@@ -74,7 +74,7 @@
+     void reloadCharges();
+ 
+     BigReal adaptTempT;         // adaptive tempering temperature
+-    void adaptTempUpdate(int); // adaptive tempering temperature update
++    Bool adaptTempUpdate(int); // adaptive tempering temperature update
+ 
+     void rescaleVelocities(int);
+     void rescaleaccelMD(int, int, int); // for accelMD
+@@ -83,6 +83,8 @@
+     void reinitVelocities(void);
+     void rescaleVelocitiesByFactor(BigReal);
+     void tcoupleVelocities(BigReal,int);
++    void langRescaleVelocities(int);
++    void tNHCRescaleVelocities(int);
+     void berendsenPressure(int);
+       int berendsenPressure_count;
+       int checkpoint_berendsenPressure_count;
+diff -u -wdB thstat_old/SimParameters.C thstat_new/SimParameters.C
+--- thstat_old/SimParameters.C	2015-12-08 09:41:37.000000000 -0600
++++ thstat_new/SimParameters.C	2016-06-29 15:59:29.672801261 -0500
+@@ -1178,6 +1178,52 @@
+      "containing the temperature coupling term B(i);\n"
+      "default is 'O'", PARSE_STRING);
+ 
++   //  Get parameters for the Langevin velocity-rescaling thermostat
++   opts.optionalB("main", "langrescale", 
++      "Should Langevin velocity-rescaling thermostat be turned on?",
++      &langRescaleOn, FALSE);
++   opts.require("langrescale", "langRescaleTemp",
++    "Temperature for Langevin velocity-rescaling thermostat",
++    &langRescaleTemp);
++   opts.range("langRescaleTemp", NOT_NEGATIVE);
++   opts.units("langRescaleTemp", N_KELVIN);
++   opts.optional("langrescale", "langRescaleDt",
++    "Inverse viscosity in femtoseconds for Langevin velocity-rescaling thermostat",
++    &langRescaleDt, 20.0);
++
++   //  Get parameters for the Nose-Hoover chain thermostat
++   //  Nose-Hoover chains: The canonical ensemble via continuous dynamics 
++   //  Glenn J. Martyna, Michael L. Klein, and Mark Tuckerman, JCP 97 (4) 2635
++   opts.optionalB("main", "tNHC", "Should Nose-Hoover chain thermostat be turned on?",
++      &tNHCOn, FALSE);
++   opts.require("tNHC", "tNHCTemp", "Temperature for Nose-Hoover chain thermostat",
++    &tNHCTemp);
++   opts.range("tNHCTemp", NOT_NEGATIVE);
++   opts.units("tNHCTemp", N_KELVIN);
++   opts.require("tNHC", "tNHCLen", "Length of Nose-Hoover chain",
++    &tNHCLen, 1);
++   opts.range("tNHCLen", POSITIVE);
++   opts.optional("tNHC", "tNHCPeriod", "Oscillation period in femtoseconds of the Nose-Hoover chain",
++    &tNHCPeriod, 100.0);
++   opts.range("tNHCPeriod", POSITIVE);
++   opts.optional("tNHC", "tNHCFile", "Restart file for the NH-chain",
++       tNHCFile);
++   opts.optional("tNHC", "tNHCFileFreq", "Frequency of writing restart file for the NH-chain",
++       &tNHCFileFreq, 10000);
++   opts.range("tNHCFileFreq", POSITIVE);
++   opts.optionalB("tNHC", "tNHCFileReadMass", "Read mass from the restart file, if any",
++       &tNHCFileReadMass, FALSE);
++
++   opts.optionalB("main", "keHist", "Should kinetic energy histogram be turned on?",
++       &keHistOn, FALSE);
++   opts.optional("keHist", "keHistBin", "Bin size of the histogram of the kinetic energy",
++       &keHistBin, 1.0);
++   opts.optional("keHist", "keHistFile", "Histogram file for the kinetic energy",
++       keHistFile);
++   opts.optional("keHist", "keHistFileFreq", "Frequency of writing the histogram file for the kinetic energy",
++       &keHistFileFreq, 10000);
++   opts.range("keHistFileFreq", POSITIVE);
++
+    opts.optional("main", "rescaleFreq", "Number of steps between "
+     "velocity rescaling", &rescaleFreq);
+    opts.range("rescaleFreq", POSITIVE);
+@@ -1383,6 +1429,8 @@
+    opts.range("adaptTempCgamma", NOT_NEGATIVE);
+    opts.optionalB("adaptTempMD","adaptTempLangevin","Send adaptTemp temperature to langevin thermostat",&adaptTempLangevin,TRUE);
+    opts.optionalB("adaptTempMD","adaptTempRescaling","Send adaptTemp temperature to velocity rescaling thermostat", &adaptTempRescale,TRUE);
++   opts.optionalB("adaptTempMD","adaptTempLangRescale","Send adaptTemp temperature to Langevin-style velocity rescaling thermostat", &adaptTempLangRescale,TRUE);
++   opts.optionalB("adaptTempMD","adaptTempTNHC","Send adaptTemp temperature to Nose-Hoover chain thermostat",&adaptTempTNHC,TRUE);
+    opts.optional("adaptTempMD", "adaptTempInFile", "File containing restart information for adaptTemp", adaptTempInFile);
+    opts.optional("adaptTempMD", "adaptTempRestartFile", "File for writing adaptTemp restart information", adaptTempRestartFile);
+    opts.require("adaptTempRestartFile","adaptTempRestartFreq", "Frequency of writing restart file", &adaptTempRestartFreq,0);
+@@ -2174,6 +2222,22 @@
+ 
+ }
+ 
++// return the temperature of the active thermostat
++BigReal SimParameters::thermostatTemp(void)
++{
++  if ( langRescaleOn ) {
++    return langRescaleTemp;
++  } else if ( tNHCOn ) {
++    return tNHCTemp;
++  } else if ( langevinOn ) {
++    return langevinTemp;
++  } else if ( rescaleFreq > 0 ) {
++    return rescaleTemp;
++  } else {
++    return initialTemp;
++  }
++}
++
+ #ifdef MEM_OPT_VERSION
+ //This global var is defined in mainfunc.C
+ extern char *gWorkDir;
+@@ -2989,9 +3053,15 @@
+    }
+    // END LA
+ 
+-   if (tCoupleOn && opts.defined("rescaleFreq") )
++   int thstat_cnt = 0;
++   if ( tCoupleOn ) thstat_cnt++;
++   if ( opts.defined("rescaleFreq") ) thstat_cnt++;
++   if ( langRescaleOn ) thstat_cnt++;
++   if ( tNHCOn ) thstat_cnt++;
++
++   if ( thstat_cnt > 1 )
+    {
+-      NAMD_die("Temperature coupling and temperature rescaling are mutually exclusive");
++      NAMD_die("Temperature coupling, temperature rescaling, Langevin-style velocity rescaling thermostat, and Nose-Hoover chain thermostat are mutually exclusive");
+    }
+ 
+    if (globalOn && CkNumPes() > 1)
+@@ -3033,8 +3103,8 @@
+       maximumMove = 0.75 * pairlistDist/stepsPerCycle;
+    }
+    if (adaptTempOn) {
+-     if (!adaptTempRescale && !adaptTempLangevin) 
+-        NAMD_die("Adaptive tempering needs to be coupled to either the Langevin thermostat or velocity rescaling.");
++     if (!adaptTempRescale && !adaptTempLangevin && !adaptTempLangRescale && !adaptTempTNHC) 
++        NAMD_die("Adaptive tempering needs to be coupled to one of following: Langevin thermostat, velocity rescaling, Langevin velocity rescaling thermostat, and Nose-Hoover chain thermostat.");
+      if (opts.defined("adaptTempInFile") && (opts.defined("adaptTempTmin") ||
+                                              opts.defined("adaptTempTmax") ||
+                                              adaptTempBins != 0)) 
+@@ -3043,6 +3113,9 @@
+                                              opts.defined("adaptTempTmax") &&
+                                              adaptTempBins != 0 ))  
+         NAMD_die("Need to specify either adaptTempInFile or all of {adaptTempTmin, adaptTempTmax,adaptTempBins} if adaptTempMD is on.");
++     if ( rescaleFreq > 0 )
++       iout << iWARN << "Velocity rescaling does not sample the exact Boltzmann distribution "
++	 "and adaptive tempering will not work properly\n" << endi;
+    }
+    if (langevinOn) {
+      if ( ! opts.defined("langevinDamping") ) langevinDamping = 0.0;
+@@ -3188,6 +3261,8 @@
+      else if (reassignFreq > 0)	alchTemp = reassignTemp;
+      else if (langevinOn) 	alchTemp = langevinTemp;
+      else if (tCoupleOn) 	alchTemp = tCoupleTemp;
++     else if (langRescaleOn)    alchTemp = tNHCTemp;
++     else if (tNHCOn)           alchTemp = tNHCTemp;
+      else NAMD_die("Alchemical FEP can be performed only in constant temperature simulations\n");
+ 
+      if (reassignFreq > 0 && reassignIncr != 0)
+@@ -3820,6 +3895,16 @@
+   tCoupleTemp = 0.0;
+    }
+ 
++   if (!opts.defined("langRescale"))
++   {
++     langRescaleTemp = 0.0;
++   }
++
++   if (!opts.defined("tNHC"))
++   {
++     tNHCTemp = 0.0;
++   }
++
+    if (HydrogenBonds)
+    {
+      if (daCutoffDist > pairlistDist)
+@@ -4890,6 +4975,26 @@
+       iout << endi;
+    }
+ 
++   if (langRescaleOn)
++   {
++      iout << iINFO << "LANGEVIN-STYLE VELOCITY RESCALING THERMOSTAT ACTIVE\n";
++      iout << iINFO << "    TARGET TEMPERATURE " << langRescaleTemp << " K\n";
++      iout << iINFO << "    INVERSE VISCOSITY  " << langRescaleDt << " fs\n";
++      iout << endi;
++   }
++
++   if (tNHCOn)
++   {
++      iout << iINFO << "NOSE-HOOVER CHAIN THERMOSTAT ACTIVE\n";
++      iout << iINFO << "    TARGET TEMPERATURE " << tNHCTemp << " K\n";
++      iout << iINFO << "    CHAIN LENGTH       " << tNHCLen << "\n";
++      iout << iINFO << "    OSCILLATION PERIOD " << tNHCPeriod << " fs\n";
++      if ( tNHCFileReadMass ) {
++        iout << iINFO << "    READ MASS FROM     " << tNHCFile << "\n";
++      }
++      iout << endi;
++   }
++
+    if (minimizeOn)
+    {
+       iout << iINFO << "OLD STYLE MINIMIZATION ACTIVE\n";
+diff -u -wdB thstat_old/SimParameters.h thstat_new/SimParameters.h
+--- thstat_old/SimParameters.h	2015-09-04 17:20:03.000000000 -0500
++++ thstat_new/SimParameters.h	2016-06-29 15:59:38.230858708 -0500
+@@ -497,6 +497,26 @@
+ 					//  active
+ 	BigReal tCoupleTemp;		//  Temperature for temp coupling
+ 
++	Bool langRescaleOn;		//  Flag TRUE-> Langevin velocity-rescaling thermostat active
++	                   		//  Bussi, Donadio, and Parrinello, JCP 126, 014101 (2007)
++	BigReal langRescaleTemp;	//  Temperature for Langevin velocity-rescaling thermostat
++	BigReal langRescaleDt;	        //  Inverse viscosity in femtoseconds for Langevin velocity-rescaling thermostat
++	int langRescaleFreq;	        //  number of MD steps between two Langevin velocity-rescaling steps
++
++	Bool tNHCOn;			// Flag TRUE-> Nose-Hoover chain thermostat
++	            			// Martyna, Klein, and Tuckerman, JCP 97, 2635 (1992)
++	BigReal tNHCTemp;		// Temperature of the Nose-Hoover chain
++	int tNHCLen;			// Length of the Nose-Hoover chain
++	BigReal tNHCPeriod;		// Oscillation period in femtoseconds of the Nose-Hoover chain
++	char tNHCFile[128];		// Restart file for the NH-chain
++	int tNHCFileFreq;		// Frequency of writing the NH-chain restart file
++	Bool tNHCFileReadMass;		// Read mass from the restart file
++
++	Bool keHistOn;			// Flag TRUE-> Kinetic energy histogram
++	BigReal keHistBin;		// Bin size of the histogram of the kinetic energy
++	char keHistFile[128];		// Histogram file for the kinetic energy 
++	int keHistFileFreq;		// Frequency of writing the kinetic energy histogram file
++
+ 	int rescaleFreq;		//  Velocity rescale frequency
+ 	BigReal rescaleTemp;		//  Temperature to rescale to
+ 
+@@ -527,6 +547,8 @@
+         BigReal adaptTempCgamma;               //  Cgamma variable for adaptive bin averaging Cgamma = 0 is normal Averaging. 1 > Cgamma >= 0
+         Bool adaptTempLangevin;                //  Couple to Langevin Thermostat
+         Bool adaptTempRescale;                 //  Couple to Vel. Rescaling
++        Bool adaptTempLangRescale;             //  Couple to Langevin-style velocity rescaling thermostat
++        Bool adaptTempTNHC;                    //  Couple to Nose-Hoover chain thermostat
+         char adaptTempInFile[128];             //  Restart information for adaptTemp to read
+         char adaptTempRestartFile[128];        //  File to write restart information
+         int  adaptTempRestartFreq;             //  Frequency of writing restart output
+@@ -921,6 +943,7 @@
+         int issetinparseopts(const char* name);
+ 
+        	void readExtendedSystem(const char *filename, Lattice *latptr=0);
++        BigReal thermostatTemp(void);
+ private:
+         ParseOptions *parseopts;
+ 

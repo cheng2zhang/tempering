@@ -165,6 +165,17 @@ protected:
     BigReal tNHCRescaleFactorPrev;
     BigReal *tNHCzeta;
     BigReal *tNHCmass;
+    void keHistInit(void);
+    void keHistDone(int);
+    void keHistUpdate(int);
+    // save the kinetic energy to file
+    // the first column is the kinetic energy
+    // the second and third columns are the
+    // normalized histogram and the reference value
+    void keHistSave(int);
+    void keHistLoad(void);
+    BigReal *keHist;
+    int keHistBinMax;
     void berendsenPressure(int);
       // Tensor berendsenPressure_avg;
       // int berendsenPressure_count;
@@ -242,7 +253,7 @@ protected:
 
 //JS for adaptive temperature sampling
    void adaptTempInit(int step);
-   void adaptTempUpdate(int step, int minimize = 0);
+   Bool adaptTempUpdate(int step, int minimize = 0);
    void adaptTempWriteRestart(int step);
    BigReal *adaptTempPotEnergyAveNum;
    BigReal *adaptTempPotEnergyAveDen;

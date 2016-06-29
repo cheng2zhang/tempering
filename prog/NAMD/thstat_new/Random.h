@@ -143,12 +143,12 @@ public:
   // return a number from a gamma distribution of k degrees
   BigReal gamma(BigReal k)
   {
-    int lt1 = 0;
+    Bool lt1 = FALSE;
     BigReal a, b, x, v, u;
 
     if ( k <= 0 ) return 0;
     if ( k < 1 ) {
-      lt1 = 1;
+      lt1 = TRUE;
       k += 1;
     }
     a = k - 1./3;
@@ -168,7 +168,7 @@ public:
     }
 
     x = a * v;
-    if ( lt1 ) x *= pow(1 - uniform(), 1./(k - 1));
+    if ( lt1 ) x *= pow(1. - uniform(), 1./(k - 1));
     return x;
   }
 

@@ -436,6 +436,7 @@ void Controller::integrate(int scriptTask) {
     rebalanceLoad(step);
 
   }
+    keHistInit();
 
     // Handling SIGINT doesn't seem to be working on Lemieux, and it
     // sometimes causes the net-xxx versions of NAMD to segfault on exit, 
@@ -459,15 +460,12 @@ void Controller::integrate(int scriptTask) {
         reassignVelocities(step);
 	
         langRescaleVelocities(step, TRUE);
-	tNHCRescaleVelocities(step, TRUE);
-        //CkPrintf("### step %d, Controller before adaptTemp, temperature %g\n", step, temperature);
-        adaptTempUpdate(step);
-        //CkPrintf("### step %d, Controller after  adaptTemp, temperature %g\n", step, temperature);
+        tNHCRescaleVelocities(step, TRUE);
+        Bool scaled = adaptTempUpdate(step);
+        keHistUpdate(step);
         printDynamicsEnergies(step);
         outputFepEnergy(step);
         outputTiEnergy(step);
-        tpcnt += 1;
-        tpsum += temperature;
         if(traceIsOn()){
             traceUserEvent(eventEndOfTimeStep);
             sprintf(traceNote, "s:%d", step);
@@ -478,7 +476,6 @@ void Controller::integrate(int scriptTask) {
   //   NAMD_quit();
   // }
         outputExtendedSystem(step);
-        //CkPrintf("$$$ step %d, temperature %g\n", step, temperature);
 #if CYCLE_BARRIER
         cycleBarrier(!((step+1) % stepsPerCycle),step);
 #elif  PME_BARRIER
@@ -510,8 +507,11 @@ void Controller::integrate(int scriptTask) {
 		}
 	}
 #endif
-	 
-        //CkPrintf("step %d\n", step);
+        if ( scaled && ldbSteps == 1 ) {
+          // collect Hi's if we're about to rebalance load
+          collection->enqueueHi(step);
+        }
+	//if ( ldbSteps == 1 ) CkPrintf("step %d, before rebalanceLoad(), Controller PE %d/%d, thread %p\n", step, CkMyPe(), CkNumPes(), CthSelf());
         rebalanceLoad(step);
 
 #if  PME_BARRIER
@@ -521,7 +521,7 @@ void Controller::integrate(int scriptTask) {
     // signal(SIGINT, oldhandler);
     
     tNHCDone(step);
-    CkPrintf("tp ave. %g\n", tpsum/tpcnt);
+    keHistDone(step);
 }
 
 
@@ -1146,21 +1146,20 @@ void Controller::langRescaleVelocities(int step, Bool isPrev)
     tp *= BOLTZMANN;
 
     BigReal dt = simParams->dt / simParams->langRescaleDt;
-    dt *= 0.5; // two half steps
+    dt *= 0.5; // doing a half time step, called twice in an MD step
     BigReal c = exp(-dt);
 
     // integrate two half steps
-    int dof = numDegFreedom; // Node::Object()->molecule->num_deg_freedom();
+    int dof = numDegFreedom;
+    if ( dof <= 0 ) dof = Node::Object()->molecule->num_deg_freedom();
     BigReal r = random->gaussian();
     BigReal r2 = random->chisqr(dof - 1);
-    BigReal ek1 = BOLTZMANN * temperature * dof / 2;
-    BigReal ek2 = ek1 + (1 - c) * ((r2 + r * r) * tp / 2 - ek1);
-                + 2 * r * sqrt(c * (1 - c) * ek1 * tp / 2);
+    BigReal ek1 = BOLTZMANN * temperature * dof * 0.5;
+    BigReal ek2 = ek1 + (1 - c) * ((r2 + r * r) * 0.5 * tp - ek1)
+                + 2 * r * sqrt(c * (1 - c) * ek1 * 0.5 * tp);
     if ( ek2 < 0 ) ek2 = 0;
     BigReal fac2 = ek2 / ek1;
     BigReal factor = sqrt( fac2 );
-    //CkPrintf("Controller step %d, freq %d, dt %g/%g, tp %g/%g, c %g, fac %g r2 + r*r %g, %d, ek %g(%g) -> %g(%g)\n",
-    //    step, simParams->langRescaleFreq, simParams->dt, dt, tp, tp/BOLTZMANN, c, factor, r2 + r*r, dof, ek1, 2*ek1/dof/BOLTZMANN, ek2, 2*ek2/dof/BOLTZMANN);
     if ( !isPrev ) {
       broadcast->langRescaleFactor.publish(step, factor * langRescaleFactorPrev);
     } else {
@@ -1170,7 +1169,6 @@ void Controller::langRescaleVelocities(int step, Bool isPrev)
     temperature *= fac2;
     kineticEnergy *= fac2;
     kineticEnergyCentered *= fac2;
-    kineticEnergyHalfstep *= fac2;
   }
 }
 
@@ -1189,7 +1187,6 @@ void Controller::tNHCInit(void)
   // reference mass choices, see Appendix B of JCP 97 (4) 2635
   BigReal mass2 = per * per * kT;
   BigReal mass1 = mass2 * dof;
-  CkPrintf("NHC %d %g %g\n", dof, mass1, mass2);
 
   for ( i = 0; i < nnhc; i++ ) {
     tNHCzeta[i] = 0;
@@ -1198,6 +1195,7 @@ void Controller::tNHCInit(void)
 
   // try to load the chain variables, ok if it fails
   tNHCLoad();
+  CkPrintf("NHC %d, mass1 %g, mass2 %g\n", dof, mass1, mass2);
   for ( i = 0; i < nnhc; i++ )
     CkPrintf("NHC %d: zeta %g, mass %g\n", i+1, tNHCzeta[i], tNHCmass[i]);
   tNHCRescaleFactorPrev = 1.0;
@@ -1228,8 +1226,8 @@ void Controller::tNHCRescaleVelocities(int step, Bool isPrev)
     tp *= BOLTZMANN;
 
     Real dt = simParams->dt * 0.5; // only for half step
-    //int dof = Node::Object()->molecule->num_deg_freedom();
     int dof = numDegFreedom;
+    if ( dof <= 0 ) dof = Node::Object()->molecule->num_deg_freedom();
     int nnhc = simParams->tNHCLen, i, j, k;
     BigReal s, GQ, mvv, factor;
 
@@ -1242,13 +1240,10 @@ void Controller::tNHCRescaleVelocities(int step, Bool isPrev)
         GQ = tNHCmass[j-1] * tNHCzeta[j-1] * tNHCzeta[j-1] - tp;
       }
       tNHCzeta[j] = (tNHCzeta[j] * s + GQ /tNHCmass[j] * dt*0.5) * s;
-      //iout << "step " << step << ", j " << j << ", GQ " << GQ << ", mass " << tNHCmass[j] << ", dt " << dt << "\n";
     }
 
     // velocity scaling factor
     factor = exp( -tNHCzeta[0] * dt );
-    //CkPrintf("Controller step %d, dt %g/%g, tp %g/%g, c %g, fac %g r2 + r*r %g, %d, ek %g(%g) -> %g(%g)\n",
-    //    step, simParams->dt, dt, tp, tp/BOLTZMANN, c, factor, r2 + r*r, dof, ek1, 2*ek1/dof/BOLTZMANN, ek2, 2*ek2/dof/BOLTZMANN);
     if ( !isPrev ) {
       broadcast->tNHCRescaleFactor.publish(step, factor * tNHCRescaleFactorPrev);
     } else {
@@ -1259,7 +1254,6 @@ void Controller::tNHCRescaleVelocities(int step, Bool isPrev)
     temperature *= fac2;
     kineticEnergy *= fac2;
     kineticEnergyCentered *= fac2;
-    kineticEnergyHalfstep *= fac2;
     mvv *= fac2;
 
     for ( j = 0; j < nnhc; j++ ) {
@@ -1285,7 +1279,7 @@ void Controller::tNHCSave(int step)
   int i, nnhc = simParams->tNHCLen;
 
   if ( (fp = fopen(simParams->tNHCFile, "w")) == NULL ) {
-    iout << "Error: cannot write " << simParams->tNHCFile << "\n";
+    iout << "Error: cannot write " << simParams->tNHCFile << "\n" << endi;
     return;
   }
   fprintf(fp, "%d %d\n", nnhc, step);
@@ -1306,13 +1300,13 @@ void Controller::tNHCLoad(void)
   int i, nnhc, step;
 
   if ( (fp = fopen(simParams->tNHCFile, "r")) == NULL ) {
-    iout << "Cannot read " << simParams->tNHCFile << "\n";
+    iout << "Cannot read " << simParams->tNHCFile << "\n" << endi;
     return;
   }
   fscanf(fp, "%d%d", &nnhc, &step);
   if ( nnhc != simParams->tNHCLen ) {
     iout << "Error: NH-chain length mismatch " << nnhc
-         << " vs. " << simParams->tNHCLen << "\n";
+         << " vs. " << simParams->tNHCLen << "\n" << endi;
     return;
   }
   for ( i = 0; i < nnhc; i++ )
@@ -1324,6 +1318,81 @@ void Controller::tNHCLoad(void)
   }
 
   fclose(fp);
+}
+
+void Controller::keHistInit(void)
+{
+  BigReal keHistTemp = simParams->thermostatTemp();
+  BigReal ke = BOLTZMANN * keHistTemp * numDegFreedom / 2;
+  keHistBinMax = (int) (5.0 * ke / simParams->keHistBin);
+  CkPrintf("keHistInit: temperature %g, dof %d, keHistBinMax %d\n", keHistTemp, numDegFreedom, keHistBinMax);
+  keHist = new BigReal [keHistBinMax];
+  int i;
+  for ( i = 0; i < keHistBinMax; i++ ) keHist[i] = 0;
+  keHistLoad(); // try to load the previous histogram
+}
+
+void Controller::keHistUpdate(int step)
+{
+  BigReal ke = BOLTZMANN * temperature * numDegFreedom / 2;
+  if ( simParams->adaptTempOn ) {
+    ke *= simParams->thermostatTemp() / adaptTempT;
+  }
+  int i = (int) ( ke / simParams->keHistBin );
+  if ( i < keHistBinMax ) keHist[i] += 1;
+  if ( step > 0 && step % simParams->keHistFileFreq == 0 ) {
+    keHistSave(step);
+  }
+}
+
+void Controller::keHistSave(int step)
+{
+  FILE *fp = fopen(simParams->keHistFile, "w");
+  if ( fp == NULL ) return;
+  fprintf(fp, "# %d %d\n", numDegFreedom, step);
+  int i;
+  BigReal tot = 0;
+  for ( i = 0; i < keHistBinMax; i++ )
+    tot += keHist[i];
+
+  // normalization of the reference curve
+  BigReal norm = (numDegFreedom % 2) ? 0.5 * log(M_PI) : 0;
+  for ( i = 2 - numDegFreedom % 2; i < numDegFreedom; i += 2 )
+    norm += log(i*0.5);
+  BigReal tp = simParams->thermostatTemp() * BOLTZMANN;
+  BigReal dk = simParams->keHistBin;
+  for ( i = 0; i < keHistBinMax; i++ ) {
+    if ( keHist[i] <= 0 ) continue;
+    double hist = keHist[i] / ( dk * tot );
+    double ke = (i + 0.5) * dk;
+    double histref = exp(log(ke/tp) * (numDegFreedom*0.5-1) -ke/tp - norm) / tp;
+    fprintf(fp, "%g\t%g\t%g\t%g\n", (i + 0.5) * dk, hist, histref, keHist[i]);
+  }
+  fclose(fp);
+}
+
+void Controller::keHistLoad(void)
+{
+  FILE *fp = fopen(simParams->keHistFile, "r");
+  if ( fp == NULL ) return;
+  char buf[128];
+
+  fgets(buf, sizeof buf, fp);
+  while ( fgets(buf, sizeof buf, fp) ) {
+    double ke, hist1, hist2, hist;
+    sscanf(buf, "%lf%lf%lf%lf", &ke, &hist1, &hist2, &hist);
+    int i = (int) (ke / simParams->keHistBin);
+    keHist[i] = hist;
+  }
+  fclose(fp);
+  iout << "Loaded previous histogram from "
+       << simParams->keHistFile << ".\n" << endi;
+}
+
+void Controller::keHistDone(int step)
+{
+  keHistSave(step);
+  delete[] keHist;
 }
 
 static char *FORMAT(BigReal X)
@@ -1852,11 +1921,7 @@ void Controller::adaptTempInit(int step) {
       adaptTempCg = simParams->adaptTempCgamma;   
       adaptTempDt  = simParams->adaptTempDt;
       adaptTempDBeta = (adaptTempBetaMax - adaptTempBetaMin)/(adaptTempBins);
-      adaptTempT = simParams->initialTemp; 
-      if (simParams->langevinOn)
-        adaptTempT = simParams->langevinTemp;
-      else if (simParams->rescaleFreq > 0)
-        adaptTempT = simParams->rescaleTemp;
+      adaptTempT = simParams->thermostatTemp();
       for(int j = 0; j < adaptTempBins; ++j){
           adaptTempPotEnergyAveNum[j] = 0.;
           adaptTempPotEnergyAveDen[j] = 0.;
@@ -1913,17 +1978,18 @@ void Controller::adaptTempWriteRestart(int step) {
     }
 }    
 
-void Controller::adaptTempUpdate(int step, int minimize)
+Bool Controller::adaptTempUpdate(int step, int minimize)
 {
+    Bool scaled = FALSE;
     //Beta = 1./T
-    if ( !simParams->adaptTempOn ) return;
+    if ( !simParams->adaptTempOn ) return scaled;
     int j = 0;
     if (step == simParams->firstTimestep) {
         adaptTempInit(step);
-        return;
+        return scaled;
     }
     if ( minimize || (step < simParams->adaptTempFirstStep ) || 
-        ( simParams->adaptTempLastStep > 0 && step > simParams->adaptTempLastStep )) return;
+        ( simParams->adaptTempLastStep > 0 && step > simParams->adaptTempLastStep )) return scaled;
     const int adaptTempOutFreq  = simParams->adaptTempOutFreq;
     const bool adaptTempDebug  = simParams->adaptTempDebug;
     //Calculate Current inverse temperature and bin 
@@ -1936,6 +2002,11 @@ void Controller::adaptTempUpdate(int step, int minimize)
                               << " adaptTempDBeta: " << adaptTempDBeta 
                                << " betaMin:" << adaptTempBetaMin 
                                << " betaMax: " << adaptTempBetaMax << "\n";
+    if ( adaptTempBin < 0 ) {
+      adaptTempBin = 0;
+    } else if ( adaptTempBin >= adaptTempBins ) {
+      adaptTempBin = adaptTempBins - 1;
+    }
     adaptTempPotEnergySamples[adaptTempBin] += 1;
     BigReal gammaAve = 1.-adaptTempCg/adaptTempPotEnergySamples[adaptTempBin];
 
@@ -2106,9 +2177,11 @@ void Controller::adaptTempUpdate(int step, int minimize)
         dT += random->gaussian()*sqrt(2.*adaptTempDt)*adaptTempT;
         dT += adaptTempT;
         // Check again, if not then keep original adaptTempTor assign random.
-        if ( dT > 1./adaptTempBetaMin ) {
+        if ( dT > 1./adaptTempBetaMin || dT < 1./adaptTempBetaMax ) {
           dT = adaptTempT;
-          /* adaptTempRandom is invalid
+        }
+        /* the adaptTempRandom scheme is invalid
+        if ( dT > 1./adaptTempBetaMin ) {
           if (!simParams->adaptTempRandom) {             
              //iout << iWARN << "ADAPTEMP: " << step << " T= " << dT 
              //     << " K higher than adaptTempTmax."
@@ -2123,11 +2196,8 @@ void Controller::adaptTempUpdate(int step, int minimize)
              dT = adaptTempBetaMin +  random->uniform()*(adaptTempBetaMax-adaptTempBetaMin);             
              dT = 1./dT;
           }
-          */
         } 
         else if ( dT  < 1./adaptTempBetaMax ) {
-          dT = adaptTempT;
-          /* adaptTempRandom is invalid
           if (!simParams->adaptTempRandom) {            
             //iout << iWARN << "ADAPTEMP: " << step << " T= "<< dT 
             //     << " K lower than adaptTempTmin."
@@ -2141,8 +2211,8 @@ void Controller::adaptTempUpdate(int step, int minimize)
             dT = adaptTempBetaMin +  random->uniform()*(adaptTempBetaMax-adaptTempBetaMin);
             dT = 1./dT;
           }
-          */
         }
+        */
         else if (adaptTempAutoDt) {
           //update temperature step size counter
           //FOR "TRUE" ADAPTIVE TEMPERING 
@@ -2210,13 +2280,12 @@ void Controller::adaptTempUpdate(int step, int minimize)
       }
       adaptTempT = dT; 
       broadcast->adaptTemperature.publish(step,adaptTempT);
+      scaled = TRUE;
       // temperature is to be used for the Langevin velocity-rescaling
       // and NH-chain thermostats, so it needs to be updated.
       temperature *= tScale;
       kineticEnergy *= tScale;
       kineticEnergyCentered *= tScale;
-      kineticEnergyHalfstep *= tScale;
-      //CkPrintf("### step %d, Controller within adaptTemp, scale %g\n", step, sqrt(tScale));
     }
     adaptTempWriteRestart(step);
     if ( ! (step % adaptTempOutFreq) ) {
@@ -2227,7 +2296,7 @@ void Controller::adaptTempUpdate(int step, int minimize)
              << " ENERGYVAR " << std::setprecision(10) << potEnergyVariance;
         iout << "\n" << endi;
    }
-   
+   return scaled;
 }
 
 
@@ -3383,6 +3452,7 @@ void Controller::rebalanceLoad(int step)
     ldbSteps = LdbCoordinator::Object()->getNumStepsToRun();
   }
   if ( ! --ldbSteps ) {
+    //CkPrintf("Controller: rebalancing %d, thread %p\n", step, CthSelf());
     startBenchTime -= CmiWallTimer();
 	Node::Object()->outputPatchComputeMaps("before_ldb", step);
     LdbCoordinator::Object()->rebalance(this);	
