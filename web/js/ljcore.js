@@ -16,7 +16,7 @@ function lj_initfcc2d(lj)
 
   for ( id = 0, i = 0; i < n1 && id < n; i++ ) {
     for ( j = 0; j < n1 && id < n; j++ ) {
-      if ( (i + j) % 2 === 0 ) {
+      if ( (i+j) % 2 === 0 ) {
         // add some noise to prevent two atoms happened to
         // be separated precisely by the cutoff distance,
         // which might be half of the box
@@ -38,10 +38,10 @@ function lj_initfcc3d(lj)
   var n1 = Math.floor(Math.pow(2*n, 1.0/3) + 0.999999); // # of particles per side
   var a = lj.l / n1;
   var noise = a * 1e-5;
-  for ( id = 0, i = 0; i < n1 && id < n; i++ ) {
-    for ( j = 0; j < n1 && id < n; j++ ) {
-      for ( k = 0; k < n1 && id < n; k++ ) {
-        if ( (i + j + k) % 2 === 0 ) {
+  for (id = 0, i = 0; i < n1 && id < n; i++) {
+    for (j = 0; j < n1 && id < n; j++) {
+      for (k = 0; k < n1 && id < n; k++) {
+        if ((i+j+k) % 2 === 0) {
           /* add some noise to prevent two atoms happened to
            * be separated by precisely some special cutoff distance,
            * which might be half of the box */
@@ -98,8 +98,6 @@ function lj_gettail3d(lj, rho, n)
 
 
 
-/* apply the view matrix */
-
 function lj_gettail(lj, rho, n)
 {
   if ( lj.dim == 2 ) {
@@ -122,7 +120,7 @@ function lj_setrho(lj, rho)
   var irc2 = irc * irc;
   var irc6 = irc2 * irc2 * irc2;
   lj.epot_shift = 4 * irc6 * (irc6 - 1);
-  var ret = lj_gettail(lj, rho, lj.n);
+  var ret = lj_gettail(lj, rho, lj.n); // to be defined in lj2d.h or lj3d.h
   lj.epot_tail = ret[0];
   lj.p_tail = ret[1];
 }
@@ -135,14 +133,11 @@ function LJ(n, dim, rho, rcdef)
 
   this.n = n;
   this.dim = dim;
-  this.dof = n * dim - dim * (dim + 1) / 2;
+  this.dof = n * dim - dim; // - dim * (dim + 1) / 2;
   this.rcdef = rcdef;
   this.x = newarr2d(n, dim);
   this.v = newarr2d(n, dim);
   this.f = newarr2d(n, dim);
-  this.x2 = newarr2d(n, dim);
-  this.r2ij = newarr2d(n, n);
-  this.r2i = newarr(n);
 
   lj_setrho(this, rho);
   lj_initfcc(this);
@@ -182,7 +177,7 @@ function lj_pbcdist2(dx, a, b, l, invl)
 
 
 /* compute force and virial, return energy */
-LJ.prototype.energy_low = function(x, r2ij)
+LJ.prototype.energy_low = function(x)
 {
   var dx = newarr(this.dim), dr2, dr6, ep, vir, rc2 = this.rc2;
   var l = this.l, invl = 1 / l;
@@ -191,8 +186,6 @@ LJ.prototype.energy_low = function(x, r2ij)
   for (ep = vir = 0, i = 0; i < n - 1; i++) {
     for (j = i + 1; j < n; j++) {
       dr2 = lj_pbcdist2(dx, x[i], x[j], l, invl);
-      r2ij[i][j] = dr2;
-      r2ij[j][i] = dr2;
       if (dr2 < rc2) {
         dr2 = 1 / dr2;
         dr6 = dr2 * dr2 * dr2;
@@ -211,7 +204,7 @@ LJ.prototype.energy_low = function(x, r2ij)
 
 LJ.prototype.energy = function()
 {
-  ret = this.energy_low(this.x, this.r2ij);
+  ret = this.energy_low(this.x);
   this.epot = ret[0];
   this.ep0  = ret[1];
   this.eps  = ret[2];
@@ -222,7 +215,7 @@ LJ.prototype.energy = function()
 
 
 /* compute force and virial, return energy */
-LJ.prototype.force_low = function(x, f, r2ij)
+LJ.prototype.force_low = function(x, f)
 {
   var dx = newarr(this.dim), fi = newarr(this.dim);
   var dr2, dr6, fs, ep, vir, rc2 = this.rc2;
@@ -236,8 +229,6 @@ LJ.prototype.force_low = function(x, f, r2ij)
     vzero(fi);
     for (j = i + 1; j < n; j++) {
       dr2 = lj_pbcdist2(dx, x[i], x[j], l, invl);
-      r2ij[i][j] = dr2;
-      r2ij[j][i] = dr2;
       if (dr2 < rc2) {
         dr2 = 1 / dr2;
         dr6 = dr2 * dr2 * dr2;
@@ -261,7 +252,7 @@ LJ.prototype.force_low = function(x, f, r2ij)
 
 LJ.prototype.force = function()
 {
-  var ret = this.force_low(this.x, this.f, this.r2ij);
+  var ret = this.force_low(this.x, this.f);
   this.epot = ret[0];
   this.ep0  = ret[1];
   this.eps  = ret[2];
@@ -279,11 +270,11 @@ LJ.prototype.calcp = function(tp)
 
 
 
-/* velocity-verlet */
-LJ.prototype.vv = function(dt)
+/* velocity-Verlet with force scaling */
+LJ.prototype.vv_fs = function(dt, fs)
 {
   var i, n = this.n;
-  var dth = dt * 0.5, l = this.l;
+  var dth = dt * 0.5 * fs, l = this.l;
 
   for (i = 0; i < n; i++) { // VV part 1
     vsinc(this.v[i], this.f[i], dth);
@@ -298,10 +289,44 @@ LJ.prototype.vv = function(dt)
 
 
 
+
+/* velocity-Verlet */
+LJ.prototype.vv = function(dt)
+{
+  this.vv_fs(dt, 1);
+};
+
+
+
+/* compute the kinetic energy */
+function lj_ekin(v, n)
+{
+  return md_ekin(v, null, n);
+}
+
+
+
 /* exact velocity rescaling thermostat */
 LJ.prototype.vrescale = function(tp, dt)
 {
   return md_vrescale(this.v, null, this.n, this.dof, tp, dt);
+};
+
+
+
+/* Nose-Hoover rescaling thermostat */
+LJ.prototype.nhchain = function(tp, dt, zeta, zmass)
+{
+  return md_nhchain(this.v, null, this.n, this.dof, tp, dt,
+      zeta, zmass);
+};
+
+
+
+/* exact velocity rescaling thermostat */
+LJ.prototype.langevin = function(tp, dt)
+{
+  return md_langevin(this.v, null, this.n, tp, dt);
 };
 
 
@@ -342,13 +367,16 @@ LJ.prototype.randmv = function(xi, amp)
 
 
 /* compute pair energy */
-function lj_pair(dr2, rc2)
+function lj_pair(xi, xj, l, invl, rc2)
 {
+  var dx = [0,0,0], dr2, invr2, invr6, vir, u;
+
+  dr2 = lj_pbcdist2(dx, xi, xj, l, invl);
   if (dr2 < rc2) {
-    var invr2 = 1 / dr2;
-    var invr6 = invr2 * invr2 * invr2;
-    var vir = invr6 * (48 * invr6 - 24); // f.r
-    var u  = 4 * invr6 * (invr6 - 1);
+    invr2 = 1 / dr2;
+    invr6 = invr2 * invr2 * invr2;
+    vir = invr6 * (48 * invr6 - 24); // f.r
+    u  = 4 * invr6 * (invr6 - 1);
     return [true, u, vir];
   } else {
     return [false, 0.0, 0.0];
@@ -362,27 +390,23 @@ LJ.prototype.depot = function(i, xi)
 {
   var j, n = this.n;
   var l = this.l, invl = 1/l, rc2 = this.rc2, u, vir, ret;
-  var dx = newarr(this.dim), r2;
 
-  u = 0.0;
+  u = 0;
   vir = 0.0;
   for ( j = 0; j < n; j++ ) { // pair
     if ( j === i ) {
       continue;
     }
-    r2 = ( i < j ) ? this.r2ij[i][j] : this.r2ij[j][i];
-    ret = lj_pair(r2, rc2);
+    ret = lj_pair(this.x[i], this.x[j], l, invl, rc2);
     if ( ret[0] ) {
       u -= ret[1];
       vir -= ret[2];
     }
-    r2 = lj_pbcdist2(dx, xi, this.x[j], l, invl);
-    ret = lj_pair(r2, rc2);
+    ret = lj_pair(xi, this.x[j], l, invl, rc2);
     if ( ret[0] ) {
       u += ret[1];
       vir += ret[2];
     }
-    this.r2i[j] = r2;
   }
   return [u, vir];
 };
@@ -390,25 +414,17 @@ LJ.prototype.depot = function(i, xi)
 
 
 /* commit a particle displacement */
-LJ.prototype.commit = function(i, xi, du, dvir)
+LJ.prototype.commit = function(i, xi, du, dvir, l)
 {
-  var j;
-  vwrap( vcopy(this.x[i], xi), this.l );
+  vwrap( vcopy(this.x[i], xi), l );
   this.ep0 += du;
   this.epot += du;
   this.vir += dvir;
-  for ( j = 0; j < i; j++ ) {
-    this.r2ij[j][i] = this.r2i[j];
-  }
-  for ( j = i + 1; j < this.n; j++ ) {
-    this.r2ij[i][j] = this.r2i[j];
-  }
 };
 
 
 
-/* Metropolis algorithm
- * graph this.g is updated */
+/* Metropolis algorithm */
 LJ.prototype.metro = function(amp, bet)
 {
   var acc = 0;
@@ -418,7 +434,6 @@ LJ.prototype.metro = function(amp, bet)
   var ret = this.depot(i, xi);
   var du = ret[0];
   var dvir = ret[1];
-
   if ( du < 0 ) {
     acc = 1;
   } else {
@@ -426,42 +441,11 @@ LJ.prototype.metro = function(amp, bet)
     acc = ( r < Math.exp( -bet * du ) );
   }
   if ( acc ) {
-    this.commit(i, xi, du, dvir);
+    this.commit(i, xi, du, dvir, this.l);
     return 1;
   }
   return 0;
 };
-
-
-
-/* update r2ij */
-function lj_mkr2ij(lj, x, r2ij, check)
-{
-  var dx = newarr(lj.dim), dr2, rc2 = lj.rc2, rm2 = lj.rcls * lj.rcls;
-  var l = lj.l, invl = 1 / l;
-  var i, j, n = lj.n;
-
-  for ( i = 0; i < n - 1; i++) {
-    for (j = i + 1; j < n; j++) {
-      dr2 = lj_pbcdist2(dx, x[i], x[j], l, invl);
-      if ( check ) {
-        if ( Math.abs( r2ij[i][j] - dr2 ) > 1e-5 ) {
-          console.log("r2ij corrupted for i", i, " j ", j, ": ", dr2, " ", r2ij[i][j]);
-          throw new Error("r2ij corruption");
-          stop();
-        }
-        var cij = (dr2 < rm2);
-        if ( lj.g.linked(i, j) != cij ) {
-          console.log("graph corrupted for i", i, " j ", j, ": ", dr2, " ", r2ij[i][j], " rm2 " , rm2, " cij ", cij, " gij ", lj.g.linked(i, j));
-          throw new Error("cij corruption");
-          stop();
-        }
-      }
-      r2ij[i][j] = dr2;
-      r2ij[j][i] = dr2;
-    }
-  }
-}
 
 
 

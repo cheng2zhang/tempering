@@ -70,7 +70,8 @@
     </div>
     <ul class="nav navbar-nav" id="tabheadings">
     <li class="tab" onclick="showtab('system-params')">System</li>
-    <li class="tab" onclick="showtab('md-params')">MD/MC</li>
+    <li class="tab" onclick="showtab('md-params')">MD</li>
+    <li class="tab" onclick="showtab('mc-params')">MC</li>
     <li class="tab" onclick="showtab('misc-params')">Misc.</li>
     </ul>
   </nav>
@@ -164,13 +165,63 @@
     class="form-control" onchange="changeparams()">.
   &nbsp;
 
-  <label for="thermostatdt">
-    Thermostat time step:
+  <label for="thermostattype">
+    Thermostat type:
   </label>
-  <input type="text" size="6" value="0.1" id="thermostatdt"
-    class="form-control" onchange="changeparams()">.
+  <select id="thermostattype" onchange="changeparams()">
+    <option value="v-rescale">(Langevin) velocity-rescaling</option>
+    <option value="Nose-Hoover">Nos&eacute;-Hoover chain</option>
+    <option value="Langevin">Langevin dynamics</option>
+  </select>.
   <br>
 
+  <label for="vresdamp">
+    Velocity-rescaling damping:
+  </label>
+  <input type="text" size="6" value="20.0" id="vresdamp"
+    onchange="changeparams()">.
+  &nbsp;
+
+  <label for="langdamp">
+    Langevin-dynamics damping:
+  </label>
+  <input type="text" size="6" value="1.0" id="langdamp"
+    onchange="changeparams()">.
+  <br>
+
+  <label for="nhclen">
+    Nos&eacute;-Hoover chain length:
+  </label>
+  <input type="text" size="6" value="5" id="nhclen"
+    onchange="changeparams()">;
+  &nbsp;
+
+  <label for="nhcmass1">
+    masses:
+    first
+  </label>
+  <input type="text" size="6" value="10.0" id="nhcmass1"
+    onchange="changeparams()">;
+  <label for="nbcmass2">
+    rest
+  </label>
+  <input type="text" size="6" value="1.0" id="nhcmass2"
+    onchange="changeparams()">.
+  &nbsp;
+  <br>
+  
+  <input type="checkbox" id="forcescaling"
+   onchange="changeparams()">
+  <label for="forcescaling">
+    Use force scaling to affect the temperature change.
+  </label>
+  &nbsp;
+  <br>
+  </form>
+  </div>
+
+  <div class="params-panel" id="mc-params">
+  <form class="form-inline">
   <div class="panel-title">Monte Carlo (MC)</div>
 
   <label for="nstepspermc">
@@ -226,7 +277,9 @@
   <div class="panel-title"> Misc. </div>
   <input type="checkbox" id="orthographic"
    onchange="paint()">
-  Orthographic.
+  <label for="orthographic">
+    Orthographic.
+  </label>
   &nbsp;
   <br>
 

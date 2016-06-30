@@ -14,7 +14,6 @@ var tpmax = 3.7;
 var tpcnt = 12;
 var rcdef = 1000.0;
 var mddt = 0.002;
-var thdt = 0.02;
 var nstepspsmd = 100; // number of steps per second for MD
 var nstepspfmd = 10;  // number of steps per frame for MD
 var nstepspsmc = 10000; // number of steps per second for MC
@@ -23,6 +22,14 @@ var simulmethod = "MC";
 var weightmethod = "WL";
 var weightmethod_id = 0; // WL
 var mcamp = 0.2;
+
+var thtype = "v-rescale"; // thermostat type
+var vresdamp = 20.0;  // velocity-rescaling damping factor
+var langdamp = 1.0;  // Langevin-dynamics damping factor
+var zeta = null;
+var zmass = null;
+
+var forcescaling = false; // use force-scaling
 
 var wl_lnf0 = 1.0;
 var wl_flatness = 0.3;
@@ -39,8 +46,8 @@ var beta = null; // temperature array
 var itp = 0; // current temperature index
 
 var nstepsmd = 0;
-var hmctot = 0.0;
-var hmcacc = 0.0;
+var ketot = 0.0;
+var kesum = 0.0;
 
 var nstepsmc = 0;
 var mctot = 0.0;
@@ -70,10 +77,25 @@ function getparams()
     weightmethod_id = 2;
   }
   mddt = get_float("mddt", 0.002);
-  thdt = get_float("thermostatdt", 0.01);
   nstepspsmd = get_int("nstepspersecmd", 100);
   nstepspfmd = nstepspsmd * timer_interval / 1000;
   nstepsmd = 0;
+
+  thtype = grab("thermostattype").value;
+  vresdamp = get_float("vresdamp", 20.0);
+  langdamp = get_float("langdamp", 1.0);
+  var nhclen = get_int("nhclen", 5);
+  var nhcmass1 = get_float("nhcmass1", 1.0);
+  var nhcmass2 = get_float("nhcmass2", 1.0);
+  var i;
+  zeta = newarr(nhclen);
+  zmass = newarr(nhclen);
+  for ( i = 0; i < nhclen; i++ ) {
+    zeta[i] = 0.0;
+    zmass[i] = ( i === 0 ) ? nhcmass1 : nhcmass2;
+  }
+
+  forcescaling = grab("forcescaling").checked;
 
   mcamp = get_float("mcamp", 0.2);
   nstepspsmc = get_int("nstepspersecmc", 10000);
@@ -140,25 +162,50 @@ function getsinfo()
 
 
 
+function thermostat(tp, dt)
+{
+  if ( thtype === "v-rescale" ) {
+    return lj.vrescale(tp, dt * vresdamp);
+  } else if ( thtype === "Nose-Hoover" ) {
+    return lj.nhchain(tp, dt, zeta, zmass);
+  } else if (thtype === "Langevin" ) {
+    return lj.langevin(tp, dt * langdamp);
+  }
+}
+
+
 function domd()
 {
   var istep, sinfo = "";
+  var tp_thstat = (tpmax + tpmin) / 2, ke;
 
   for ( istep = 1; istep <= nstepspfmd; istep++ ) {
-    lj.vv(mddt);
-    lj.vrescale(1/beta[itp], thdt);
+    var tp = 1 / beta[itp], fs = 1;
+    if ( forcescaling ) {
+      tp = tp_thstat;
+      fs = beta[itp] * tp_thstat;
+    }
+    thermostat(tp, 0.5 * mddt);
+    lj.vv_fs(mddt, fs);
+    ke = thermostat(tp, 0.5 * mddt);
+
     // temperature transition
     var jtp = simtemp.jump(itp, lj.epot, 1, weightmethod_id);
     if ( jtp != itp ) {
       var s = Math.sqrt(beta[itp]/beta[jtp]), i;
-      for ( i = 0; i < n; i++ ) {
-        lj.v[i][0] *= s;
-        lj.v[i][1] *= s;
-        lj.v[i][2] *= s;
+      if ( !forcescaling ) {
+        for ( i = 0; i < n; i++ ) {
+          lj.v[i][0] *= s;
+          lj.v[i][1] *= s;
+          lj.v[i][2] *= s;
+        }
+        ke *= s * s;
       }
       itp = jtp;
     }
 
+    kesum += ke / tp;
+    ketot += 1;
     simtemp.add(itp, lj.epot);
     if ( weightmethod === "WL" ) {
       wl.add( itp );
@@ -170,7 +217,7 @@ function domd()
   }
   nstepsmd += nstepspfmd;
   sinfo += "step " + nstepsmd + ".<br>";
-  //sinfo += "hmcacc: " + roundto(100.0 * hmcacc / hmctot, 2) + "%.<br>";
+  sinfo += "2<i>E<sub>K</sub></i>/<i>T</i> " + roundto(2.0 * kesum / ketot / lj.dof, 4) + ".<br>";
   sinfo += getsinfo();
   return sinfo;
 }
@@ -331,6 +378,7 @@ function pulse()
 
 
 
+// stop simulation and reset some data
 function stopsimul()
 {
   if ( ljtimer !== null ) {
@@ -338,8 +386,8 @@ function stopsimul()
     ljtimer = null;
   }
   grab("pause").innerHTML = "&#9724;";
-  hmctot = 1e-30;
-  hmcacc = 0.0;
+  ketot = 1e-30;
+  kesum = 0.0;
   mctot = 1e-30;
   mcacc = 0.0;
   munit(viewmat);
