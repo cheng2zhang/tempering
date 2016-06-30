@@ -10,4 +10,4 @@ ln:
 	ln -f ../../../snippets/vct/js/mat.js
 	ln -f ../../../snippets/md/js/mdutil.js
 	ln -f ../../../snippets/lj/js/ljeos.js
-	ln -f ../../../snippets/wl/wl.js
+	ln -f ../../../snippets/wl/js/wl.js

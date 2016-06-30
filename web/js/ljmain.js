@@ -56,6 +56,11 @@ var mcacc = 0.0;
 var histplot = null;
 var vplot = null;
 
+var usercode_init = null;
+var usercode_tpmove = null;
+var usercode_update = null;
+var usercode_obj = null;
+
 
 
 function getparams()
@@ -143,6 +148,10 @@ function init_simtemp()
     simtemp.lnzref[i] -= simtemp.lnzref[0];
   }
   itp = 0;
+
+  if ( usercode_init ) {
+    usercode_obj = usercode_init(beta);
+  }
 }
 
 
@@ -174,6 +183,44 @@ function thermostat(tp, dt)
 }
 
 
+
+// temperature transition
+function tpmove(itp, ep)
+{
+  if ( usercode_tpmove ) {
+    if ( !usercode_obj )
+      usercode_obj = usercode_init(beta);
+    return usercode_tpmove(itp, ep, usercode_obj);
+  } else {
+    return simtemp.jump(itp, ep, 1, weightmethod_id);
+  }
+}
+
+
+
+// update data
+function update(itp, ep)
+{
+  simtemp.add(itp, ep);
+  if ( usercode_update ) {
+    if ( !usercode_obj )
+      usercode_obj = usercode_init(beta);
+    usercode_update(itp, ep, usercode_obj);
+  } else {
+    if ( weightmethod === "WL" ) {
+      wl.add( itp );
+      var ret = wl.updatelnf();
+      if ( ret && simulmethod === "MC" ) {
+        console.log("acc", mcacc/mctot, ", amp", mcamp);
+        mctot = 1e-30;
+        mcacc = 0;
+      }
+    }
+  }
+}
+
+
+
 function domd()
 {
   var istep, sinfo = "";
@@ -190,10 +237,11 @@ function domd()
     ke = thermostat(tp, 0.5 * mddt);
 
     // temperature transition
-    var jtp = simtemp.jump(itp, lj.epot, 1, weightmethod_id);
+    var jtp = tpmove(itp, lj.epot);
     if ( jtp != itp ) {
       var s = Math.sqrt(beta[itp]/beta[jtp]), i;
       if ( !forcescaling ) {
+        // scale velocities if not in force scaling
         for ( i = 0; i < n; i++ ) {
           lj.v[i][0] *= s;
           lj.v[i][1] *= s;
@@ -206,18 +254,15 @@ function domd()
 
     kesum += ke / tp;
     ketot += 1;
-    simtemp.add(itp, lj.epot);
-    if ( weightmethod === "WL" ) {
-      wl.add( itp );
-      wl.updatelnf();
-    }
+    update(itp, lj.epot);
   }
   if ( weightmethod === "WL" ) {
     wl.trimv();
   }
   nstepsmd += nstepspfmd;
   sinfo += "step " + nstepsmd + ".<br>";
-  sinfo += "2<i>E<sub>K</sub></i>/<i>T</i> " + roundto(2.0 * kesum / ketot / lj.dof, 4) + ".<br>";
+  sinfo += "<i>E<sub>K</sub></i>/<i>E<sub>K</sub></i><sup>ref</sup>: "
+         + roundto(2.0 * kesum / ketot / lj.dof, 4) + ".<br>";
   sinfo += getsinfo();
   return sinfo;
 }
@@ -233,16 +278,8 @@ function domc()
     mctot += 1.0;
     mcacc += lj.metro(mcamp, beta[itp]);
     // temperature transition
-    itp = simtemp.jump(itp, lj.epot, 1, weightmethod_id);
-    simtemp.add(itp, lj.epot);
-    if ( weightmethod === "WL" ) {
-      wl.add( itp );
-      if ( wl.updatelnf() ) {
-        console.log("acc", mcacc/mctot, ", amp", mcamp);
-        mctot = 1e-30;
-        mcacc = 0;
-      }
-    }
+    itp = tpmove(itp, lj.epot);
+    update(itp, lj.epot);
   }
   if ( weightmethod === "WL" ) {
     wl.trimv();
@@ -289,8 +326,6 @@ function updatehistplot()
       includeZero: true,
       drawPoints: true,
       axisLabelFontSize: 10,
-      pointSize: 2,
-      xRangePad: 2,
       plotter: barChartPlotter,
       width: w,
       height: h
@@ -493,6 +528,165 @@ function showtab(who)
 
 
 
+var usercode_ref = new Array();
+
+usercode_ref["stlj_WL_init"] = "" +
+"// This function accepts an array of inverse temperatures\n" +
+"// and return an object for future use\n" +
+"function init(beta) {\n" +
+"  var n = beta.length, i;\n" +
+"  var varr = new Array(n);\n" +
+"  var harr = new Array(n);\n" +
+"  for ( i = 0; i < n; i++ ) {\n" +
+"    varr[i] = 0;\n" +
+"    harr[i] = 0;\n" +
+"  }\n" +
+"  // return the WL object\n" +
+"  return { beta  : beta,\n" +
+"           v     : varr,\n" +
+"           hist  : harr,\n" +
+"           tot   : 0,\n" +
+"           lnf   : 1.0};\n" +
+"}\n";
+
+usercode_ref["stlj_WL_tpmove"] = "" +
+"// This function accepts the current temprature index,\n" +
+"// current potential energy, and the user object,\n" +
+"// returns the new temperature index\n" +
+"function tpmove(itp, ep, obj) {\n" +
+"  var ntp = obj.beta.length;\n" +
+"  var jtp = Math.floor(itp + 1 + rand01() * (ntp - 1)) % ntp;\n" +
+"  var de = -ep * obj.beta[jtp] - obj.v[jtp]\n" +
+"           +ep * obj.beta[itp] + obj.v[itp];\n" +
+"  if ( de < 0 && rand01() > Math.exp(de) ) {\n" +
+"    jtp = itp; // abandon the move\n" +
+"  }\n" +
+"  return jtp;\n" +
+"}\n";
+
+usercode_ref["stlj_WL_update"] = "" +
+"// This function accepts the current temprature index,\n" +
+"// current potential energy, and the user object,\n" +
+"// and updates the user object\n" +
+"function update(itp, ep, obj) {\n" +
+"  var n = obj.beta.length;\n" +
+"  obj.hist[itp] += 1;\n" +
+"  obj.tot += 1;\n" +
+"  obj.lnf = n / (obj.tot + 10000);\n" +
+"  obj.v[itp] += obj.lnf;\n" +
+"}\n";
+
+// ace editor
+var aceeditor = null;
+
+function geteditorvalue()
+{
+  if ( aceeditor ) {
+    return aceeditor.getValue();
+  } else {
+    return document.getElementById("usercode").value;
+  }
+}
+
+function seteditorvalue(s)
+{
+  if ( aceeditor ) {
+    aceeditor.setValue(s);
+  } else {
+    document.getElementById("usercode").value = s;
+  }
+}
+
+
+
+function usercode_funcname()
+{
+  var set = grab("userset").value;
+  if ( set.substring(0, 8) === "userset_" ) {
+    set = set.substring(8);
+  }
+  var func = grab("userfunc").value;
+  if ( func.substring(0, 9) === "userfunc_" ) {
+    func = func.substring(9);
+  }
+  return "stlj_" + set + "_" + func;
+}
+
+// compile the user-defined function
+function usercode_compile()
+{
+  stopsimul();
+  var s = geteditorvalue();
+  var p0 = s.indexOf("function(");
+  var p1 = s.indexOf("(", p0) + 1;
+  var p9 = s.indexOf(")", p1);
+  var id0 = s.indexOf("{", p9);
+  var id1 = s.lastIndexOf("}");
+  // extracting the function body including the braces
+  var funcbody = s.substring(id0, id1 + 1);
+  var funcid = grab("userfunc").value;
+  var npar = (funcid === "userfunc_init") ? 1 : 3;
+  var thefunc, var1, var2, var3;
+  if ( npar === 1 ) {
+    var1 = s.substring(p1, p9).trim();
+    thefunc = new Function(var1, funcbody);
+  } else if ( npar === 3 ) {
+    var p2 = s.indexOf(",", p1);
+    var p3 = s.indexOf(",", p2 + 1);
+    var1 = s.substring(p1, p2).trim();
+    var2 = s.substring(p2 + 1, p3).trim();
+    var3 = s.substring(p3 + 1, p9).trim();
+    thefunc = new Function(var1, var2, var3, funcbody);
+  }
+  if ( funcid === "userfunc_init" ) {
+    usercode_init = thefunc;
+  } else if ( funcid === "userfunc_tpmove" ) {
+    usercode_tpmove = thefunc;
+  } else if ( funcid === "userfunc_update" ) {
+    usercode_update = thefunc;
+  }
+}
+
+
+function usercode_changeset()
+{
+  //usercode_init = ;
+  //usercode_tpmove = ;
+  //usercode_update = ;
+}
+
+// reset the user's code
+function usercode_reset(what)
+{
+  localStorage.removeItem(what);
+  //seteditorvalue( );
+}
+
+// save the user's code
+function usercode_save()
+{
+  var funcname = usercode_funcname();
+  var usercode = geteditorvalue();
+  localStorage.setItem(funcname, usercode);
+}
+
+// load the user's code
+function usercode_load(what)
+{
+  // remind the user to save the code
+  var funcname = usercode_funcname();
+  //usercode_load(funcname);
+  var code = usercode_ref[funcname];
+  if ( code ) {
+    seteditorvalue( code );
+  }
+  //var usercode = localStorage.getItem(what);
+  //if ( usercode ) {
+  //  seteditorvalue( usercode );
+  //  //alert("loading " + what + " " + usercode);
+  //}
+}
+
 function resizecontainer(a)
 {
   var canvas = grab("animationbox");
@@ -515,7 +709,7 @@ function resizecontainer(a)
   var htbar = 30; // height of the tabs bar
   var wr = h*3/4; // width of the plots
   var wtab = 700; // width of the tabs
-  var htab = 280;
+  var htab = 450;
 
   grab("simulbox").style.width = "" + w + "px";
   grab("simulbox").style.height = "" + h + "px";

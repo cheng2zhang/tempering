@@ -7,6 +7,7 @@
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
   <script src="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js"></script>
   <script src="http://cdnjs.cloudflare.com/ajax/libs/dygraph/1.1.1/dygraph-combined.js"></script>
+  <script src="http://cdnjs.cloudflare.com/ajax/libs/ace/1.2.3/ace.js"></script>
   <link rel="stylesheet" type="text/css" href="./css/default.css" />
   <script type="text/javascript" src="./js/util.js"></script>
   <script type="text/javascript" src="./js/mtrand.js"></script>
@@ -73,6 +74,7 @@
     <li class="tab" onclick="showtab('md-params')">MD</li>
     <li class="tab" onclick="showtab('mc-params')">MC</li>
     <li class="tab" onclick="showtab('misc-params')">Misc.</li>
+    <li class="tab" onclick="showtab('code-params')">Code</li>
     </ul>
   </nav>
 
@@ -220,6 +222,8 @@
   </form>
   </div>
 
+
+
   <div class="params-panel" id="mc-params">
   <form class="form-inline">
   <div class="panel-title">Monte Carlo (MC)</div>
@@ -240,6 +244,7 @@
   <br>
   </form>
   </div>
+
 
 
   <div class="params-panel" id="misc-params">
@@ -282,9 +287,74 @@
   </label>
   &nbsp;
   <br>
+  </form>
+  </div>
+
+
+  <div class="params-panel" id="code-params">
+  <form class="form-inline">
+    <!-- <div class="panel-title">Code</div> -->
+
+  <label for="userset">
+    Set:
+  </label>
+  <select id="userset" onchange="usercode_changeset()">
+    <option value="userset_WL">Wang-Landau</option>
+    <option value="userset_ave">Average energy</option>
+    <option value="userset_avem">Average energy (modified)</option>
+  </select>.
+  &nbsp;
+
+  <label for="userfunc">
+    Function:
+  </label>
+  <select id="userfunc" onchange="usercode_load()">
+    <option value="userfunc_init">Initialization</option>
+    <option value="userfunc_tpmove">Temperature transition</option>
+    <option value="userfunc_update">Data accumulation</option>
+  </select>.
+  &nbsp;
+  <span class="glyphicon glyphicon-save"
+    onclick="usercode_save()"></span>
+  &nbsp;
+  
+  <span class="glyphicon glyphicon-play"
+    onclick="usercode_compile()"></span>
+  <br>
+  
+
+
+  <div id="usercode-par">
+    <textarea id="usercode" rows="20" cols="50"
+      class="form-control"
+      style="background-color:#ffffe0; font-family: monospace;">
+    </textarea>
+    <!-- oninput="saveusercode()" -->
+  </div>
+
+  <!-- this div will replace the textarea above, if ace editor is available -->
+  <div id="usercode-aceeditor"></div>
+  <script>
+    if ( ace ) {
+      // remove the textarea
+      var txt = document.getElementById("usercode");
+      var par = document.getElementById("usercode-par");
+      par.removeChild(txt);
+      // resize the Ace editor
+      document.getElementById("usercode-aceeditor").style.height = "380px";
+      aceeditor = ace.edit("usercode-aceeditor");
+      aceeditor.setTheme("ace/theme/dawn");
+      aceeditor.getSession().setMode("ace/mode/javascript");
+      //aceeditor.getSession().on('change', function(e) { saveusercode() });
+    }
+    usercode_load();
+  </script>
 
   </form>
   </div>
+
+
+
 
 
   <div id="sinfo"></div>
