@@ -43,6 +43,27 @@ CollectionMaster::~CollectionMaster(void)
 {
 }
 
+void CollectionMaster::receiveHi(int seq)
+{
+  hi.submitData(seq);
+  CollectHiInstance *c = hi.removeReady(seq);
+  if ( c != 0 ) { // collected Hi's from all nodes
+    CthAwaken(hiThread);
+    hiThread = 0;
+  }
+}
+
+void CollectionMaster::enqueueHi(int seq)
+{
+  CollectHiInstance *c = hi.removeReady(seq);
+  if ( c == 0 ) { // lock the thread
+    hiThread = CthSelf();
+    CthSuspend();
+  } else { // already collected Hi's from all nodes
+    c->free(); // empty the spot, but don't actually free the memory
+  }
+}
+
 void CollectionMaster::receiveSpecPositions(CollectVectorMsg *msg)
 {
   specPositions.submitData(msg, numSpec);
@@ -59,7 +80,7 @@ void CollectionMaster::enqueueSpecPositions(int seq, Lattice &lattice)
   CollectVectorInstance *c;
   while ( ( c = specPositions.removeReady() ) ) { disposeSpecPositions(c); }
 }
-
+ 
 void CollectionMaster::disposeSpecPositions(CollectVectorInstance *c)
 {
     int seq = c->seq;
@@ -81,7 +102,7 @@ void CollectionMaster::disposeSpecPositions(CollectVectorInstance *c)
         seq, dist, endtoend.x, endtoend.y, endtoend.z);
     c->free();
 }
-
+ 
 void CollectionMaster::receivePositions(CollectVectorMsg *msg)
 {
 #ifndef MEM_OPT_VERSION
@@ -125,7 +146,6 @@ void CollectionMaster::disposePositions(CollectVectorInstance *c)
     }
 #endif
 }
-
 
 void CollectionMaster::receiveVelocities(CollectVectorMsg *msg)
 {

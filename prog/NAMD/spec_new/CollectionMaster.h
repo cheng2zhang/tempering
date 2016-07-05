@@ -298,6 +298,60 @@ public:
   };
 #endif
 
+  class CollectHiInstance
+  {
+  public:
+    CollectHiInstance(void) : seq(-10) { ; }
+    void free() { seq = -10; }
+    int notfree() { return seq != -10; }
+    void reset(int s) {
+      seq = s;
+      remaining = PatchMap::Object()->numNodesWithPatches(); 
+    }
+    int seq;
+    int remaining;
+  };
+
+  class CollectHiSequence
+  {
+  public:
+    ResizeArray<CollectHiInstance *> data;
+
+    void submitData(int seq) {
+      CollectHiInstance **c, **c_e = data.end();
+      for( c = data.begin(); c != c_e && (*c)->seq != seq; ++c )
+        ;
+      if ( c == c_e ) { // the sequence does not exist
+        // try to find an empty spot in the array
+        for( c = data.begin(); c != c_e && (*c)->notfree(); ++c )
+          ;
+        if ( c == c_e ) { // no empty spot exists, append one
+          data.add(new CollectHiInstance);
+          c = data.end() - 1;
+        }
+        (*c)->reset(seq);
+      }
+      (*c)->remaining--;
+    }
+
+    // return nonzero if all nodes have submitted data for step `seq'
+    CollectHiInstance* removeReady(int seq) {
+      CollectHiInstance *o = 0, **c, **c_e = data.end();
+      for( c = data.begin(); c != c_e && (*c)->seq != seq; ++c )
+        ;
+      int remaining = 0;
+      if ( c != c_e && (remaining = (*c)->remaining) == 0 )
+        o = *c;
+      return o;
+    }
+
+    CollectHiSequence() { ; }
+  };
+
+public:
+  void receiveHi(int seq);
+  void enqueueHi(int seq);
+
   int numSpec; // size of `specPositions', to be set in the Controller
   CollectVectorSequence specPositions; // to hold positions of special atoms
   void receiveSpecPositions(CollectVectorMsg *msg);
@@ -311,6 +365,8 @@ private:
   CollectVectorSequence forces;
   int posTimings, velTimings, forceTimings;
   FILE *dataStreamFile;
+  CollectHiSequence hi;
+  CthThread hiThread;
 
 #ifdef MEM_OPT_VERSION
   int wrapCoorDoneCnt;

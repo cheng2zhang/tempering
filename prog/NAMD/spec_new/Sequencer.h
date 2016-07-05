@@ -76,7 +76,7 @@ protected:
     void reloadCharges();
 
     BigReal adaptTempT;         // adaptive tempering temperature
-    void adaptTempUpdate(int); // adaptive tempering temperature update
+    Bool adaptTempUpdate(int); // adaptive tempering temperature update
 
     void rescaleVelocities(int);
     void rescaleaccelMD(int, int, int); // for accelMD
@@ -85,6 +85,8 @@ protected:
     void reinitVelocities(void);
     void rescaleVelocitiesByFactor(BigReal);
     void tcoupleVelocities(BigReal,int);
+    void langRescaleVelocities(int);
+    void tNHCRescaleVelocities(int);
     void berendsenPressure(int);
       int berendsenPressure_count;
       int checkpoint_berendsenPressure_count;

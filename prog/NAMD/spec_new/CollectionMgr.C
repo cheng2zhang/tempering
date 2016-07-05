@@ -337,6 +337,16 @@ void CollectionMgr::submitForces(int seq, FullAtomList &a, int maxForceUsed, For
 }
 #endif
 
+void CollectionMgr::submitHi(int seq) {  
+  CollectHiInstance *c = hi.submitData(seq);
+  if ( c != 0 ) {
+    // all HomePatches on the Node have submitted data
+    CProxy_CollectionMaster cm(master);
+    cm.receiveHi(c->seq);
+    c->free();
+  }
+}
+
 void CollectionMgr::sendDataStream(const char *data) {
   DataStreamMsg *msg = new DataStreamMsg;
   msg->data.resize(strlen(data)+1);

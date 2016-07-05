@@ -35,6 +35,7 @@ module CollectionMaster {
     entry void startNextRoundOutputForce(double totalT);
     entry void wrapCoorFinished();
     
+    entry void receiveHi(int seq);
     entry void receiveSpecPositions(CollectVectorMsg *);
   };
 }

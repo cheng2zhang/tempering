@@ -138,8 +138,50 @@ public:
     ResizeArray<CollectVectorInstance*> data;
 
   };
+
   CollectVectorSequence specPositions;
   void submitSpecPositions(int seq, FullAtomList &a, Lattice l, int prec=2);
+
+  class CollectHiInstance
+  {
+  public:
+    CollectHiInstance(void) : seq(-10) { ; }
+    void free() { seq = -10; }
+    int notfree() { return ( seq != -10 ); }
+    void reset(int s) {
+      seq = s;
+      remaining = PatchMap::Object()->numHomePatches();
+    }
+    int seq;
+    int remaining;
+  };
+
+  class CollectHiSequence
+  {
+  public:
+    ResizeArray<CollectHiInstance*> data;
+
+    CollectHiInstance* submitData(int seq) {
+      CollectHiInstance **c, **c_e = data.end();
+      for ( c = data.begin(); c != c_e && (*c)->seq != seq; ++c )
+        ;
+      if ( c == c_e ) { // CollectHiInstance for the sequence `seq' does not exist
+        // try to find an empty spot in the array
+        for ( c = data.begin(); c != c_e && (*c)->notfree(); ++c )
+          ;
+        if ( c == c_e ) { // no empty spot exists, append one
+         data.add(new CollectHiInstance);
+         c = data.end() - 1;
+        }
+        (*c)->reset(seq);
+      }
+      if ( --(*c)->remaining == 0 ) {
+        return *c;
+      } else {
+        return 0;
+      }
+    }
+  };
 
 private:
 
@@ -149,6 +191,9 @@ private:
   CollectVectorSequence velocities;
   CollectVectorSequence forces;
 
+  CollectHiSequence hi;
+public:
+  void submitHi(int);
 };
 
 #endif
