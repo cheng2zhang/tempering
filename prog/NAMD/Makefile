@@ -30,8 +30,22 @@ thstat.patch::
 NAMD_thstat.zip::
 	$(RM) -f $@
 	$(MAKE) -B thstat.patch
-	zip -r $@ thstat_* Nose*.pdf vrescal*.pdf *.html \
-	  README.md thstat.patch \
+	zip -r $@ thstat* Nose*.pdf vrescal*.pdf *.html \
+	  README.md \
+	  ../../doc/vsTmove.tex ../../doc/vsTmove.pdf \
+	  ../../test/Argon_NAMD_ST/*.prm \
+	  ../../test/Argon_NAMD_ST/*.conf \
+	  ../../test/Argon_NAMD_ST/argon_300K.coor \
+	  ../../test/Argon_NAMD_ST/*.psf \
+	  ../../test/Argon_NAMD_ST/cmp.png \
+	  ../../test/Argon_NAMD_ST/ke.png \
+	  ../../doc/fig/*.gp ../../doc/fig/*.eps ../../doc/fig/*.pdf \
+	  ../../test/alanin/*.conf
+
+NAMD_spec.zip::
+	$(RM) -f $@
+	$(MAKE) -B spec.patch
+	zip -r $@ spec* Nose*.pdf vrescal*.pdf *.html README.md \
 	  ../../doc/vsTmove.tex ../../doc/vsTmove.pdf \
 	  ../../test/Argon_NAMD_ST/*.prm \
 	  ../../test/Argon_NAMD_ST/*.conf \

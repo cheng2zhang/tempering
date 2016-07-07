@@ -1045,6 +1045,11 @@ void Controller::rescaleVelocities(int step)
         rescaleTemp = adaptTempT;
       }
       BigReal factor = sqrt(rescaleTemp/avgTemp);
+      if ( simParams->rescaleAdaptive ) {
+        if ( step < simParams->rescaleFreq ) step = simParams->rescaleFreq;
+        factor = exp(log(factor) * simParams->rescaleFreq / step);
+        //CkPrintf("factor %g, step %d, frequency %d\n", factor, step, simParams->rescaleFreq);
+      }
       broadcast->velocityRescaleFactor.publish(step,factor);
       //iout << "RESCALING VELOCITIES AT STEP " << step
       //     << " FROM AVERAGE TEMPERATURE OF " << avgTemp

@@ -140,7 +140,6 @@ function md_ekin(v, m, n)
 }
 
 
-
 /* exact velocity rescaling thermostat */
 function md_vrescale(v, m, n, dof, tp, dt)
 {
@@ -159,6 +158,27 @@ function md_vrescale(v, m, n, dof, tp, dt)
   }
   return ek2;
 }
+
+
+
+/* adaptive velocity rescaling for an asymptotic microcanonical ensemble */
+function md_adaptvrescale(v, m, n, dof, tp, alpha, lnsmax)
+{
+  var ek = md_ekin(v, m, n);
+  var ekref = dof * tp * 0.5;
+  var lns = Math.log(ekref / ek) * alpha;
+  if ( !lnsmax ) lnsmax = 0.5;
+  if ( lns > lnsmax ) lns = lnsmax;
+  else if ( lns < -lnsmax ) lns = -lnsmax;
+  var s = Math.exp( lns );
+  //console.log(alpha, ek, ekref, s);
+  for ( var i = 0; i < n; i++ ) {
+    vsmul(v[i], s);
+  }
+  ek *= s * s;
+  return ek;
+}
+
 
 
 

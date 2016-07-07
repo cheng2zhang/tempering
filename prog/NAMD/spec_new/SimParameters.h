@@ -519,6 +519,7 @@ public:
 
 	int rescaleFreq;		//  Velocity rescale frequency
 	BigReal rescaleTemp;		//  Temperature to rescale to
+	Bool rescaleAdaptive;		//  Adaptively reduce the velocity rescaling factor
 
         Bool accelMDOn;                 //  Perform accelerated MD
         Bool accelMDdihe;               //  Apply boost to the dihedral potential

@@ -1057,6 +1057,10 @@ void Controller::rescaleVelocities(int step)
         rescaleTemp = adaptTempT;
       }
       BigReal factor = sqrt(rescaleTemp/avgTemp);
+      if ( simParams->rescaleAdaptive ) {
+        if ( step < simParams->rescaleFreq ) step = simParams->rescaleFreq;
+        factor = exp(log(factor) * simParams->rescaleFreq / step);
+      }
       broadcast->velocityRescaleFactor.publish(step,factor);
       //iout << "RESCALING VELOCITIES AT STEP " << step
       //     << " FROM AVERAGE TEMPERATURE OF " << avgTemp
@@ -1907,6 +1911,7 @@ void Controller::adaptTempInit(int step) {
         adaptTempBetaN           = new BigReal[adaptTempBins];
         adaptTempDBeta = (adaptTempBetaMax - adaptTempBetaMin)/(adaptTempBins);
         for(int j = 0; j < adaptTempBins; ++j) {
+          adaptTempRead >> readReal;
           adaptTempRead >> adaptTempPotEnergyAve[j];
           adaptTempRead >> adaptTempPotEnergyVar[j];
           adaptTempRead >> adaptTempPotEnergySamples[j];
@@ -1978,6 +1983,7 @@ void Controller::adaptTempWriteRestart(int step) {
         adaptTempRestartFile << adaptTempDt ;
         adaptTempRestartFile << "\n" ;
         for(int j = 0; j < adaptTempBins; ++j) {
+          adaptTempRestartFile << adaptTempBetaN[j] << " ";
           adaptTempRestartFile << adaptTempPotEnergyAve[j] << " ";
           adaptTempRestartFile << adaptTempPotEnergyVar[j] << " ";
           adaptTempRestartFile << adaptTempPotEnergySamples[j] << " ";

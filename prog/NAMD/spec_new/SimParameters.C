@@ -187,6 +187,11 @@ void SimParameters::scriptSet(const char *param, const char *value) {
   }
   SCRIPT_PARSE_FLOAT("reassignTemp",reassignTemp)
   SCRIPT_PARSE_FLOAT("rescaleTemp",rescaleTemp)
+  SCRIPT_PARSE_BOOL("rescaleAdaptive",rescaleAdaptive)
+  SCRIPT_PARSE_FLOAT("langRescaleTemp",langRescaleTemp)
+  SCRIPT_PARSE_FLOAT("langRescaleDt",langRescaleDt)
+  SCRIPT_PARSE_FLOAT("tNHCTemp",langRescaleTemp)
+  SCRIPT_PARSE_FLOAT("tNHCPeriod",langRescaleDt)
   SCRIPT_PARSE_BOOL("velocityQuenching",minimizeOn)
   SCRIPT_PARSE_BOOL("maximumMove",maximumMove)
   // SCRIPT_PARSE_BOOL("Langevin",langevinOn)
@@ -1231,6 +1236,8 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
     &rescaleTemp);
    opts.range("rescaleTemp", NOT_NEGATIVE);
    opts.units("rescaleTemp", N_KELVIN);
+   opts.optionalB("main", "rescaleAdaptive", "Adaptively reduce the magnitude "
+    "of the velocity rescaling factor", &rescaleAdaptive, FALSE);
 
    opts.optional("main", "reassignFreq", "Number of steps between "
     "velocity reassignment", &reassignFreq);

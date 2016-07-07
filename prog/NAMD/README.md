@@ -4,8 +4,8 @@
 Variances     | Description
 --------------|---------------------
 minmod        | minimal corrections to the original version
-spec          | also report end-to-end distance of C-alpha atoms in every step
 thstat        | Langevin-style velocity rescaling and Nose-Hoover thermostats
+spec          | also report end-to-end distance of C-alpha atoms in every step
 
 ## Variances
 
@@ -19,7 +19,8 @@ This patch contains several modifications to NAMD 2.11:
  4. Disabling the code for the ad hoc adaptTempRandom scheme, which lacks theoretically foundation.
  5. Issuing a warning for using adaptive tempering with the original velocity rescaling, which does not rigorously sample the Boltzmann distribution.
  6. Integrating the Langevin-style velocity-rescaling thermostat and Nose-Hoover thermostat.
- 7. Monitoring the distribution of the (reduced) kinetic energy.
+ 7. Adaptively rescaling the velocity to approach an asymptotic microcanonical ensemble.
+ 8. Monitoring the distribution of the (reduced) kinetic energy.
 
 
 #### Velocity-scaling after temperature transition
@@ -125,6 +126,19 @@ This allows the user to specify the masses of the chain variables explicitly.
 Caution.  Thermostats (including the Langevin dynamics and the old velocity rescaling) are exclusive,
 in each simulation, only one thermostat can be turned on.
 
+#### Adaptively rescale the velocity to approach an asymptotic microcanonical ensemble
+
+To better control temperature in the microcanonical ensemble,
+we can use the native NAMD mechanism of velocity rescaling,
+but gradually reduce the scaling magnitude.
+To enable this feature, turn on the adaptive velocity scaling feature (`rescaleAdaptive`)
+```
+rescaleTemp 300
+rescaleFreq 10
+rescaleAdaptive on
+```
+In this way, the magnitude of velocity scaling is modified by a factor of 1/t,
+where t is the number of times of such scaling so far.
 
 #### Monitoring the distribution of the (reduced) kinetic energy
 
@@ -155,6 +169,22 @@ The instantaneous temperature is defined as twice the kinetic energy
 divided by the number of degrees of freedom divided by the Boltzmann constant.
 Please see ../test/Argon_NAMD_ST/ke.png for an example.
 
+
+### spec
+
+This patch contains all modifications to NAMD 2.11 included in `thstat`.
+It also includes two additional changes.
+
+ 1. Reporting the alpha-carbon end-to-end distance in every step.
+ 2. Adding a column (first) of beta to the restart file.
+
+
+#### alpha-carbon end-to-end distance
+
+The alpha-carbon end-to-end distance is computed in CollectionMaster.C and CollectionMgr.h.
+Particularly, the new routines
+`CollectionMaster::receiveSpecPositions()`, `CollectionMaster::enqueueSpecPositions()`,
+`CollectionMaster::disposeSpecPositions()`, and `CollectionMgr::submitSpecPositions()`.
 
 ## Apply patches
 
