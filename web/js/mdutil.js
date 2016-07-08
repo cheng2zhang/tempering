@@ -162,15 +162,15 @@ function md_vrescale(v, m, n, dof, tp, dt)
 
 
 /* adaptive velocity rescaling for an asymptotic microcanonical ensemble */
-function md_adaptvrescale(v, m, n, dof, tp, alpha, lnsmax)
+function md_adaptvrescale(v, m, n, dof, tp, alpha, sm1max)
 {
   var ek = md_ekin(v, m, n);
   var ekref = dof * tp * 0.5;
-  var lns = Math.log(ekref / ek) * alpha;
-  if ( !lnsmax ) lnsmax = 0.5;
-  if ( lns > lnsmax ) lns = lnsmax;
-  else if ( lns < -lnsmax ) lns = -lnsmax;
-  var s = Math.exp( lns );
+  var sm1 = (ekref - ek)/ek * alpha;
+  if ( !sm1max ) sm1max = 0.5;
+  if ( sm1 > sm1max ) sm1 = sm1max;
+  else if ( sm1 < -sm1max ) sm1 = -sm1max;
+  var s = Math.sqrt( 1 + sm1 );
   //console.log(alpha, ek, ekref, s);
   for ( var i = 0; i < n; i++ ) {
     vsmul(v[i], s);

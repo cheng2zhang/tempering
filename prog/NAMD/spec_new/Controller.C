@@ -1059,7 +1059,7 @@ void Controller::rescaleVelocities(int step)
       BigReal factor = sqrt(rescaleTemp/avgTemp);
       if ( simParams->rescaleAdaptive ) {
         if ( step < simParams->rescaleFreq ) step = simParams->rescaleFreq;
-        factor = exp(log(factor) * simParams->rescaleFreq / step);
+        factor = sqrt(1 + (factor*factor - 1) * simParams->rescaleFreq / step);
       }
       broadcast->velocityRescaleFactor.publish(step,factor);
       //iout << "RESCALING VELOCITIES AT STEP " << step

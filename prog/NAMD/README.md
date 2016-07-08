@@ -176,7 +176,7 @@ This patch contains all modifications to NAMD 2.11 included in `thstat`.
 It also includes two additional changes.
 
  1. Reporting the alpha-carbon end-to-end distance in every step.
- 2. Adding a column (first) of beta to the restart file.
+ 2. Adding a column (first) of beta to the restart file (due to Justin).
 
 
 #### alpha-carbon end-to-end distance

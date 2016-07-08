@@ -316,7 +316,7 @@ diff -u -wdB spec_old/CollectionMgr.h spec_new/CollectionMgr.h
  #endif
 diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 --- spec_old/Controller.C	2015-12-17 15:22:03.000000000 -0600
-+++ spec_new/Controller.C	2016-07-07 14:53:47.607411431 -0500
++++ spec_new/Controller.C	2016-07-08 16:35:27.020268621 -0500
 @@ -388,6 +388,14 @@
    typedef void (*namd_sighandler_t)(int);
  }
@@ -423,7 +423,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
        BigReal factor = sqrt(rescaleTemp/avgTemp);
 +      if ( simParams->rescaleAdaptive ) {
 +        if ( step < simParams->rescaleFreq ) step = simParams->rescaleFreq;
-+        factor = exp(log(factor) * simParams->rescaleFreq / step);
++        factor = sqrt(1 + (factor*factor - 1) * simParams->rescaleFreq / step);
 +      }
        broadcast->velocityRescaleFactor.publish(step,factor);
        //iout << "RESCALING VELOCITIES AT STEP " << step
