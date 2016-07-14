@@ -1237,7 +1237,15 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
    opts.range("rescaleTemp", NOT_NEGATIVE);
    opts.units("rescaleTemp", N_KELVIN);
    opts.optionalB("main", "rescaleAdaptive", "Adaptively reduce the magnitude "
-    "of the velocity rescaling factor", &rescaleAdaptive, FALSE);
+    "of the velocity rescaling", &rescaleAdaptive, FALSE);
+   opts.optional("rescaleAdaptive", "rescaleAdaptiveFactor", "Multiple of the reduction factor ",
+    &rescaleAdaptiveFactor, 1.0);
+   opts.optional("rescaleAdaptive", "rescaleAdaptiveFile",
+       "File for writing the adaptive velocity-rescaling restart information",
+       rescaleAdaptiveFile);
+   opts.optional("rescaleAdaptive", "rescaleAdaptiveFileFreq",
+       "Frequency of writing the adaptive velocity-rescaling restart information",
+       &rescaleAdaptiveFileFreq, 10000);
 
    opts.optional("main", "reassignFreq", "Number of steps between "
     "velocity reassignment", &reassignFreq);
@@ -3154,6 +3162,11 @@ void SimParameters::check_config(ParseOptions &opts, ConfigList *config, char *&
       NAMD_die("Must give a rescale temperature if rescaleFreq is defined");
     }
   }
+    if ( opts.defined("rescaleAdaptive") ) {
+      if ( !opts.defined("rescaleAdaptiveFile") ) {
+        strcpy(rescaleAdaptiveFile, "adaptvrescale.dat");
+      }
+    }
    }
    else
    {

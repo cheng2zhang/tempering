@@ -151,8 +151,15 @@ protected:
     void enqueueCollections(int);
     void correctMomentum(int step);
     void rescaleVelocities(int);
+    void rescaleVelocitiesInit(void);
+    void rescaleVelocitiesLoad(void);
+    void rescaleVelocitiesSave(int);
       BigReal rescaleVelocities_sumTemps;
       int rescaleVelocities_numTemps;
+      BigReal rescaleVelocities_sum1;
+      BigReal rescaleVelocities_sumBeta;
+      BigReal rescaleVelocities_sumBeta2;
+      BigReal rescaleVelocities_sumDbde;
     void reassignVelocities(int);
     void tcoupleVelocities(int);
     void langRescaleVelocities(int, Bool);
