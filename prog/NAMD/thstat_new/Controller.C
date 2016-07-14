@@ -1056,27 +1056,30 @@ void Controller::rescaleVelocities(int step)
       if ( simParams->rescaleAdaptive ) {
         BigReal bref = 1.0 / (BOLTZMANN * rescaleTemp);
         BigReal dbeta = bref - beta;
-        BigReal dbde1 = rescaleVelocities_sumDbde / rescaleVelocities_sum1;
-        BigReal bet, bet2, dbde;
-        dbde = dbde1 / simParams->rescaleAdaptiveFactor;
-        // the exact method turns out to be too demanding on precision
-        //if ( rescaleVelocities_numTemps < 10 ) {
-        //  dbde = dbde1;
-        //} else {
-        //  bet = rescaleVelocities_sumBeta / rescaleVelocities_sum1;
-        //  bet2 = rescaleVelocities_sumBeta2 / rescaleVelocities_sum1 - bet * bet;
-        //  dbde = dbde1 + bet2;
-        //  if ( dbde > 0.05 * dbde1 ) dbde = 0.05 * dbde1;
-        //}
+        BigReal dbdk = rescaleVelocities_sumDbde / rescaleVelocities_sum1;
+        BigReal bet = rescaleVelocities_sumBeta / rescaleVelocities_sum1;
+        BigReal bet2 = rescaleVelocities_sumBeta2 / rescaleVelocities_sum1 - bet * bet;
+        BigReal dbde;
+        if ( simParams->rescaleAdaptiveDedk > 0 ) { // heuristic method
+          dbde = dbdk / simParams->rescaleAdaptiveDedk;
+        } else { // exact method
+          if ( rescaleVelocities_numTemps < 10 ) {
+            dbde = dbdk;
+          } else {
+            dbde = dbdk + bet2;
+            if ( dbde > 0.01 * dbdk ) dbde = 0.01 * dbdk;
+          }
+        }
         BigReal de = dbeta/dbde;
         BigReal s = (de / ek) * simParams->rescaleFreq / rescaleVelocities_sum1;
         if ( s > 0.5 ) s = 0.5;
         else if ( s < -0.5 ) s = -0.5;
         factor = sqrt(1 + s);
-        //CkPrintf("factor %g, step %d, s %g, bet %g/%g, dbde %g/%g, bet2 %g, dE/Ek %g | %g %g tp %g\n",
-        //    factor, step, s, bet, bref, dbde, dbde1, bet2, de/ek, rescaleVelocities_sumBeta, rescaleVelocities_sum1, temperature);getchar();
-        if ( fmod(rescaleVelocities_sum1, simParams->rescaleAdaptiveFileFreq) < 0.5 )
+        if ( fmod(rescaleVelocities_sum1, simParams->rescaleAdaptiveFileFreq) < 0.5 ) {
+          CkPrintf("step %d, factor %g, s %g, bet %g/%g, dbde %g/%g, bet2 %g, delE/K %g, tp %g\n",
+              step, factor, s, bet, bref, dbde, dbdk, bet2, de/ek, temperature); // getchar();
           rescaleVelocitiesSave(step);
+        }
       }
       broadcast->velocityRescaleFactor.publish(step,factor);
       //iout << "RESCALING VELOCITIES AT STEP " << step

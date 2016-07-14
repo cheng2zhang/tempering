@@ -136,6 +136,15 @@ where t is the number of times of such scaling so far.
 The file specified by `rescaleAdaptiveFile` is automatically reloaded.
 In initial runs please delete this file.
 
+By default, we use the exact method to compute dbeta/dE.
+But this can be too demanding on the precision.
+A workaround is to set `rescaleAdaptiveDedk` to a number greater than 1.0,
+which is roughly the change of the total energy divided by the
+change of the kinetic energy in response to a temperature change
+```
+rescaleAdaptiveDedk 1.5
+```
+
 
 #### Monitoring the distribution of the (reduced) kinetic energy
 

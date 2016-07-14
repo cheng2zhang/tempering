@@ -1238,8 +1238,8 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
    opts.units("rescaleTemp", N_KELVIN);
    opts.optionalB("main", "rescaleAdaptive", "Adaptively reduce the magnitude "
     "of the velocity rescaling", &rescaleAdaptive, FALSE);
-   opts.optional("rescaleAdaptive", "rescaleAdaptiveFactor", "Multiple of the reduction factor ",
-    &rescaleAdaptiveFactor, 1.0);
+   opts.optional("rescaleAdaptive", "rescaleAdaptiveDedk", "Multiple of the reduction factor ",
+    &rescaleAdaptiveDedk, 0.0);
    opts.optional("rescaleAdaptive", "rescaleAdaptiveFile",
        "File for writing the adaptive velocity-rescaling restart information",
        rescaleAdaptiveFile);
