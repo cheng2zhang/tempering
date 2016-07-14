@@ -1,14 +1,6 @@
 # NAMD files
 
 
-Variances     | Description
---------------|---------------------
-minmod        | minimal corrections to the original version
-thstat        | Langevin-style velocity rescaling and Nose-Hoover thermostats
-spec          | also report end-to-end distance of C-alpha atoms in every step
-
-## Variances
-
 ### thstat
 
 This patch contains several modifications to NAMD 2.11:
@@ -175,30 +167,14 @@ divided by the number of degrees of freedom divided by the Boltzmann constant.
 Please see ../test/Argon_NAMD_ST/ke.png for an example.
 
 
-### spec
-
-This patch contains all modifications to NAMD 2.11 included in `thstat`.
-It also includes two additional changes.
-
- 1. Reporting the alpha-carbon end-to-end distance in every step.
- 2. Adding a column (first) of beta to the restart file (due to Justin).
-
-
-#### alpha-carbon end-to-end distance
-
-The alpha-carbon end-to-end distance is computed in CollectionMaster.C and CollectionMgr.h.
-Particularly, the new routines
-`CollectionMaster::receiveSpecPositions()`, `CollectionMaster::enqueueSpecPositions()`,
-`CollectionMaster::disposeSpecPositions()`, and `CollectionMgr::submitSpecPositions()`.
-
 ## Apply patches
 
 http://www.thegeekstuff.com/2014/12/patch-command-examples/
 
 ```
-make minmod.patch
+make thstat.patch
 ```
 
 To use the patch
 ```
-patch -b -p3 < minmod.patch
+patch -b -p3 < thstat.patch
