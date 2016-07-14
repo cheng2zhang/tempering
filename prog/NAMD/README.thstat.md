@@ -133,12 +133,17 @@ we can use the native NAMD mechanism of velocity rescaling,
 but gradually reduce the scaling magnitude.
 To enable this feature, turn on the adaptive velocity scaling feature (`rescaleAdaptive`)
 ```
-rescaleTemp 300
-rescaleFreq 10
-rescaleAdaptive on
+rescaleTemp               300
+rescaleFreq               10
+rescaleAdaptive           on
+rescaleAdaptiveFile       adaptvrescale.dat
+rescaleAdaptiveFileFreq   100000
 ```
 In this way, the magnitude of velocity scaling is modified by a factor of 1/t,
 where t is the number of times of such scaling so far.
+The file specified by `rescaleAdaptiveFile` is automatically reloaded.
+In initial runs please delete this file.
+
 
 #### Monitoring the distribution of the (reduced) kinetic energy
 
