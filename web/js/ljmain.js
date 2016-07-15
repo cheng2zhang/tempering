@@ -777,6 +777,7 @@ function usercode_compile_func(s, func)
 function usercode_compile()
 {
   stopsimul();
+  usercode_savescheme();
   if ( !usercode_thefunc ) {
     usercode_thefunc = new Array();
   }
