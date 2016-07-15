@@ -160,7 +160,10 @@ function init_simtemp()
 function getsinfo()
 {
   var s = "";
-  if ( weightmethod === "WL" ) {
+  if ( usercode_thefunc ) {
+    var funcinfo = usercode_thefunc["info"];
+    s = funcinfo(usercode_obj);
+  } else if ( weightmethod === "WL" ) {
     var flatness = wl.getflatness();
     s += 'WL stage ' + wl.stage + '.<br>';
     s += '<span class="math">ln <i>f</i> </span>: ' + wl.lnf.toExponential(3) + '.<br>';
@@ -552,6 +555,8 @@ usercode_ref["stlj_WL_init"] = "" +
 "           v     : varr,\n" +
 "           hist  : harr,\n" +
 "           tot   : 0,\n" +
+"           asym  : false,\n" +
+"           t0    : 0,\n" +
 "           lnf   : 1.0};\n" +
 "}\n";
 
@@ -578,8 +583,31 @@ usercode_ref["stlj_WL_update"] = "" +
 "  var n = obj.beta.length;\n" +
 "  obj.hist[itp] += 1;\n" +
 "  obj.tot += 1;\n" +
-"  obj.lnf = n / (obj.tot + 100);\n" +
+"  if ( obj.asym ) {\n" +
+"    obj.lnf = n / (obj.tot + obj.t0);\n" +
+"  } else if ( obj.tot % 1000 === 0 ) {\n" +
+"    var hmin = obj.tot, hmax = 0, i;\n" +
+"    for ( i = 0; i < n; i++ ) {\n" +
+"      if ( obj.hist[i] > hmax ) hmax = obj.hist[i];\n" +
+"      if ( obj.hist[i] < hmin ) hmin = obj.hist[i];\n" +
+"    }\n" +
+"    var flatness = (hmax - hmin) / (hmax + hmin);\n" +
+"    if ( flatness < 0.3 ) {\n" +
+"      obj.asym = true;\n" +
+"      obj.t0 = 2 / obj.lnf;\n" +
+"      obj.tot = 0;\n" +
+"    }\n" +
+"  }\n" +
 "  obj.v[itp] += obj.lnf;\n" +
+"}\n";
+
+usercode_ref["stlj_WL_info"] = "" +
+"// This function outputs a string for information\n" +
+"function info(obj) {\n" +
+"  var s = '';\n" +
+"  s += 'ln<i>f</i>: ' + obj.lnf.toExponential(3) + '.<br>';\n" +
+"  s += 'asym.: ' + obj.asym + '.<br>';\n" +
+"  return s;\n" +
 "}\n";
 
 usercode_ref["stlj_ave_init"] = "" +
@@ -626,6 +654,12 @@ usercode_ref["stlj_ave_update"] = "" +
 "  obj.usum[itp] += ep;\n" +
 "}\n";
 
+usercode_ref["stlj_ave_info"] = "" +
+"// This function outputs a string for information\n" +
+"function info(obj) {\n" +
+"  return '';\n" +
+"}\n";
+
 usercode_ref["stlj_avem_init"] = "" +
 "// This function accepts an array of inverse temperatures\n" +
 "// and return an object for future use\n" +
@@ -669,11 +703,17 @@ usercode_ref["stlj_avem_update"] = "" +
 "  obj.usum[itp] += ep;\n" +
 "}\n";
 
+usercode_ref["stlj_avem_info"] = "" +
+"// This function outputs a string for information\n" +
+"function info(obj) {\n" +
+"  return '';\n" +
+"}\n";
+
 
 
 var usercode_cache = new Array();
 
-var usercode_funcnames = ["init", "tpmove", "update"];
+var usercode_funcnames = ["init", "tpmove", "update", "info"];
 
 
 
@@ -700,17 +740,9 @@ function seteditorvalue(s)
 
 
 
-// form user scheme-function
-function usercode_funcname()
+// form full function name from scheme and function
+function usercode_getfullname(scheme, func)
 {
-  var scheme = grab("userscheme").value;
-  if ( scheme.substring(0, 11) === "userscheme_" ) {
-    scheme = scheme.substring(11);
-  }
-  var func = grab("userfunc").value;
-  if ( func.substring(0, 9) === "userfunc_" ) {
-    func = func.substring(9);
-  }
   return "stlj_" + scheme + "_" + func;
 }
 
@@ -724,7 +756,8 @@ function usercode_compile_func(s, func)
   var id1 = s.lastIndexOf("}");
   // extracting the function body including the braces
   var funcbody = s.substring(id0, id1 + 1);
-  var npar = (func === "init") ? 1 : 3;
+  // determine the number of parameters
+  var npar = (func === "init" || func === "info") ? 1 : 3;
   var thefunc, var1, var2, var3;
   if ( npar === 1 ) {
     var1 = s.substring(p1, p9).trim();
@@ -759,24 +792,23 @@ function usercode_compile()
 function usercode_changescheme()
 {
   var scheme = grab("userscheme").value.substring(11);
-  // load code to the cache
-  if ( scheme === "WL" || scheme === "ave" || scheme === "avem" ) {
-    for ( var i = 0; i < usercode_funcnames.length; i++ ) {
-      var func = usercode_funcnames[i];
-      usercode_cache[func] = usercode_ref["stlj_" + scheme + "_" + func];
-    }
+  // load code of the scheme into the cache
+  for ( var i = 0; i < usercode_funcnames.length; i++ ) {
+    var func = usercode_funcnames[i];
+    var name = usercode_getfullname(scheme, func);
+    usercode_cache[func] = usercode_ref[name];
   }
   usercode_changefunc();
 }
 
-// change function
+// switch to a different function in the same scheme
 function usercode_changefunc()
 {
   var func = grab("userfunc").value.substring(9);
-  seteditorvalue(usercode_cache[func]);
+  seteditorvalue( usercode_cache[func] );
 }
 
-// save cache
+// save the modified code to cache
 function usercode_savecache()
 {
   var func = grab("userfunc").value.substring(9);
@@ -784,40 +816,64 @@ function usercode_savecache()
   usercode_cache[func] = s;
 }
 
-// // reset the user's code
-// function usercode_reset(what)
-// {
-//   localStorage.removeItem(what);
-//   //seteditorvalue( );
-// }
-
-// create a new scheme
+// create a new user-defined scheme
 function usercode_newscheme()
 {
   var fs = grab("userscheme");
   var opt = document.createElement("option");
-  for ( var id = 1; id < 100; id++ ) {
+  for ( var id = 1; ; id++ ) {
     opt.text = "Scheme " + id;
-    opt.id = "scheme" + id;
+    opt.value = "userscheme_scheme" + id;
     for ( var j = 0; j < fs.options.length; j++ ) {
       if ( fs.options[j].text === opt.text )
         break;
     }
     if ( j >= fs.options.length ) break;
   }
-  alert("Saving the code to " + opt.text);
-  fs.add(opt);
-  fs.selectedIndex = fs.options.length - 1;
+  if ( window.confirm("Creating scheme " + opt.text + " (" + opt.value + ")") ) {
+    fs.add(opt);
+    fs.selectedIndex = fs.options.length - 1;
+  }
 }
 
 // save the user's code
 function usercode_savescheme()
 {
-  var scheme = grab("userscheme").value.substring(11);
+  var fs = grab("userscheme");
+  var scheme = fs.value.substring(11);
   if ( scheme === "WL" || scheme === "ave" || scheme === "avem" ) {
     usercode_newscheme();
   }
-  //localStorage.setItem(funcname, usercode);
+  // need to refresh the scheme name, if a new one is created
+  scheme = fs.value.substring(11);
+  for ( var i = 0; i < usercode_funcnames.length; i++ ) {
+    var func = usercode_funcnames[i];
+    var name = usercode_getfullname(scheme, func);
+    localStorage.setItem(name, usercode_cache[func]);
+    console.log("Saving function " + name + " " + fs.selectedIndex);
+  }
+}
+
+// load the user code
+function usercode_loadschemes()
+{
+  var fs = grab("userscheme");
+  for ( var id = 1; id <= 10; id++ ) {
+    var scheme = "scheme" + id;
+    for ( var i = 0; i < usercode_funcnames.length; i++ ) {
+      var func = usercode_funcnames[i];
+      var name = usercode_getfullname(scheme, func);
+      var s = localStorage.getItem(name);
+      if ( !s ) break;
+      usercode_ref[name] = s;
+    }
+    if ( i >= usercode_funcnames.length ) {
+      var opt = document.createElement("option");
+      opt.text = "Scheme " + id;
+      opt.value = "userscheme_scheme" + id;
+      fs.add(opt);
+    }
+  }
 }
 
 function resizecontainer(a)
@@ -841,7 +897,7 @@ function resizecontainer(a)
   var hcbar = 40; // height of the control bar
   var htbar = 30; // height of the tabs bar
   var wr = h*3/4; // width of the plots
-  var wtab = 700; // width of the tabs
+  var wtab = 680; // width of the tabs
   var htab = 450;
 
   grab("simulbox").style.width = "" + w + "px";

@@ -296,7 +296,7 @@
     <!-- <div class="panel-title">Code</div> -->
 
   <label for="userscheme">
-    Set:
+    Scheme:
   </label>
   <select id="userscheme" onchange="usercode_changescheme()">
     <option value="userscheme_WL">Wang-Landau</option>
@@ -312,20 +312,27 @@
     <option value="userfunc_init">Initialization</option>
     <option value="userfunc_tpmove">Temperature transition</option>
     <option value="userfunc_update">Data accumulation</option>
+    <option value="userfunc_info">Display information</option>
   </select>.
   &nbsp;
-  <span class="glyphicon glyphicon-edit" title="New"
-    onclick="usercode_newscheme()"></span>
+
+  <div style="font-size: 120%; padding:10px">
+
+  <span class="glyphicon glyphicon-file" title="New"
+    onclick="usercode_newscheme()">New</span>
   &nbsp;
 
   <span class="glyphicon glyphicon-floppy-disk" title="Save"
-    onclick="usercode_savescheme()"></span>
+    onclick="usercode_savescheme()">Save</span>
   &nbsp;
 
-  <span class="glyphicon glyphicon-apple" title="Compile"
-    onclick="usercode_compile()"></span>
-  <br>
+  <span class="glyphicon glyphicon-edit" title="Compile"
+    onclick="usercode_compile()">Compile</span>
+  &nbsp;
 
+  <span class="glyphicon glyphicon-triangle-right" title="Compile & Run"
+    onclick="usercode_compile();startsimul()">Run</span>
+  </div>
 
   <div id="usercode-par">
     <textarea id="usercode" rows="20" cols="50"
@@ -349,6 +356,7 @@
       aceeditor.getSession().setMode("ace/mode/javascript");
       aceeditor.getSession().on('change', function(e) { usercode_savecache() });
     }
+    usercode_loadschemes();
     usercode_changescheme();
   </script>
 
