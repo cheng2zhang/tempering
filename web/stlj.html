@@ -211,7 +211,7 @@
     onchange="changeparams()">.
   &nbsp;
   <br>
-  
+
   <input type="checkbox" id="forcescaling"
    onchange="changeparams()">
   <label for="forcescaling">
@@ -295,41 +295,43 @@
   <form class="form-inline">
     <!-- <div class="panel-title">Code</div> -->
 
-  <label for="userset">
+  <label for="userscheme">
     Set:
   </label>
-  <select id="userset" onchange="usercode_changeset()">
-    <option value="userset_WL">Wang-Landau</option>
-    <option value="userset_ave">Average energy</option>
-    <option value="userset_avem">Average energy (modified)</option>
+  <select id="userscheme" onchange="usercode_changescheme()">
+    <option value="userscheme_WL">Wang-Landau</option>
+    <option value="userscheme_ave">Average energy</option>
+    <option value="userscheme_avem">Average energy (modified)</option>
   </select>.
   &nbsp;
 
   <label for="userfunc">
     Function:
   </label>
-  <select id="userfunc" onchange="usercode_load()">
+  <select id="userfunc" onchange="usercode_changefunc()">
     <option value="userfunc_init">Initialization</option>
     <option value="userfunc_tpmove">Temperature transition</option>
     <option value="userfunc_update">Data accumulation</option>
   </select>.
   &nbsp;
-  <span class="glyphicon glyphicon-save"
-    onclick="usercode_save()"></span>
+  <span class="glyphicon glyphicon-edit" title="New"
+    onclick="usercode_newscheme()"></span>
   &nbsp;
-  
-  <span class="glyphicon glyphicon-play"
+
+  <span class="glyphicon glyphicon-floppy-disk" title="Save"
+    onclick="usercode_savescheme()"></span>
+  &nbsp;
+
+  <span class="glyphicon glyphicon-apple" title="Compile"
     onclick="usercode_compile()"></span>
   <br>
-  
 
 
   <div id="usercode-par">
     <textarea id="usercode" rows="20" cols="50"
-      class="form-control"
+      class="form-control" oninput="usercode_savecache()"
       style="background-color:#ffffe0; font-family: monospace;">
     </textarea>
-    <!-- oninput="saveusercode()" -->
   </div>
 
   <!-- this div will replace the textarea above, if ace editor is available -->
@@ -345,9 +347,9 @@
       aceeditor = ace.edit("usercode-aceeditor");
       aceeditor.setTheme("ace/theme/dawn");
       aceeditor.getSession().setMode("ace/mode/javascript");
-      //aceeditor.getSession().on('change', function(e) { saveusercode() });
+      aceeditor.getSession().on('change', function(e) { usercode_savecache() });
     }
-    usercode_load();
+    usercode_changescheme();
   </script>
 
   </form>

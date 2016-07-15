@@ -56,9 +56,8 @@ var mcacc = 0.0;
 var histplot = null;
 var vplot = null;
 
-var usercode_init = null;
-var usercode_tpmove = null;
-var usercode_update = null;
+// compiled user function
+var usercode_thefunc = null;
 var usercode_obj = null;
 
 
@@ -149,8 +148,9 @@ function init_simtemp()
   }
   itp = 0;
 
-  if ( usercode_init ) {
-    usercode_obj = usercode_init(beta);
+  if ( usercode_thefunc ) {
+    var funcinit = usercode_thefunc["init"];
+    usercode_obj = funcinit(beta);
   }
 }
 
@@ -187,10 +187,13 @@ function thermostat(tp, dt)
 // temperature transition
 function tpmove(itp, ep)
 {
-  if ( usercode_tpmove ) {
-    if ( !usercode_obj )
-      usercode_obj = usercode_init(beta);
-    return usercode_tpmove(itp, ep, usercode_obj);
+  if ( usercode_thefunc ) {
+    if ( !usercode_obj ) {
+      var funcinit = usercode_thefunc["init"];
+      usercode_obj = funcinit(beta);
+    }
+    var functpmove = usercode_thefunc["tpmove"];
+    return functpmove(itp, ep, usercode_obj);
   } else {
     return simtemp.jump(itp, ep, 1, weightmethod_id);
   }
@@ -202,10 +205,13 @@ function tpmove(itp, ep)
 function update(itp, ep)
 {
   simtemp.add(itp, ep);
-  if ( usercode_update ) {
-    if ( !usercode_obj )
-      usercode_obj = usercode_init(beta);
-    usercode_update(itp, ep, usercode_obj);
+  if ( usercode_thefunc ) {
+    if ( !usercode_obj ) {
+      var funcinit = usercode_thefunc["init"];
+      usercode_obj = funcinit(beta);
+    }
+    var funcupdate = usercode_thefunc["update"];
+    funcupdate(itp, ep, usercode_obj);
   } else {
     if ( weightmethod === "WL" ) {
       wl.add( itp );
@@ -572,9 +578,104 @@ usercode_ref["stlj_WL_update"] = "" +
 "  var n = obj.beta.length;\n" +
 "  obj.hist[itp] += 1;\n" +
 "  obj.tot += 1;\n" +
-"  obj.lnf = n / (obj.tot + 10000);\n" +
+"  obj.lnf = n / (obj.tot + 100);\n" +
 "  obj.v[itp] += obj.lnf;\n" +
 "}\n";
+
+usercode_ref["stlj_ave_init"] = "" +
+"// This function accepts an array of inverse temperatures\n" +
+"// and return an object for future use\n" +
+"function init(beta) {\n" +
+"  var n = beta.length, i;\n" +
+"  var harr = new Array(n);\n" +
+"  var uarr = new Array(n);\n" +
+"  for ( i = 0; i < n; i++ ) {\n" +
+"    harr[i] = 0;\n" +
+"    uarr[i] = 0;\n" +
+"  }\n" +
+"  // return the energy-averaging object\n" +
+"  return { beta  : beta,\n" +
+"           hist  : harr,\n" +
+"           usum  : uarr};\n" +
+"}\n";
+
+usercode_ref["stlj_ave_tpmove"] = "" +
+"// This function accepts the current temprature index,\n" +
+"// current potential energy, and the user object,\n" +
+"// returns the new temperature index\n" +
+"function tpmove(itp, ep, obj) {\n" +
+"  var n = obj.beta.length;\n" +
+"  var jtp = ( rand01() > 0.5 ) ? (itp + 1) : (itp - 1);\n" +
+"  if ( jtp < 0 || jtp >= n ) return itp;\n" +
+"  var ui = obj.usum[itp] / obj.hist[itp];\n" +
+"  var uj = (obj.hist[jtp] > 0) ? (obj.usum[jtp] / obj.hist[jtp]) : ui;\n" +
+"  var uav = (ui + uj) * 0.5;\n" +
+"  var de = -(ep - uav) * (obj.beta[jtp] - obj.beta[itp]);\n" +
+"  if ( de < 0 && rand01() > Math.exp(de) ) {\n" +
+"    jtp = itp; // abandon the move\n" +
+"  }\n" +
+"  return jtp;\n" +
+"}\n";
+
+usercode_ref["stlj_ave_update"] = "" +
+"// This function accepts the current temprature index,\n" +
+"// current potential energy, and the user object,\n" +
+"// and updates the user object\n" +
+"function update(itp, ep, obj) {\n" +
+"  obj.hist[itp] += 1;\n" +
+"  obj.usum[itp] += ep;\n" +
+"}\n";
+
+usercode_ref["stlj_avem_init"] = "" +
+"// This function accepts an array of inverse temperatures\n" +
+"// and return an object for future use\n" +
+"function init(beta) {\n" +
+"  var n = beta.length, i;\n" +
+"  var harr = new Array(n);\n" +
+"  var uarr = new Array(n);\n" +
+"  for ( i = 0; i < n; i++ ) {\n" +
+"    harr[i] = 0;\n" +
+"    uarr[i] = 0;\n" +
+"  }\n" +
+"  // return the energy-averaging object\n" +
+"  return { beta  : beta,\n" +
+"           hist  : harr,\n" +
+"           usum  : uarr};\n" +
+"}\n";
+
+usercode_ref["stlj_avem_tpmove"] = "" +
+"// This function accepts the current temprature index,\n" +
+"// current potential energy, and the user object,\n" +
+"// returns the new temperature index\n" +
+"function tpmove(itp, ep, obj) {\n" +
+"  var n = obj.beta.length;\n" +
+"  var jtp = ( rand01() > 0.5 ) ? (itp + 1) : (itp - 1);\n" +
+"  if ( jtp < 0 || jtp >= n ) return itp;\n" +
+"  var uav = (obj.usum[itp] + obj.usum[jtp])\n" +
+"          / (obj.hist[itp] + obj.hist[jtp]);\n" +
+"  var de = -(ep - uav) * (obj.beta[jtp] - obj.beta[itp]);\n" +
+"  if ( de < 0 && rand01() > Math.exp(de) ) {\n" +
+"    jtp = itp; // abandon the move\n" +
+"  }\n" +
+"  return jtp;\n" +
+"}\n";
+
+usercode_ref["stlj_avem_update"] = "" +
+"// This function accepts the current temprature index,\n" +
+"// current potential energy, and the user object,\n" +
+"// and updates the user object\n" +
+"function update(itp, ep, obj) {\n" +
+"  obj.hist[itp] += 1;\n" +
+"  obj.usum[itp] += ep;\n" +
+"}\n";
+
+
+
+var usercode_cache = new Array();
+
+var usercode_funcnames = ["init", "tpmove", "update"];
+
+
 
 // ace editor
 var aceeditor = null;
@@ -599,24 +700,23 @@ function seteditorvalue(s)
 
 
 
+// form user scheme-function
 function usercode_funcname()
 {
-  var set = grab("userset").value;
-  if ( set.substring(0, 8) === "userset_" ) {
-    set = set.substring(8);
+  var scheme = grab("userscheme").value;
+  if ( scheme.substring(0, 11) === "userscheme_" ) {
+    scheme = scheme.substring(11);
   }
   var func = grab("userfunc").value;
   if ( func.substring(0, 9) === "userfunc_" ) {
     func = func.substring(9);
   }
-  return "stlj_" + set + "_" + func;
+  return "stlj_" + scheme + "_" + func;
 }
 
-// compile the user-defined function
-function usercode_compile()
+// compile the function
+function usercode_compile_func(s, func)
 {
-  stopsimul();
-  var s = geteditorvalue();
   var p0 = s.indexOf("function(");
   var p1 = s.indexOf("(", p0) + 1;
   var p9 = s.indexOf(")", p1);
@@ -624,8 +724,7 @@ function usercode_compile()
   var id1 = s.lastIndexOf("}");
   // extracting the function body including the braces
   var funcbody = s.substring(id0, id1 + 1);
-  var funcid = grab("userfunc").value;
-  var npar = (funcid === "userfunc_init") ? 1 : 3;
+  var npar = (func === "init") ? 1 : 3;
   var thefunc, var1, var2, var3;
   if ( npar === 1 ) {
     var1 = s.substring(p1, p9).trim();
@@ -638,53 +737,87 @@ function usercode_compile()
     var3 = s.substring(p3 + 1, p9).trim();
     thefunc = new Function(var1, var2, var3, funcbody);
   }
-  if ( funcid === "userfunc_init" ) {
-    usercode_init = thefunc;
-  } else if ( funcid === "userfunc_tpmove" ) {
-    usercode_tpmove = thefunc;
-  } else if ( funcid === "userfunc_update" ) {
-    usercode_update = thefunc;
+  return thefunc;
+}
+
+// compile the user-defined functions in the cache
+function usercode_compile()
+{
+  stopsimul();
+  if ( !usercode_thefunc ) {
+    usercode_thefunc = new Array();
+  }
+  for ( var i = 0; i < usercode_funcnames.length; i++ ) {
+    var func = usercode_funcnames[i];
+    var s = usercode_cache[func];
+    var thefunc = usercode_compile_func(s, func);
+    usercode_thefunc[func] = thefunc;
   }
 }
 
-
-function usercode_changeset()
+// change code scheme
+function usercode_changescheme()
 {
-  //usercode_init = ;
-  //usercode_tpmove = ;
-  //usercode_update = ;
+  var scheme = grab("userscheme").value.substring(11);
+  // load code to the cache
+  if ( scheme === "WL" || scheme === "ave" || scheme === "avem" ) {
+    for ( var i = 0; i < usercode_funcnames.length; i++ ) {
+      var func = usercode_funcnames[i];
+      usercode_cache[func] = usercode_ref["stlj_" + scheme + "_" + func];
+    }
+  }
+  usercode_changefunc();
 }
 
-// reset the user's code
-function usercode_reset(what)
+// change function
+function usercode_changefunc()
 {
-  localStorage.removeItem(what);
-  //seteditorvalue( );
+  var func = grab("userfunc").value.substring(9);
+  seteditorvalue(usercode_cache[func]);
+}
+
+// save cache
+function usercode_savecache()
+{
+  var func = grab("userfunc").value.substring(9);
+  var s = geteditorvalue();
+  usercode_cache[func] = s;
+}
+
+// // reset the user's code
+// function usercode_reset(what)
+// {
+//   localStorage.removeItem(what);
+//   //seteditorvalue( );
+// }
+
+// create a new scheme
+function usercode_newscheme()
+{
+  var fs = grab("userscheme");
+  var opt = document.createElement("option");
+  for ( var id = 1; id < 100; id++ ) {
+    opt.text = "Scheme " + id;
+    opt.id = "scheme" + id;
+    for ( var j = 0; j < fs.options.length; j++ ) {
+      if ( fs.options[j].text === opt.text )
+        break;
+    }
+    if ( j >= fs.options.length ) break;
+  }
+  alert("Saving the code to " + opt.text);
+  fs.add(opt);
+  fs.selectedIndex = fs.options.length - 1;
 }
 
 // save the user's code
-function usercode_save()
+function usercode_savescheme()
 {
-  var funcname = usercode_funcname();
-  var usercode = geteditorvalue();
-  localStorage.setItem(funcname, usercode);
-}
-
-// load the user's code
-function usercode_load(what)
-{
-  // remind the user to save the code
-  var funcname = usercode_funcname();
-  //usercode_load(funcname);
-  var code = usercode_ref[funcname];
-  if ( code ) {
-    seteditorvalue( code );
+  var scheme = grab("userscheme").value.substring(11);
+  if ( scheme === "WL" || scheme === "ave" || scheme === "avem" ) {
+    usercode_newscheme();
   }
-  //var usercode = localStorage.getItem(what);
-  //if ( usercode ) {
-  //  seteditorvalue( usercode );
-  //  //alert("loading " + what + " " + usercode);
-  //}
+  //localStorage.setItem(funcname, usercode);
 }
 
 function resizecontainer(a)
