@@ -1440,9 +1440,15 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
    opts.optionalB("adaptTempMD","adaptTempTNHC","Send adaptTemp temperature to Nose-Hoover chain thermostat",&adaptTempTNHC,TRUE);
    opts.optional("adaptTempMD", "adaptTempInFile", "File containing restart information for adaptTemp", adaptTempInFile);
    opts.optional("adaptTempMD", "adaptTempRestartFile", "File for writing adaptTemp restart information", adaptTempRestartFile);
+   opts.optionalB("adaptTempRestartFile", "adaptTempRestartAppend", "Appending instead of overwriting the restart file", &adaptTempRestartAppend, FALSE);
    opts.require("adaptTempRestartFile","adaptTempRestartFreq", "Frequency of writing restart file", &adaptTempRestartFreq,0);
    opts.range("adaptTempRestartFreq",NOT_NEGATIVE);
    opts.optionalB("adaptTempMD", "adaptTempRandom", "Randomly assign a temperature if we step out of range", &adaptTempRandom, FALSE);
+
+   // special atoms
+   opts.optionalB("main", "specAtomsOn", "Turn on calculations on the special atoms", &specAtomsOn, FALSE);
+   opts.optional("specAtomsOn", "specAtomsFreq", "Frequency of outputing the end-to-end distance of the special atoms", &specAtomsFreq, 1);
+   opts.range("specAtomsFreq", POSITIVE);
 }
 
 void SimParameters::config_parser_constraints(ParseOptions &opts) {
@@ -3123,6 +3129,12 @@ void SimParameters::check_config(ParseOptions &opts, ConfigList *config, char *&
      if ( rescaleFreq > 0 )
        iout << iWARN << "Velocity rescaling does not sample the exact Boltzmann distribution "
 	 "and adaptive tempering will not work properly\n" << endi;
+   }
+   if ( specAtomsOn ) {
+     if ( !opts.defined("specAtomsFreq") && dcdFrequency > 0 ) {
+       // set the default specAtomsFreq to dcdFrequency
+       specAtomsFreq = dcdFrequency;
+     }
    }
    if (langevinOn) {
      if ( ! opts.defined("langevinDamping") ) langevinDamping = 0.0;

@@ -436,7 +436,10 @@ void Sequencer::integrate(int scriptTask) {
 	submitCollections(step);
 
         // submit special atoms
-        submitSpecPositions(step);
+        if ( simParams->specAtomsOn
+          && step % simParams->specAtomsFreq == 0 ) {
+          submitSpecPositions(step);
+        }
 
        //Update adaptive tempering temperature
         Bool scaled = adaptTempUpdate(step);

@@ -8,11 +8,12 @@ This patch contains several modifications to NAMD 2.11:
  1. The correction of the velocity-scaling problem (due to Justin) after temperature transitions in adaptive tempering.
  2. Fixing (hopefully) the one-step mismatch problem in Sequencer.C and Controller.C.
  3. Fixing the bin index overflow problem (due to Justin) in adaptTempUpdate() in Controller.C.
- 4. Disabling the code for the ad hoc adaptTempRandom scheme, which lacks theoretically foundation.
- 5. Issuing a warning for using adaptive tempering with the original velocity rescaling, which does not rigorously sample the Boltzmann distribution.
- 6. Integrating the Langevin-style velocity-rescaling thermostat and Nose-Hoover thermostat.
- 7. Adaptively rescaling the velocity to approach an asymptotic microcanonical ensemble.
- 8. Monitoring the distribution of the (reduced) kinetic energy.
+ 4. Properly overwriting (instead of appending) the restart file (due to Justin). 
+ 5. Disabling the code for the ad hoc adaptTempRandom scheme, which lacks theoretically foundation.
+ 6. Issuing a warning for using adaptive tempering with the original velocity rescaling, which does not rigorously sample the Boltzmann distribution.
+ 7. Integrating the Langevin-style velocity-rescaling thermostat and Nose-Hoover thermostat.
+ 8. Adaptively rescaling the velocity to approach an asymptotic microcanonical ensemble.
+ 9. Monitoring the distribution of the (reduced) kinetic energy.
 
 
 #### Velocity-scaling after temperature transition
@@ -48,6 +49,12 @@ In adaptTempUpdate(), the temperature index adaptTempBin (line 1997) may be out 
 We fix this by correcting the index to 0 or adaptTempBins - 1.
 This should work if the overflow or underflow is due to rounding error.
 But the user should still make sure that the thermostat temperature lying within the range at the beginning.
+
+#### Properly overwriting the the restart file
+
+Currently the restart file is appended instead of overwritten because of a programming mistake.
+This is fixed in the patch.  If the appending behavior is desired,
+the user can set the option `adaptTempRestartAppend`.
 
 #### Disabling the code for adaptTempRandom
 
