@@ -45,7 +45,8 @@ NAMD_thstat.zip::
 NAMD_spec.zip::
 	$(RM) -f $@
 	$(MAKE) -B spec.patch
-	zip -r $@ spec* Nose*.pdf vrescal*.pdf *.html README.spec.md \
+	zip -r $@ spec* Nose*.pdf vrescal*.pdf *.html \
+	  README.thstat.md README.spec.md \
 	  ../../doc/vsTmove.tex ../../doc/vsTmove.pdf \
 	  ../../test/Argon_NAMD_ST/*.prm \
 	  ../../test/Argon_NAMD_ST/*.conf \
