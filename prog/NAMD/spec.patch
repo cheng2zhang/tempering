@@ -316,7 +316,7 @@ diff -u -wdB spec_old/CollectionMgr.h spec_new/CollectionMgr.h
  #endif
 diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 --- spec_old/Controller.C	2015-12-17 15:22:03.000000000 -0600
-+++ spec_new/Controller.C	2016-07-19 17:05:25.611565883 -0500
++++ spec_new/Controller.C	2016-07-19 17:32:38.750523243 -0500
 @@ -388,6 +388,14 @@
    typedef void (*namd_sighandler_t)(int);
  }
@@ -570,7 +570,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +      // the second half-step from the previous MD step
 +      broadcast->langRescaleFactor.publish(step, factor * langRescaleFactorPrev);
 +    } else {
-+      // save it for the scaling in the next step
++      // save it for the rescaling in the next step
 +      langRescaleFactorPrev = factor;
 +    }
 +    temperature *= fac2;
@@ -649,7 +649,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +      tNHCzeta[j] = (tNHCzeta[j] * s + GQ /tNHCmass[j] * dt*0.5) * s;
 +    }
 +
-+    // velocity scaling factor
++    // velocity rescaling factor
 +    factor = exp( -tNHCzeta[0] * dt );
 +    if ( !isPrev ) {
 +      // combine with the rescaling factor carried from
@@ -913,7 +913,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +      BigReal tScale = dT / adaptTempT;
 +      BigReal vScale = sqrt(tScale);
 +      // for velocity-rescaling-based thermostats, we carry the
-+      // the velocity-scaling factor to the next step
++      // the velocity-rescaling factor to the next step
 +      if ( simParams->langRescaleOn ) {
 +        langRescaleFactorPrev *= vScale;
 +      } else if ( simParams->tNHCOn ) {
@@ -1346,7 +1346,7 @@ diff -u -wdB spec_old/Sequencer.h spec_new/Sequencer.h
        int checkpoint_berendsenPressure_count;
 diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
 --- spec_old/SimParameters.C	2015-12-08 09:41:37.000000000 -0600
-+++ spec_new/SimParameters.C	2016-07-19 16:56:02.725451674 -0500
++++ spec_new/SimParameters.C	2016-07-19 17:17:10.906055315 -0500
 @@ -187,6 +187,12 @@
    }
    SCRIPT_PARSE_FLOAT("reassignTemp",reassignTemp)
@@ -1445,8 +1445,8 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
     opts.optionalB("adaptTempMD", "adaptTempRandom", "Randomly assign a temperature if we step out of range", &adaptTempRandom, FALSE);
 +
 +   // special atoms
-+   opts.optionalB("main", "specAtomsOn", "Turn on calculations on the special atoms", &specAtomsOn, FALSE);
-+   opts.optional("specAtomsOn", "specAtomsFreq", "Frequency of outputing the end-to-end distance of the special atoms", &specAtomsFreq, 1);
++   opts.optionalB("main", "specAtoms", "Turn on calculations on the special atoms", &specAtomsOn, FALSE);
++   opts.optional("specAtoms", "specAtomsFreq", "Frequency of outputing the end-to-end distance of the special atoms", &specAtomsFreq, 1);
 +   opts.range("specAtomsFreq", POSITIVE);
  }
  
@@ -1586,7 +1586,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
        iout << iINFO << "OLD STYLE MINIMIZATION ACTIVE\n";
 diff -u -wdB spec_old/SimParameters.h spec_new/SimParameters.h
 --- spec_old/SimParameters.h	2015-09-04 17:20:03.000000000 -0500
-+++ spec_new/SimParameters.h	2016-07-19 16:51:16.735851746 -0500
++++ spec_new/SimParameters.h	2016-07-19 17:33:02.162482792 -0500
 @@ -497,8 +497,32 @@
  					//  active
  	BigReal tCoupleTemp;		//  Temperature for temp coupling
@@ -1629,7 +1629,7 @@ diff -u -wdB spec_old/SimParameters.h spec_new/SimParameters.h
          char adaptTempInFile[128];             //  Restart information for adaptTemp to read
          char adaptTempRestartFile[128];        //  File to write restart information
          int  adaptTempRestartFreq;             //  Frequency of writing restart output
-+        int  adaptTempRestartAppend;           //  Appending instead of overwriting the restart file
++        Bool adaptTempRestartAppend;           //  Appending instead of overwriting the restart file
          Bool adaptTempRandom;                  //  Do we assign random temperatures when we step out of [Tmin,Tmax]?
          /* End Adaptive Temperature Sampling */
  

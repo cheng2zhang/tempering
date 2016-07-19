@@ -12,7 +12,15 @@ It also includes two additional changes.
 
 #### alpha-carbon end-to-end distance
 
-The alpha-carbon end-to-end distance is computed in CollectionMaster.C and CollectionMgr.h.
+The alpha-carbon end-to-end distance is computed.
+To use this feature, set `specAtomsOn` and `specAtomsFreq`
+```
+specAtoms on
+specAtomsFreq 4
+```
+By default `specAtomsFreq` is set to `dcdFrequency`.
+
+The actual code in CollectionMaster.C and CollectionMgr.h.
 Particularly, the new routines
 `CollectionMaster::receiveSpecPositions()`, `CollectionMaster::enqueueSpecPositions()`,
 `CollectionMaster::disposeSpecPositions()`, and `CollectionMgr::submitSpecPositions()`.

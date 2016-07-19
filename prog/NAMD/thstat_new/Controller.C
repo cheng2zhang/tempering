@@ -1239,9 +1239,11 @@ void Controller::langRescaleVelocities(int step, Bool isPrev)
     BigReal fac2 = ek2 / ek1;
     BigReal factor = sqrt( fac2 );
     if ( !isPrev ) {
+      // combine with the rescaling factor carried from
+      // the second half-step from the previous MD step
       broadcast->langRescaleFactor.publish(step, factor * langRescaleFactorPrev);
     } else {
-      // save it for the scaling in the next step
+      // save it for the rescaling in the next step
       langRescaleFactorPrev = factor;
     }
     temperature *= fac2;
@@ -1320,9 +1322,11 @@ void Controller::tNHCRescaleVelocities(int step, Bool isPrev)
       tNHCzeta[j] = (tNHCzeta[j] * s + GQ /tNHCmass[j] * dt*0.5) * s;
     }
 
-    // velocity scaling factor
+    // velocity rescaling factor
     factor = exp( -tNHCzeta[0] * dt );
     if ( !isPrev ) {
+      // combine with the rescaling factor carried from
+      // the second half-step from the previous MD step
       broadcast->tNHCRescaleFactor.publish(step, factor * tNHCRescaleFactorPrev);
     } else {
       tNHCRescaleFactorPrev = factor;
@@ -2033,6 +2037,9 @@ void Controller::adaptTempInit(int step) {
 void Controller::adaptTempWriteRestart(int step) {
     if (simParams->adaptTempOn && !(step%simParams->adaptTempRestartFreq)) {
         adaptTempRestartFile.seekp(std::ios::beg);        
+        if ( !simParams->adaptTempRestartAppend ) {
+          adaptTempRestartFile.seekbegin();
+        }
         iout << "ADAPTEMP: WRITING RESTART FILE AT STEP " << step << "\n" << endi;
         adaptTempRestartFile << step << " ";
         // Start with min and max temperatures
@@ -2052,6 +2059,7 @@ void Controller::adaptTempWriteRestart(int step) {
           adaptTempRestartFile << adaptTempPotEnergyAveDen[j] << " ";
           adaptTempRestartFile << "\n";          
         }
+        adaptTempRestartFile << std::endl;
         adaptTempRestartFile.flush(); 
     }
 }    
@@ -2351,6 +2359,8 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
       
       BigReal tScale = dT / adaptTempT;
       BigReal vScale = sqrt(tScale);
+      // for velocity-rescaling-based thermostats, we carry the
+      // the velocity-rescaling factor to the next step
       if ( simParams->langRescaleOn ) {
         langRescaleFactorPrev *= vScale;
       } else if ( simParams->tNHCOn ) {

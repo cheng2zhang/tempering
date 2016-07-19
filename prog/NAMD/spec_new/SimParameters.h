@@ -556,7 +556,7 @@ public:
         char adaptTempInFile[128];             //  Restart information for adaptTemp to read
         char adaptTempRestartFile[128];        //  File to write restart information
         int  adaptTempRestartFreq;             //  Frequency of writing restart output
-        int  adaptTempRestartAppend;           //  Appending instead of overwriting the restart file
+        Bool adaptTempRestartAppend;           //  Appending instead of overwriting the restart file
         Bool adaptTempRandom;                  //  Do we assign random temperatures when we step out of [Tmin,Tmax]?
         /* End Adaptive Temperature Sampling */
 

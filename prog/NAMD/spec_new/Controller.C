@@ -1271,7 +1271,7 @@ void Controller::langRescaleVelocities(int step, Bool isPrev)
       // the second half-step from the previous MD step
       broadcast->langRescaleFactor.publish(step, factor * langRescaleFactorPrev);
     } else {
-      // save it for the scaling in the next step
+      // save it for the rescaling in the next step
       langRescaleFactorPrev = factor;
     }
     temperature *= fac2;
@@ -1350,7 +1350,7 @@ void Controller::tNHCRescaleVelocities(int step, Bool isPrev)
       tNHCzeta[j] = (tNHCzeta[j] * s + GQ /tNHCmass[j] * dt*0.5) * s;
     }
 
-    // velocity scaling factor
+    // velocity rescaling factor
     factor = exp( -tNHCzeta[0] * dt );
     if ( !isPrev ) {
       // combine with the rescaling factor carried from
@@ -2389,7 +2389,7 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
       BigReal tScale = dT / adaptTempT;
       BigReal vScale = sqrt(tScale);
       // for velocity-rescaling-based thermostats, we carry the
-      // the velocity-scaling factor to the next step
+      // the velocity-rescaling factor to the next step
       if ( simParams->langRescaleOn ) {
         langRescaleFactorPrev *= vScale;
       } else if ( simParams->tNHCOn ) {

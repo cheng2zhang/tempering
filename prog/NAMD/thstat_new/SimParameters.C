@@ -1450,6 +1450,7 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
    opts.optional("adaptTempMD", "adaptTempRestartFile", "File for writing adaptTemp restart information", adaptTempRestartFile);
    opts.require("adaptTempRestartFile","adaptTempRestartFreq", "Frequency of writing restart file", &adaptTempRestartFreq,0);
    opts.range("adaptTempRestartFreq",NOT_NEGATIVE);
+   opts.optionalB("adaptTempRestartFile", "adaptTempRestartAppend", "Appending instead of overwriting the restart file", &adaptTempRestartAppend, FALSE);
    opts.optionalB("adaptTempMD", "adaptTempRandom", "Randomly assign a temperature if we step out of range", &adaptTempRandom, FALSE);
 }
 

@@ -1456,8 +1456,8 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
    opts.optionalB("adaptTempMD", "adaptTempRandom", "Randomly assign a temperature if we step out of range", &adaptTempRandom, FALSE);
 
    // special atoms
-   opts.optionalB("main", "specAtomsOn", "Turn on calculations on the special atoms", &specAtomsOn, FALSE);
-   opts.optional("specAtomsOn", "specAtomsFreq", "Frequency of outputing the end-to-end distance of the special atoms", &specAtomsFreq, 1);
+   opts.optionalB("main", "specAtoms", "Turn on calculations on the special atoms", &specAtomsOn, FALSE);
+   opts.optional("specAtoms", "specAtomsFreq", "Frequency of outputing the end-to-end distance of the special atoms", &specAtomsFreq, 1);
    opts.range("specAtomsFreq", POSITIVE);
 }
 
