@@ -1437,6 +1437,8 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
    opts.range("adaptTempTmax", POSITIVE);
    opts.optional("adaptTempMD", "adaptTempBins","Number of bins to store average energies", &adaptTempBins,0);
    opts.range("adaptTempBins", NOT_NEGATIVE);
+   opts.optional("adaptTempMD", "adaptTempWindowSize","Window size as a fraction of the inverse temperature range", &adaptTempWindowSize, 0.04);
+   opts.range("adaptTempWindowSize", NOT_NEGATIVE);
    opts.optional("adaptTempMD", "adaptTempDt", "Integration timestep for Temp. updates", &adaptTempDt, 0.0001);
    opts.units("adaptTempDt", N_FSEC);
    opts.range("adaptTempDt", NOT_NEGATIVE);
@@ -5239,6 +5241,11 @@ if ( openatomOn )
         iout << iINFO << "      WRITING RESTART INFORMATION TO " << adaptTempRestartFile << " EVERY " << adaptTempRestartFreq << " STEPS\n";
      }
         
+   }
+
+   if (specAtomsOn) {
+     iout << iINFO << "SPECIAL ATOMS ACTIVE:\n";
+     iout << iINFO << "      FREQUENCY: " << specAtomsFreq << "\n";
    }
 
    if (FMAOn)

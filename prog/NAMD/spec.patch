@@ -316,7 +316,7 @@ diff -u -wdB spec_old/CollectionMgr.h spec_new/CollectionMgr.h
  #endif
 diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 --- spec_old/Controller.C	2015-12-17 15:22:03.000000000 -0600
-+++ spec_new/Controller.C	2016-07-19 17:32:38.750523243 -0500
++++ spec_new/Controller.C	2016-07-20 19:52:26.346610323 -0500
 @@ -388,6 +388,14 @@
    typedef void (*namd_sighandler_t)(int);
  }
@@ -403,7 +403,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  	}
  #endif
 -	 
-+        if ( scaled && ldbSteps == 1 ) {
++        if ( scaled && (ldbSteps == 1 || LdbCoordinator::Object()->getNumStepsToRun() == 1) ) {
 +          // collect Hi's if we're about to rebalance load
 +          collection->enqueueHi(step);
 +        }
@@ -532,7 +532,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  void Controller::correctMomentum(int step) {
  
      Vector momentum;
-@@ -1110,6 +1237,274 @@
+@@ -1110,6 +1237,281 @@
    }
  }
  
@@ -574,6 +574,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +      langRescaleFactorPrev = factor;
 +    }
 +    temperature *= fac2;
++    totalEnergy += kineticEnergy * (fac2 - 1);
 +    kineticEnergy *= fac2;
 +    kineticEnergyCentered *= fac2;
 +  }
@@ -661,6 +662,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +
 +    BigReal fac2 = factor * factor;
 +    temperature *= fac2;
++    totalEnergy += kineticEnergy * (fac2 - 1);
 +    kineticEnergy *= fac2;
 +    kineticEnergyCentered *= fac2;
 +    mvv *= fac2;
@@ -731,6 +733,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +
 +void Controller::keHistInit(void)
 +{
++  if ( !simParams->keHistOn ) return;
 +  BigReal keHistTemp = simParams->thermostatTemp();
 +  BigReal ke = BOLTZMANN * keHistTemp * numDegFreedom / 2;
 +  keHistBinMax = (int) (5.0 * ke / simParams->keHistBin);
@@ -743,6 +746,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +
 +void Controller::keHistUpdate(int step)
 +{
++  if ( !simParams->keHistOn ) return;
 +  BigReal ke = BOLTZMANN * temperature * numDegFreedom / 2;
 +  if ( simParams->adaptTempOn ) {
 +    ke *= simParams->thermostatTemp() / adaptTempT;
@@ -756,6 +760,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +
 +void Controller::keHistSave(int step)
 +{
++  if ( !simParams->keHistOn ) return;
 +  FILE *fp = fopen(simParams->keHistFile, "w");
 +  if ( fp == NULL ) return;
 +  fprintf(fp, "# %d %d\n", numDegFreedom, step);
@@ -782,6 +787,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +
 +void Controller::keHistLoad(void)
 +{
++  if ( !simParams->keHistOn ) return;
 +  FILE *fp = fopen(simParams->keHistFile, "r");
 +  if ( fp == NULL ) return;
 +  char buf[128];
@@ -800,6 +806,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +
 +void Controller::keHistDone(int step)
 +{
++  if ( !simParams->keHistOn ) return;
 +  keHistSave(step);
 +  delete[] keHist;
 +}
@@ -807,7 +814,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  static char *FORMAT(BigReal X)
  {
    static char tmp_string[25];
-@@ -1610,6 +2005,7 @@
+@@ -1610,6 +2012,7 @@
          adaptTempBetaN           = new BigReal[adaptTempBins];
          adaptTempDBeta = (adaptTempBetaMax - adaptTempBetaMin)/(adaptTempBins);
          for(int j = 0; j < adaptTempBins; ++j) {
@@ -815,7 +822,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
            adaptTempRead >> adaptTempPotEnergyAve[j];
            adaptTempRead >> adaptTempPotEnergyVar[j];
            adaptTempRead >> adaptTempPotEnergySamples[j];
-@@ -1636,11 +2032,7 @@
+@@ -1636,11 +2039,7 @@
        adaptTempCg = simParams->adaptTempCgamma;   
        adaptTempDt  = simParams->adaptTempDt;
        adaptTempDBeta = (adaptTempBetaMax - adaptTempBetaMin)/(adaptTempBins);
@@ -828,7 +835,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
        for(int j = 0; j < adaptTempBins; ++j){
            adaptTempPotEnergyAveNum[j] = 0.;
            adaptTempPotEnergyAveDen[j] = 0.;
-@@ -1673,7 +2065,9 @@
+@@ -1673,7 +2072,9 @@
  
  void Controller::adaptTempWriteRestart(int step) {
      if (simParams->adaptTempOn && !(step%simParams->adaptTempRestartFreq)) {
@@ -839,7 +846,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
          iout << "ADAPTEMP: WRITING RESTART FILE AT STEP " << step << "\n" << endi;
          adaptTempRestartFile << step << " ";
          // Start with min and max temperatures
-@@ -1685,6 +2079,7 @@
+@@ -1685,6 +2086,7 @@
          adaptTempRestartFile << adaptTempDt ;
          adaptTempRestartFile << "\n" ;
          for(int j = 0; j < adaptTempBins; ++j) {
@@ -847,7 +854,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
            adaptTempRestartFile << adaptTempPotEnergyAve[j] << " ";
            adaptTempRestartFile << adaptTempPotEnergyVar[j] << " ";
            adaptTempRestartFile << adaptTempPotEnergySamples[j] << " ";
-@@ -1693,21 +2088,23 @@
+@@ -1693,21 +2095,23 @@
            adaptTempRestartFile << adaptTempPotEnergyAveDen[j] << " ";
            adaptTempRestartFile << "\n";          
          }
@@ -875,7 +882,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
      const int adaptTempOutFreq  = simParams->adaptTempOutFreq;
      const bool adaptTempDebug  = simParams->adaptTempDebug;
      //Calculate Current inverse temperature and bin 
-@@ -1720,6 +2117,11 @@
+@@ -1720,13 +2124,48 @@
                                << " adaptTempDBeta: " << adaptTempDBeta 
                                 << " betaMin:" << adaptTempBetaMin 
                                 << " betaMax: " << adaptTempBetaMax << "\n";
@@ -887,33 +894,283 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
      adaptTempPotEnergySamples[adaptTempBin] += 1;
      BigReal gammaAve = 1.-adaptTempCg/adaptTempPotEnergySamples[adaptTempBin];
  
-@@ -1890,6 +2292,10 @@
-         dT += random->gaussian()*sqrt(2.*adaptTempDt)*adaptTempT;
-         dT += adaptTempT;
-         // Check again, if not then keep original adaptTempTor assign random.
-+        if ( dT > 1./adaptTempBetaMin || dT < 1./adaptTempBetaMax ) {
-+          dT = adaptTempT;
-+        }
-+        /* the adaptTempRandom scheme is invalid
-         if ( dT > 1./adaptTempBetaMin ) {
-           if (!simParams->adaptTempRandom) {             
-              //iout << iWARN << "ADAPTEMP: " << step << " T= " << dT 
-@@ -1921,6 +2327,7 @@
-             dT = 1./dT;
+     BigReal potentialEnergy;
+     BigReal potEnergyAverage;
+     BigReal potEnergyVariance;
+-    potentialEnergy = totalEnergy-kineticEnergy;
++
++    // recompute the potential energy
++    BigReal bondEnergy = reduction->item(REDUCTION_BOND_ENERGY);
++    BigReal angleEnergy = reduction->item(REDUCTION_ANGLE_ENERGY);
++    BigReal dihedralEnergy = reduction->item(REDUCTION_DIHEDRAL_ENERGY);
++    BigReal improperEnergy = reduction->item(REDUCTION_IMPROPER_ENERGY);
++    BigReal crosstermEnergy = reduction->item(REDUCTION_CROSSTERM_ENERGY);
++    BigReal boundaryEnergy = reduction->item(REDUCTION_BC_ENERGY);
++    BigReal miscEnergy = reduction->item(REDUCTION_MISC_ENERGY);
++    if ( step % nbondFreq == 0 ) {
++      electEnergy = reduction->item(REDUCTION_ELECT_ENERGY);
++      ljEnergy = reduction->item(REDUCTION_LJ_ENERGY);
++      BigReal volume = state->lattice.volume();
++      if (simParams->LJcorrection && volume) {
++        // Apply tail correction to energy
++        ljEnergy += Node::Object()->molecule->tail_corr_ener / volume;
++      }
++      groLJEnergy = reduction->item(REDUCTION_GRO_LJ_ENERGY);
++      groGaussEnergy = reduction->item(REDUCTION_GRO_GAUSS_ENERGY);
++      goNativeEnergy = reduction->item(REDUCTION_GO_NATIVE_ENERGY);
++      goNonnativeEnergy = reduction->item(REDUCTION_GO_NONNATIVE_ENERGY);
++      goTotalEnergy = goNativeEnergy + goNonnativeEnergy;
++    }
++    if ( step % slowFreq == 0 ) {
++      electEnergySlow = reduction->item(REDUCTION_ELECT_ENERGY_SLOW);
++    }
++    potentialEnergy = bondEnergy + angleEnergy + dihedralEnergy
++	+ improperEnergy + electEnergy + electEnergySlow + ljEnergy
++	+ crosstermEnergy + boundaryEnergy + miscEnergy
++        + goTotalEnergy + groLJEnergy + groGaussEnergy;
++    totalEnergy = potentialEnergy + kineticEnergy;
+ 
+     //calculate new bin average and variance using adaptive averaging
+     adaptTempPotEnergyAveNum[adaptTempBin] = adaptTempPotEnergyAveNum[adaptTempBin]*gammaAve + potentialEnergy;
+@@ -1745,22 +2184,24 @@
+     // is constant for each bin. This is to estimate <E(beta)> where beta \in
+     // (beta_i,beta_{i+1}) using Eq 2 of JCP 132 244101
+     if ( ! ( step % simParams->adaptTempFreq ) ) {
+-      // If adaptTempBin not at the edge, calculate improved average:
+-      if (adaptTempBin > 0 && adaptTempBin < adaptTempBins-1) {
+           // Get Averaging Limits:
+-          BigReal deltaBeta = 0.04*adaptTempBeta; //0.08 used in paper - make variable
+-          BigReal betaPlus;
+-          BigReal betaMinus;
+-          int     nMinus =0;
+-          int     nPlus = 0;
+-          if ( adaptTempBeta-adaptTempBetaMin < deltaBeta ) deltaBeta = adaptTempBeta-adaptTempBetaMin;
+-          if ( adaptTempBetaMax-adaptTempBeta < deltaBeta ) deltaBeta = adaptTempBetaMax-adaptTempBeta;
+-          betaMinus = adaptTempBeta - deltaBeta;
+-          betaPlus =  adaptTempBeta + deltaBeta;
+-          BigReal betaMinus2 = betaMinus*betaMinus;
+-          BigReal betaPlus2  = betaPlus*betaPlus;
+-          nMinus = (int)floor((betaMinus-adaptTempBetaMin)/adaptTempDBeta);
+-          nPlus  = (int)floor((betaPlus-adaptTempBetaMin)/adaptTempDBeta);
++      BigReal centralBeta = adaptTempBetaMin + adaptTempDBeta * (adaptTempBins + 0.5);
++      BigReal deltaBeta = simParams->adaptTempWindowSize * centralBeta;
++      int deltaBins = (int) (deltaBeta / adaptTempDBeta + 0.5);
++      int nMinus = adaptTempBin - deltaBins;
++      if ( nMinus < 0 ) {
++        // solve the equation nMinus = 0;
++        deltaBins = adaptTempBin;
++      }
++      int nPlus = adaptTempBin + 1 + deltaBins;
++      if ( nPlus > adaptTempBins ) {
++        // solve the equation nPlus = adaptTempBins
++        deltaBins = adaptTempBins - deltaBins - 1;
++      }
++      nMinus = adaptTempBin - deltaBins;
++      nPlus  = adaptTempBin + deltaBins;
++      BigReal betaMinus = adaptTempBetaN[nMinus];
++      BigReal betaPlus  = adaptTempBetaN[nPlus];
+           // Variables for <E(beta)> estimate:
+           BigReal potEnergyAve0 = 0.0;
+           BigReal potEnergyAve1 = 0.0;
+@@ -1770,50 +2211,27 @@
+           BigReal A2 = 0;
+           //A0 phi_s integral for beta_minus < beta < beta_{i+1}
+           BigReal betaNp1 = adaptTempBetaN[adaptTempBin+1]; 
+-          BigReal DeltaE2Ave;
+-          BigReal DeltaE2AveSum = 0;
+-          BigReal betaj;
+-          for (j = nMinus+1; j <= adaptTempBin; ++j) {
+-              potEnergyAve0 += adaptTempPotEnergyAve[j]; 
+-              DeltaE2Ave = adaptTempPotEnergyVar[j];
+-              DeltaE2AveSum += DeltaE2Ave;
+-              A0 += j*DeltaE2Ave;
++      BigReal den = (adaptTempBin + 1) - nMinus;
++      for (j = nMinus; j <= adaptTempBin; ++j) {
++          potEnergyAve0 += adaptTempPotEnergyAve[j] / den;
++          A0 += adaptTempPotEnergyVar[j] * (j - nMinus + 0.5) / den;
            }
-         }
-+        */
-         else if (adaptTempAutoDt) {
+-          A0 *= adaptTempDBeta;
+-          A0 += (adaptTempBetaMin+0.5*adaptTempDBeta-betaMinus)*DeltaE2AveSum;
+-          A0 *= adaptTempDBeta;
+-          betaj = adaptTempBetaN[nMinus+1]-betaMinus; 
+-          betaj *= betaj;
+-          A0 += 0.5*betaj*adaptTempPotEnergyVar[nMinus];
+-          A0 /= (betaNp1-betaMinus);
+ 
+           //A1 phi_s integral for beta_{i+1} < beta < beta_plus
+-          DeltaE2AveSum = 0;
++      den = nPlus - (adaptTempBin + 1);
+           for (j = adaptTempBin+1; j < nPlus; j++) {
+-              potEnergyAve1 += adaptTempPotEnergyAve[j];
+-              DeltaE2Ave = adaptTempPotEnergyVar[j];
+-              DeltaE2AveSum += DeltaE2Ave;
+-              A1 += j*DeltaE2Ave;
+-          }
+-          A1 *= adaptTempDBeta;   
+-          A1 += (adaptTempBetaMin+0.5*adaptTempDBeta-betaPlus)*DeltaE2AveSum;
+-          A1 *= adaptTempDBeta;
+-          if ( nPlus < adaptTempBins ) {
+-            betaj = betaPlus-adaptTempBetaN[nPlus];
+-            betaj *= betaj;
+-            A1 -= 0.5*betaj*adaptTempPotEnergyVar[nPlus];
++          potEnergyAve1 += adaptTempPotEnergyAve[j] / den;
++          A1 += adaptTempPotEnergyVar[j] * (j - nPlus + 0.5) / den;
+           }
+-          A1 /= (betaPlus-betaNp1);
+ 
+           //A2 phi_t integral for beta_i
+-          A2 = 0.5*adaptTempDBeta*potEnergyVariance;
++      A2 = 0.5*potEnergyVariance;
+ 
+-          // Now calculate a+ and a-
+-          DeltaE2Ave = A0-A1;
+-          BigReal aplus = 0;
+-          BigReal aminus = 0;
+-          if (DeltaE2Ave != 0) {
++      // Now calculate a- and a+
++      BigReal aminus = 0, aplus = 0;
++      if ( A0 != A1 ) {
+             aplus = (A0-A2)/(A0-A1);
++      }
+             if (aplus < 0) {
+                     aplus = 0;
+             }
+@@ -1821,22 +2239,13 @@
+                     aplus = 1;
+             }
+             aminus = 1-aplus;
+-            potEnergyAve0 *= adaptTempDBeta;
+-            potEnergyAve0 += adaptTempPotEnergyAve[nMinus]*(adaptTempBetaN[nMinus+1]-betaMinus);
+-            potEnergyAve0 /= (betaNp1-betaMinus);
+-            potEnergyAve1 *= adaptTempDBeta;
+-            if ( nPlus < adaptTempBins ) {
+-                potEnergyAve1 += adaptTempPotEnergyAve[nPlus]*(betaPlus-adaptTempBetaN[nPlus]);
+-            }
+-            potEnergyAve1 /= (betaPlus-betaNp1);
+-            potEnergyAverage = aminus*potEnergyAve0;
+-            potEnergyAverage += aplus*potEnergyAve1;
+-          }
++      potEnergyAverage = aminus*potEnergyAve0 + aplus*potEnergyAve1;
+           if (simParams->adaptTempDebug) {
+        iout << "ADAPTEMP DEBUG:"  << "\n"
+             << "     adaptTempBin:    " << adaptTempBin << "\n"
+             << "     Samples:   " << adaptTempPotEnergySamples[adaptTempBin] << "\n"
+             << "     adaptTempBeta:   " << adaptTempBeta << "\n" 
++             << "     potentialEnergeAverage:  " << potEnergyAverage << "\n"
+             << "     adaptTemp:   " << adaptTempT<< "\n"
+             << "     betaMin:   " << adaptTempBetaMin << "\n"
+             << "     betaMax:   " << adaptTempBetaMax << "\n"
+@@ -1853,30 +2262,6 @@
+             << "     a-:        " << aminus << "\n"
+             << endi;
+           }
+-      }
+-      else {
+-          if (simParams->adaptTempDebug) {
+-       iout << "ADAPTEMP DEBUG:"  << "\n"
+-            << "     adaptTempBin:    " << adaptTempBin << "\n"
+-            << "     Samples:   " << adaptTempPotEnergySamples[adaptTempBin] << "\n"
+-            << "     adaptTempBeta:   " << adaptTempBeta << "\n" 
+-            << "     adaptTemp:   " << adaptTempT<< "\n"
+-            << "     betaMin:   " << adaptTempBetaMin << "\n"
+-            << "     betaMax:   " << adaptTempBetaMax << "\n"
+-            << "     gammaAve:  " << gammaAve << "\n"
+-            << "     deltaBeta:  N/A\n"
+-            << "     betaMinus:  N/A\n"
+-            << "     betaPlus:   N/A\n"
+-            << "     nMinus:     N/A\n"
+-            << "     nPlus:      N/A\n"
+-            << "     A0:         N/A\n"
+-            << "     A1:         N/A\n"
+-            << "     A2:         N/A\n"
+-            << "     a+:         N/A\n"
+-            << "     a-:         N/A\n"
+-            << endi;
+-          }
+-      }
+       
+       //dT is new temperature
+       BigReal dT = ((potentialEnergy-potEnergyAverage)/BOLTZMANN+adaptTempT)*adaptTempDt;
+@@ -1886,70 +2271,8 @@
+      // Check if dT in [adaptTempTmin,adaptTempTmax]. If not try simpler estimate of mean
+      // This helps sampling with poor statistics in the bins surrounding adaptTempBin.
+       if ( dT > 1./adaptTempBetaMin || dT  < 1./adaptTempBetaMax ) {
+-        dT = ((potentialEnergy-adaptTempPotEnergyAve[adaptTempBin])/BOLTZMANN+adaptTempT)*adaptTempDt;
+-        dT += random->gaussian()*sqrt(2.*adaptTempDt)*adaptTempT;
+-        dT += adaptTempT;
+-        // Check again, if not then keep original adaptTempTor assign random.
+-        if ( dT > 1./adaptTempBetaMin ) {
+-          if (!simParams->adaptTempRandom) {             
+-             //iout << iWARN << "ADAPTEMP: " << step << " T= " << dT 
+-             //     << " K higher than adaptTempTmax."
+-             //     << " Keeping temperature at " 
+-             //     << adaptTempT<< "\n"<< endi;             
+              dT = adaptTempT;
+-          }
+-          else {             
+-             //iout << iWARN << "ADAPTEMP: " << step << " T= " << dT 
+-             //     << " K higher than adaptTempTmax."
+-             //     << " Assigning random temperature in range\n" << endi;
+-             dT = adaptTempBetaMin +  random->uniform()*(adaptTempBetaMax-adaptTempBetaMin);             
+-             dT = 1./dT;
+-          }
+-        } 
+-        else if ( dT  < 1./adaptTempBetaMax ) {
+-          if (!simParams->adaptTempRandom) {            
+-            //iout << iWARN << "ADAPTEMP: " << step << " T= "<< dT 
+-            //     << " K lower than adaptTempTmin."
+-            //     << " Keeping temperature at " << adaptTempT<< "\n" << endi; 
+-            dT = adaptTempT;
+-          }
+-          else {
+-            //iout << iWARN << "ADAPTEMP: " << step << " T= "<< dT 
+-            //     << " K lower than adaptTempTmin."
+-            //     << " Assigning random temperature in range\n" << endi;
+-            dT = adaptTempBetaMin +  random->uniform()*(adaptTempBetaMax-adaptTempBetaMin);
+-            dT = 1./dT;
+-          }
+-        }
+-        else if (adaptTempAutoDt) {
+-          //update temperature step size counter
+-          //FOR "TRUE" ADAPTIVE TEMPERING 
+-          BigReal adaptTempTdiff = fabs(dT-adaptTempT);
+-          if (adaptTempTdiff > 0) {
+-            adaptTempDTave += adaptTempTdiff; 
+-            adaptTempDTavenum++;
+-//            iout << "ADAPTEMP: adapTempTdiff = " << adaptTempTdiff << "\n";
+-          }
+-          if(adaptTempDTavenum == 100){
+-                BigReal Frac;
+-                adaptTempDTave /= adaptTempDTavenum;
+-                Frac = 1./adaptTempBetaMin-1./adaptTempBetaMax;
+-                Frac = adaptTempDTave/Frac;
+-                //if average temperature jump is > 3% of temperature range,
+-                //modify jump size to match 3%
+-                iout << "ADAPTEMP: " << step << " FRAC " << Frac << "\n"; 
+-                if (Frac > adaptTempDtMax || Frac < adaptTempDtMin) {
+-                    Frac = adaptTempDtMax/Frac;
+-                    iout << "ADAPTEMP: Updating adaptTempDt to ";
+-                    adaptTempDt *= Frac;
+-                    iout << adaptTempDt << "\n" << endi;
+-                }
+-                adaptTempDTave = 0;
+-                adaptTempDTavenum = 0;
+-          }
+-        }
+-      }
+-      else if (adaptTempAutoDt) {
++      } else if (adaptTempAutoDt) {
            //update temperature step size counter
-           //FOR "TRUE" ADAPTIVE TEMPERING 
-@@ -1979,8 +2386,23 @@
+           // FOR "TRUE" ADAPTIVE TEMPERING
+           BigReal adaptTempTdiff = fabs(dT-adaptTempT);
+@@ -1979,8 +2302,24 @@
            
        }
        
 +      BigReal tScale = dT / adaptTempT;
 +      BigReal vScale = sqrt(tScale);
-+      // for velocity-rescaling-based thermostats, we carry the
-+      // the velocity-rescaling factor to the next step
++      // for velocity-rescaling-based thermostats
++      // carry the velocity-rescaling factor to the next step
 +      if ( simParams->langRescaleOn ) {
 +        langRescaleFactorPrev *= vScale;
 +      } else if ( simParams->tNHCOn ) {
@@ -925,12 +1182,13 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +      // temperature is to be used for the Langevin velocity-rescaling
 +      // and NH-chain thermostats, so it needs to be updated.
 +      temperature *= tScale;
++      totalEnergy += kineticEnergy * (tScale - 1);
 +      kineticEnergy *= tScale;
 +      kineticEnergyCentered *= tScale;
      }
      adaptTempWriteRestart(step);
      if ( ! (step % adaptTempOutFreq) ) {
-@@ -1991,7 +2413,7 @@
+@@ -1991,7 +2330,7 @@
               << " ENERGYVAR " << std::setprecision(10) << potEnergyVariance;
          iout << "\n" << endi;
     }
@@ -939,7 +1197,39 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  }
  
  
-@@ -3147,6 +3569,7 @@
+@@ -2277,6 +2616,15 @@
+       electEnergy = reduction->item(REDUCTION_ELECT_ENERGY);
+       ljEnergy = reduction->item(REDUCTION_LJ_ENERGY);
+ 
++      if (simParameters->LJcorrection && volume) {
++        // Apply tail correction to energy
++        //printf("Volume is %f\n", volume);
++        //printf("Applying tail correction of %f to energy\n", molecule->tail_corr_ener / volume);
++        ljEnergy += molecule->tail_corr_ener / volume;
++        ljEnergy_f += molecule->tail_corr_ener / volume;
++        ljEnergy_f_left += molecule->tail_corr_ener / volume;
++      }
++
+       // JLai
+       groLJEnergy = reduction->item(REDUCTION_GRO_LJ_ENERGY);
+       groGaussEnergy = reduction->item(REDUCTION_GRO_GAUSS_ENERGY);
+@@ -2310,15 +2658,6 @@
+ //fepe
+     }
+ 
+-    if (simParameters->LJcorrection && volume) {
+-      // Apply tail correction to energy
+-      //printf("Volume is %f\n", volume);
+-      //printf("Applying tail correction of %f to energy\n", molecule->tail_corr_ener / volume);
+-      ljEnergy += molecule->tail_corr_ener / volume;
+-      ljEnergy_f += molecule->tail_corr_ener / volume;
+-      ljEnergy_f_left += molecule->tail_corr_ener / volume;
+-    }
+-
+ 
+     momentum.x = reduction->item(REDUCTION_MOMENTUM_X);
+     momentum.y = reduction->item(REDUCTION_MOMENTUM_Y);
+@@ -3147,6 +3486,7 @@
      ldbSteps = LdbCoordinator::Object()->getNumStepsToRun();
    }
    if ( ! --ldbSteps ) {
@@ -1162,7 +1452,7 @@ diff -u -wdB spec_old/Random.h spec_new/Random.h
      skip();
 diff -u -wdB spec_old/Sequencer.C spec_new/Sequencer.C
 --- spec_old/Sequencer.C	2016-06-01 17:24:35.531579311 -0500
-+++ spec_new/Sequencer.C	2016-07-19 16:42:37.526894339 -0500
++++ spec_new/Sequencer.C	2016-07-20 19:54:02.600100798 -0500
 @@ -223,12 +223,7 @@
  
      // Is adaptive tempering on?
@@ -1200,7 +1490,7 @@ diff -u -wdB spec_old/Sequencer.C spec_new/Sequencer.C
         //Update adaptive tempering temperature
 -        adaptTempUpdate(step);
 +        Bool scaled = adaptTempUpdate(step);
-+        if ( scaled && ldbSteps == 1 ) {
++        if ( scaled && (ldbSteps == 1 || LdbCoordinator::Object()->getNumStepsToRun() == 1) ) {
 +          // submit Hi's if we're about to rebalance load
 +          collection->submitHi(step);
 +          //CkPrintf("Sequencer step %d, thread %p\n", step, CthSelf());
@@ -1346,7 +1636,7 @@ diff -u -wdB spec_old/Sequencer.h spec_new/Sequencer.h
        int checkpoint_berendsenPressure_count;
 diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
 --- spec_old/SimParameters.C	2015-12-08 09:41:37.000000000 -0600
-+++ spec_new/SimParameters.C	2016-07-19 17:17:10.906055315 -0500
++++ spec_new/SimParameters.C	2016-07-20 19:28:24.035092757 -0500
 @@ -187,6 +187,12 @@
    }
    SCRIPT_PARSE_FLOAT("reassignTemp",reassignTemp)
@@ -1431,7 +1721,16 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
  
     opts.optional("main", "reassignFreq", "Number of steps between "
      "velocity reassignment", &reassignFreq);
-@@ -1383,11 +1446,19 @@
+@@ -1374,6 +1437,8 @@
+    opts.range("adaptTempTmax", POSITIVE);
+    opts.optional("adaptTempMD", "adaptTempBins","Number of bins to store average energies", &adaptTempBins,0);
+    opts.range("adaptTempBins", NOT_NEGATIVE);
++   opts.optional("adaptTempMD", "adaptTempWindowSize","Window size as a fraction of the inverse temperature range", &adaptTempWindowSize, 0.04);
++   opts.range("adaptTempWindowSize", NOT_NEGATIVE);
+    opts.optional("adaptTempMD", "adaptTempDt", "Integration timestep for Temp. updates", &adaptTempDt, 0.0001);
+    opts.units("adaptTempDt", N_FSEC);
+    opts.range("adaptTempDt", NOT_NEGATIVE);
+@@ -1383,11 +1448,19 @@
     opts.range("adaptTempCgamma", NOT_NEGATIVE);
     opts.optionalB("adaptTempMD","adaptTempLangevin","Send adaptTemp temperature to langevin thermostat",&adaptTempLangevin,TRUE);
     opts.optionalB("adaptTempMD","adaptTempRescaling","Send adaptTemp temperature to velocity rescaling thermostat", &adaptTempRescale,TRUE);
@@ -1451,7 +1750,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
  }
  
  void SimParameters::config_parser_constraints(ParseOptions &opts) {
-@@ -2174,6 +2245,22 @@
+@@ -2174,6 +2247,22 @@
  
  }
  
@@ -1474,7 +1773,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
  #ifdef MEM_OPT_VERSION
  //This global var is defined in mainfunc.C
  extern char *gWorkDir;
-@@ -2989,9 +3076,15 @@
+@@ -2989,9 +3078,15 @@
     }
     // END LA
  
@@ -1492,7 +1791,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
     }
  
     if (globalOn && CkNumPes() > 1)
-@@ -3033,8 +3126,8 @@
+@@ -3033,8 +3128,8 @@
        maximumMove = 0.75 * pairlistDist/stepsPerCycle;
     }
     if (adaptTempOn) {
@@ -1503,7 +1802,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
       if (opts.defined("adaptTempInFile") && (opts.defined("adaptTempTmin") ||
                                               opts.defined("adaptTempTmax") ||
                                               adaptTempBins != 0)) 
-@@ -3043,6 +3136,15 @@
+@@ -3043,6 +3138,15 @@
                                               opts.defined("adaptTempTmax") &&
                                               adaptTempBins != 0 ))  
          NAMD_die("Need to specify either adaptTempInFile or all of {adaptTempTmin, adaptTempTmax,adaptTempBins} if adaptTempMD is on.");
@@ -1519,7 +1818,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
     }
     if (langevinOn) {
       if ( ! opts.defined("langevinDamping") ) langevinDamping = 0.0;
-@@ -3073,6 +3175,11 @@
+@@ -3073,6 +3177,11 @@
      {
        NAMD_die("Must give a rescale temperature if rescaleFreq is defined");
      }
@@ -1531,7 +1830,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
    }
     }
     else
-@@ -3188,6 +3295,8 @@
+@@ -3188,6 +3297,8 @@
       else if (reassignFreq > 0)	alchTemp = reassignTemp;
       else if (langevinOn) 	alchTemp = langevinTemp;
       else if (tCoupleOn) 	alchTemp = tCoupleTemp;
@@ -1540,7 +1839,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
       else NAMD_die("Alchemical FEP can be performed only in constant temperature simulations\n");
  
       if (reassignFreq > 0 && reassignIncr != 0)
-@@ -3820,6 +3929,16 @@
+@@ -3820,6 +3931,16 @@
    tCoupleTemp = 0.0;
     }
  
@@ -1557,7 +1856,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
     if (HydrogenBonds)
     {
       if (daCutoffDist > pairlistDist)
-@@ -4890,6 +5009,26 @@
+@@ -4890,6 +5011,26 @@
        iout << endi;
     }
  
@@ -1584,9 +1883,21 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
     if (minimizeOn)
     {
        iout << iINFO << "OLD STYLE MINIMIZATION ACTIVE\n";
+@@ -5102,6 +5243,11 @@
+         
+    }
+ 
++   if (specAtomsOn) {
++     iout << iINFO << "SPECIAL ATOMS ACTIVE:\n";
++     iout << iINFO << "      FREQUENCY: " << specAtomsFreq << "\n";
++   }
++
+    if (FMAOn)
+    {
+      iout << iINFO << "FMA ACTIVE\n";
 diff -u -wdB spec_old/SimParameters.h spec_new/SimParameters.h
 --- spec_old/SimParameters.h	2015-09-04 17:20:03.000000000 -0500
-+++ spec_new/SimParameters.h	2016-07-19 17:33:02.162482792 -0500
++++ spec_new/SimParameters.h	2016-07-20 19:27:14.533634018 -0500
 @@ -497,8 +497,32 @@
  					//  active
  	BigReal tCoupleTemp;		//  Temperature for temp coupling
@@ -1620,7 +1931,12 @@ diff -u -wdB spec_old/SimParameters.h spec_new/SimParameters.h
  
          Bool accelMDOn;                 //  Perform accelerated MD
          Bool accelMDdihe;               //  Apply boost to the dihedral potential
-@@ -527,12 +551,18 @@
+@@ -523,16 +547,23 @@
+         BigReal adaptTempTmax;                 //  Upper temperature bound
+         BigReal adaptTempAutoDt;               //  Auto jump size. Value determines upper bound, adaotTempDt determines lower bound 
+         int adaptTempBins;                     //  Number of bins to store average energy values
++        BigReal adaptTempWindowSize;           //  Window size as a fraction of the inverse temperature range
+         BigReal adaptTempDt;                   //  timestep for adaptTemp updates - only affects Temperature random walk
          BigReal adaptTempCgamma;               //  Cgamma variable for adaptive bin averaging Cgamma = 0 is normal Averaging. 1 > Cgamma >= 0
          Bool adaptTempLangevin;                //  Couple to Langevin Thermostat
          Bool adaptTempRescale;                 //  Couple to Vel. Rescaling
@@ -1639,7 +1955,7 @@ diff -u -wdB spec_old/SimParameters.h spec_new/SimParameters.h
  	int reassignFreq;		//  Velocity reassignment frequency
  	BigReal reassignTemp;		//  Temperature to reassign to
  	BigReal reassignIncr;		//  Added to reassignTemp each time
-@@ -921,6 +951,7 @@
+@@ -921,6 +952,7 @@
          int issetinparseopts(const char* name);
  
         	void readExtendedSystem(const char *filename, Lattice *latptr=0);
