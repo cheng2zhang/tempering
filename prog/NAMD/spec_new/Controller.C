@@ -391,6 +391,7 @@ extern "C" {
 // initialize special atoms
 void Controller::specInit(int scriptTask, int step)
 {
+  if ( !simParams->specAtomsOn ) return;
   // set the number of special positions
   Molecule *mol = Node::Object()->molecule;
   collection->numSpec = mol->spcnt;
@@ -2095,7 +2096,6 @@ void Controller::adaptTempWriteRestart(int step) {
           adaptTempRestartFile << adaptTempPotEnergyAveDen[j] << " ";
           adaptTempRestartFile << "\n";          
         }
-        adaptTempRestartFile << std::endl;
         adaptTempRestartFile.flush(); 
     }
 }    
@@ -2196,36 +2196,35 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
       int nPlus = adaptTempBin + 1 + deltaBins;
       if ( nPlus > adaptTempBins ) {
         // solve the equation nPlus = adaptTempBins
-        deltaBins = adaptTempBins - deltaBins - 1;
+        deltaBins = adaptTempBins - (adaptTempBin + 1);
       }
       nMinus = adaptTempBin - deltaBins;
-      nPlus  = adaptTempBin + deltaBins;
+      nPlus  = adaptTempBin + 1 + deltaBins;
       BigReal betaMinus = adaptTempBetaN[nMinus];
       BigReal betaPlus  = adaptTempBetaN[nPlus];
       // Variables for <E(beta)> estimate:
       BigReal potEnergyAve0 = 0.0;
       BigReal potEnergyAve1 = 0.0;
       // Integral terms
-      BigReal A0 = 0;
-      BigReal A1 = 0;
-      BigReal A2 = 0;
+      BigReal A0 = 0; // Sum_{from beta_minus to beta_{i+1} }
+                      //   (beta - beta_minus)/(beta_{i+1} - beta_minus) var(E)
+      BigReal A1 = 0; // Sum_{from beta_{i+1} to beta_plus }
+                      //   (beta_plus - beta) /(beta_plus - beta_{i+1}) var(E)
+      BigReal A2 = 0; // 0.5 * DBeta * var(E) at bin i
       //A0 phi_s integral for beta_minus < beta < beta_{i+1}
-      BigReal betaNp1 = adaptTempBetaN[adaptTempBin+1]; 
-      BigReal den = (adaptTempBin + 1) - nMinus;
       for (j = nMinus; j <= adaptTempBin; ++j) {
-          potEnergyAve0 += adaptTempPotEnergyAve[j] / den;
-          A0 += adaptTempPotEnergyVar[j] * (j - nMinus + 0.5) / den;
+          potEnergyAve0 += adaptTempPotEnergyAve[j] / (deltaBins + 1);
+          A0 += adaptTempPotEnergyVar[j] * (j - nMinus + 0.5) / (deltaBins + 1);
       }
 
       //A1 phi_s integral for beta_{i+1} < beta < beta_plus
-      den = nPlus - (adaptTempBin + 1);
-      for (j = adaptTempBin+1; j < nPlus; j++) {
-          potEnergyAve1 += adaptTempPotEnergyAve[j] / den;
-          A1 += adaptTempPotEnergyVar[j] * (j - nPlus + 0.5) / den;
+      for (j = adaptTempBin + 1; j < nPlus; j++) {
+          potEnergyAve1 += adaptTempPotEnergyAve[j] / deltaBins;
+          A1 += adaptTempPotEnergyVar[j] * (j - nPlus + 0.5) / deltaBins;
       }
 
       //A2 phi_t integral for beta_i
-      A2 = 0.5*potEnergyVariance;
+      A2 = 0.5 * potEnergyVariance;
 
       // Now calculate a- and a+
       BigReal aminus = 0, aplus = 0;

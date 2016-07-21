@@ -316,14 +316,15 @@ diff -u -wdB spec_old/CollectionMgr.h spec_new/CollectionMgr.h
  #endif
 diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 --- spec_old/Controller.C	2015-12-17 15:22:03.000000000 -0600
-+++ spec_new/Controller.C	2016-07-20 19:52:26.346610323 -0500
-@@ -388,6 +388,14 @@
++++ spec_new/Controller.C	2016-07-21 17:28:26.084205304 -0500
+@@ -388,6 +388,15 @@
    typedef void (*namd_sighandler_t)(int);
  }
  
 +// initialize special atoms
 +void Controller::specInit(int scriptTask, int step)
 +{
++  if ( !simParams->specAtomsOn ) return;
 +  // set the number of special positions
 +  Molecule *mol = Node::Object()->molecule;
 +  collection->numSpec = mol->spcnt;
@@ -332,7 +333,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  void Controller::integrate(int scriptTask) {
      char traceNote[24];
    
-@@ -406,15 +414,24 @@
+@@ -406,15 +415,24 @@
        slowFreq = simParams->nonbondedFrequency;
      if ( step >= numberOfSteps ) slowFreq = nbondFreq = 1;
  
@@ -358,7 +359,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
      printFepMessage(step);
      printTiMessage(step);
      printDynamicsEnergies(step);
-@@ -429,6 +446,7 @@
+@@ -429,6 +447,7 @@
      rebalanceLoad(step);
  
    }
@@ -366,7 +367,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  
      // Handling SIGINT doesn't seem to be working on Lemieux, and it
      // sometimes causes the net-xxx versions of NAMD to segfault on exit, 
-@@ -437,18 +455,30 @@
+@@ -437,18 +456,30 @@
      //  (namd_sighandler_t)my_sigint_handler);
      for ( ++step ; step <= numberOfSteps; ++step )
      {
@@ -398,7 +399,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
          printDynamicsEnergies(step);
          outputFepEnergy(step);
          outputTiEnergy(step);
-@@ -493,7 +523,11 @@
+@@ -493,7 +524,11 @@
  		}
  	}
  #endif
@@ -411,7 +412,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
          rebalanceLoad(step);
  
  #if  PME_BARRIER
-@@ -501,6 +535,10 @@
+@@ -501,6 +536,10 @@
  #endif
      }
      // signal(SIGINT, oldhandler);
@@ -422,7 +423,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  }
  
  
-@@ -1016,6 +1054,12 @@
+@@ -1016,6 +1055,12 @@
    const int rescaleFreq = simParams->rescaleFreq;
    if ( rescaleFreq > 0 ) {
      rescaleVelocities_sumTemps += temperature;  ++rescaleVelocities_numTemps;
@@ -435,7 +436,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
      if ( rescaleVelocities_numTemps == rescaleFreq ) {
        BigReal avgTemp = rescaleVelocities_sumTemps / rescaleVelocities_numTemps;
        BigReal rescaleTemp = simParams->rescaleTemp;
-@@ -1024,6 +1068,39 @@
+@@ -1024,6 +1069,39 @@
          rescaleTemp = adaptTempT;
        }
        BigReal factor = sqrt(rescaleTemp/avgTemp);
@@ -475,7 +476,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
        broadcast->velocityRescaleFactor.publish(step,factor);
        //iout << "RESCALING VELOCITIES AT STEP " << step
        //     << " FROM AVERAGE TEMPERATURE OF " << avgTemp
-@@ -1033,6 +1110,56 @@
+@@ -1033,6 +1111,56 @@
    }
  }
  
@@ -532,7 +533,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  void Controller::correctMomentum(int step) {
  
      Vector momentum;
-@@ -1110,6 +1237,281 @@
+@@ -1110,6 +1238,281 @@
    }
  }
  
@@ -814,7 +815,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  static char *FORMAT(BigReal X)
  {
    static char tmp_string[25];
-@@ -1610,6 +2012,7 @@
+@@ -1610,6 +2013,7 @@
          adaptTempBetaN           = new BigReal[adaptTempBins];
          adaptTempDBeta = (adaptTempBetaMax - adaptTempBetaMin)/(adaptTempBins);
          for(int j = 0; j < adaptTempBins; ++j) {
@@ -822,7 +823,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
            adaptTempRead >> adaptTempPotEnergyAve[j];
            adaptTempRead >> adaptTempPotEnergyVar[j];
            adaptTempRead >> adaptTempPotEnergySamples[j];
-@@ -1636,11 +2039,7 @@
+@@ -1636,11 +2040,7 @@
        adaptTempCg = simParams->adaptTempCgamma;   
        adaptTempDt  = simParams->adaptTempDt;
        adaptTempDBeta = (adaptTempBetaMax - adaptTempBetaMin)/(adaptTempBins);
@@ -835,7 +836,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
        for(int j = 0; j < adaptTempBins; ++j){
            adaptTempPotEnergyAveNum[j] = 0.;
            adaptTempPotEnergyAveDen[j] = 0.;
-@@ -1673,7 +2072,9 @@
+@@ -1673,7 +2073,9 @@
  
  void Controller::adaptTempWriteRestart(int step) {
      if (simParams->adaptTempOn && !(step%simParams->adaptTempRestartFreq)) {
@@ -846,7 +847,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
          iout << "ADAPTEMP: WRITING RESTART FILE AT STEP " << step << "\n" << endi;
          adaptTempRestartFile << step << " ";
          // Start with min and max temperatures
-@@ -1685,6 +2086,7 @@
+@@ -1685,6 +2087,7 @@
          adaptTempRestartFile << adaptTempDt ;
          adaptTempRestartFile << "\n" ;
          for(int j = 0; j < adaptTempBins; ++j) {
@@ -854,12 +855,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
            adaptTempRestartFile << adaptTempPotEnergyAve[j] << " ";
            adaptTempRestartFile << adaptTempPotEnergyVar[j] << " ";
            adaptTempRestartFile << adaptTempPotEnergySamples[j] << " ";
-@@ -1693,21 +2095,23 @@
-           adaptTempRestartFile << adaptTempPotEnergyAveDen[j] << " ";
-           adaptTempRestartFile << "\n";          
-         }
-+        adaptTempRestartFile << std::endl;
-         adaptTempRestartFile.flush(); 
+@@ -1697,17 +2100,18 @@
      }
  }    
  
@@ -932,7 +928,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  
      //calculate new bin average and variance using adaptive averaging
      adaptTempPotEnergyAveNum[adaptTempBin] = adaptTempPotEnergyAveNum[adaptTempBin]*gammaAve + potentialEnergy;
-@@ -1745,22 +2184,24 @@
+@@ -1745,75 +2184,53 @@
      // is constant for each bin. This is to estimate <E(beta)> where beta \in
      // (beta_i,beta_{i+1}) using Eq 2 of JCP 132 244101
      if ( ! ( step % simParams->adaptTempFreq ) ) {
@@ -963,19 +959,26 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +      int nPlus = adaptTempBin + 1 + deltaBins;
 +      if ( nPlus > adaptTempBins ) {
 +        // solve the equation nPlus = adaptTempBins
-+        deltaBins = adaptTempBins - deltaBins - 1;
++        deltaBins = adaptTempBins - (adaptTempBin + 1);
 +      }
 +      nMinus = adaptTempBin - deltaBins;
-+      nPlus  = adaptTempBin + deltaBins;
++      nPlus  = adaptTempBin + 1 + deltaBins;
 +      BigReal betaMinus = adaptTempBetaN[nMinus];
 +      BigReal betaPlus  = adaptTempBetaN[nPlus];
            // Variables for <E(beta)> estimate:
            BigReal potEnergyAve0 = 0.0;
            BigReal potEnergyAve1 = 0.0;
-@@ -1770,50 +2211,27 @@
-           BigReal A2 = 0;
+           // Integral terms
+-          BigReal A0 = 0;
+-          BigReal A1 = 0;
+-          BigReal A2 = 0;
++      BigReal A0 = 0; // Sum_{from beta_minus to beta_{i+1} }
++                      //   (beta - beta_minus)/(beta_{i+1} - beta_minus) var(E)
++      BigReal A1 = 0; // Sum_{from beta_{i+1} to beta_plus }
++                      //   (beta_plus - beta) /(beta_plus - beta_{i+1}) var(E)
++      BigReal A2 = 0; // 0.5 * DBeta * var(E) at bin i
            //A0 phi_s integral for beta_minus < beta < beta_{i+1}
-           BigReal betaNp1 = adaptTempBetaN[adaptTempBin+1]; 
+-          BigReal betaNp1 = adaptTempBetaN[adaptTempBin+1]; 
 -          BigReal DeltaE2Ave;
 -          BigReal DeltaE2AveSum = 0;
 -          BigReal betaj;
@@ -984,10 +987,9 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 -              DeltaE2Ave = adaptTempPotEnergyVar[j];
 -              DeltaE2AveSum += DeltaE2Ave;
 -              A0 += j*DeltaE2Ave;
-+      BigReal den = (adaptTempBin + 1) - nMinus;
 +      for (j = nMinus; j <= adaptTempBin; ++j) {
-+          potEnergyAve0 += adaptTempPotEnergyAve[j] / den;
-+          A0 += adaptTempPotEnergyVar[j] * (j - nMinus + 0.5) / den;
++          potEnergyAve0 += adaptTempPotEnergyAve[j] / (deltaBins + 1);
++          A0 += adaptTempPotEnergyVar[j] * (j - nMinus + 0.5) / (deltaBins + 1);
            }
 -          A0 *= adaptTempDBeta;
 -          A0 += (adaptTempBetaMin+0.5*adaptTempDBeta-betaMinus)*DeltaE2AveSum;
@@ -999,7 +1001,6 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  
            //A1 phi_s integral for beta_{i+1} < beta < beta_plus
 -          DeltaE2AveSum = 0;
-+      den = nPlus - (adaptTempBin + 1);
            for (j = adaptTempBin+1; j < nPlus; j++) {
 -              potEnergyAve1 += adaptTempPotEnergyAve[j];
 -              DeltaE2Ave = adaptTempPotEnergyVar[j];
@@ -1013,14 +1014,14 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 -            betaj = betaPlus-adaptTempBetaN[nPlus];
 -            betaj *= betaj;
 -            A1 -= 0.5*betaj*adaptTempPotEnergyVar[nPlus];
-+          potEnergyAve1 += adaptTempPotEnergyAve[j] / den;
-+          A1 += adaptTempPotEnergyVar[j] * (j - nPlus + 0.5) / den;
++          potEnergyAve1 += adaptTempPotEnergyAve[j] / deltaBins;
++          A1 += adaptTempPotEnergyVar[j] * (j - nPlus + 0.5) / deltaBins;
            }
 -          A1 /= (betaPlus-betaNp1);
  
            //A2 phi_t integral for beta_i
 -          A2 = 0.5*adaptTempDBeta*potEnergyVariance;
-+      A2 = 0.5*potEnergyVariance;
++      A2 = 0.5 * potEnergyVariance;
  
 -          // Now calculate a+ and a-
 -          DeltaE2Ave = A0-A1;
@@ -1035,7 +1036,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
              if (aplus < 0) {
                      aplus = 0;
              }
-@@ -1821,22 +2239,13 @@
+@@ -1821,22 +2238,13 @@
                      aplus = 1;
              }
              aminus = 1-aplus;
@@ -1060,7 +1061,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
              << "     adaptTemp:   " << adaptTempT<< "\n"
              << "     betaMin:   " << adaptTempBetaMin << "\n"
              << "     betaMax:   " << adaptTempBetaMax << "\n"
-@@ -1853,30 +2262,6 @@
+@@ -1853,30 +2261,6 @@
              << "     a-:        " << aminus << "\n"
              << endi;
            }
@@ -1091,7 +1092,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
        
        //dT is new temperature
        BigReal dT = ((potentialEnergy-potEnergyAverage)/BOLTZMANN+adaptTempT)*adaptTempDt;
-@@ -1886,70 +2271,8 @@
+@@ -1886,70 +2270,8 @@
       // Check if dT in [adaptTempTmin,adaptTempTmax]. If not try simpler estimate of mean
       // This helps sampling with poor statistics in the bins surrounding adaptTempBin.
        if ( dT > 1./adaptTempBetaMin || dT  < 1./adaptTempBetaMax ) {
@@ -1105,7 +1106,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 -             //     << " K higher than adaptTempTmax."
 -             //     << " Keeping temperature at " 
 -             //     << adaptTempT<< "\n"<< endi;             
-              dT = adaptTempT;
+-             dT = adaptTempT;
 -          }
 -          else {             
 -             //iout << iWARN << "ADAPTEMP: " << step << " T= " << dT 
@@ -1120,7 +1121,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 -            //iout << iWARN << "ADAPTEMP: " << step << " T= "<< dT 
 -            //     << " K lower than adaptTempTmin."
 -            //     << " Keeping temperature at " << adaptTempT<< "\n" << endi; 
--            dT = adaptTempT;
+             dT = adaptTempT;
 -          }
 -          else {
 -            //iout << iWARN << "ADAPTEMP: " << step << " T= "<< dT 
@@ -1163,7 +1164,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
            //update temperature step size counter
            // FOR "TRUE" ADAPTIVE TEMPERING
            BigReal adaptTempTdiff = fabs(dT-adaptTempT);
-@@ -1979,8 +2302,24 @@
+@@ -1979,8 +2301,24 @@
            
        }
        
@@ -1188,7 +1189,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
      }
      adaptTempWriteRestart(step);
      if ( ! (step % adaptTempOutFreq) ) {
-@@ -1991,7 +2330,7 @@
+@@ -1991,7 +2329,7 @@
               << " ENERGYVAR " << std::setprecision(10) << potEnergyVariance;
          iout << "\n" << endi;
     }
@@ -1197,7 +1198,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  }
  
  
-@@ -2277,6 +2616,15 @@
+@@ -2277,6 +2615,15 @@
        electEnergy = reduction->item(REDUCTION_ELECT_ENERGY);
        ljEnergy = reduction->item(REDUCTION_LJ_ENERGY);
  
@@ -1213,7 +1214,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
        // JLai
        groLJEnergy = reduction->item(REDUCTION_GRO_LJ_ENERGY);
        groGaussEnergy = reduction->item(REDUCTION_GRO_GAUSS_ENERGY);
-@@ -2310,15 +2658,6 @@
+@@ -2310,15 +2657,6 @@
  //fepe
      }
  
@@ -1229,7 +1230,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  
      momentum.x = reduction->item(REDUCTION_MOMENTUM_X);
      momentum.y = reduction->item(REDUCTION_MOMENTUM_Y);
-@@ -3147,6 +3486,7 @@
+@@ -3147,6 +3485,7 @@
      ldbSteps = LdbCoordinator::Object()->getNumStepsToRun();
    }
    if ( ! --ldbSteps ) {
@@ -1300,7 +1301,7 @@ diff -u -wdB spec_old/Controller.h spec_new/Controller.h
      static void threadRun(Controller*);
 diff -u -wdB spec_old/fstream_namd.h spec_new/fstream_namd.h
 --- spec_old/fstream_namd.h	2015-01-31 00:39:07.000000000 -0600
-+++ spec_new/fstream_namd.h	2016-07-19 16:40:04.604400686 -0500
++++ spec_new/fstream_namd.h	2016-07-21 17:16:59.987779279 -0500
 @@ -4,6 +4,11 @@
  
  #include <iostream>
@@ -1313,11 +1314,13 @@ diff -u -wdB spec_old/fstream_namd.h spec_new/fstream_namd.h
  
  class ofstream_namd : public std::ostringstream {
  
-@@ -31,6 +36,14 @@
+@@ -31,6 +36,16 @@
      if ( fd ) close();
    }
  
 +  void seekbegin() {
++    str("");
++    ftruncate(fd, 0);
 +#if !defined(WIN32) || defined(__CYGWIN__)
 +    lseek(fd, 0, SEEK_SET);
 +#else
