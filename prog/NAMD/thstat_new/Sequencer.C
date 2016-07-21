@@ -436,7 +436,7 @@ void Sequencer::integrate(int scriptTask) {
 	submitCollections(step);
        //Update adaptive tempering temperature
         Bool scaled = adaptTempUpdate(step);
-        if ( scaled && ldbSteps == 1 ) {
+        if ( scaled && (ldbSteps == 1 || LdbCoordinator::Object()->getNumStepsToRun() == 1) ) {
           // submit Hi's if we're about to rebalance load
           collection->submitHi(step);
           //CkPrintf("Sequencer step %d, thread %p\n", step, CthSelf());
