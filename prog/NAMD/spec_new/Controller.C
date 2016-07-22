@@ -184,6 +184,10 @@ Controller::Controller(NamdState *s) :
     random->split(0,PatchMap::Object()->numPatches()+1);
 
     rescaleVelocities_sumTemps = 0;  rescaleVelocities_numTemps = 0;
+    rescaleVelocities_sum1     = 0;
+    rescaleVelocities_sumBeta  = 0;
+    rescaleVelocities_sumBeta2 = 0;
+    rescaleVelocities_sumDbde  = 0;
     berendsenPressure_avg = 0; berendsenPressure_count = 0;
     // strainRate tensor is symmetric to avoid rotation
     langevinPiston_strainRate =
@@ -1069,7 +1073,7 @@ void Controller::rescaleVelocities(int step)
         rescaleTemp = adaptTempT;
       }
       BigReal factor = sqrt(rescaleTemp/avgTemp);
-      if ( simParams->rescaleAdaptive ) {
+      if ( simParams->rescaleAdaptiveOn ) {
         // recompute the velocity-rescaling factor
         BigReal bref = 1.0 / (BOLTZMANN * rescaleTemp);
         BigReal dbeta = bref - beta;
@@ -1098,10 +1102,6 @@ void Controller::rescaleVelocities(int step)
           rescaleVelocitiesSave(step);
         }
       }
-      if ( simParams->rescaleAdaptive ) {
-        if ( step < simParams->rescaleFreq ) step = simParams->rescaleFreq;
-        factor = sqrt(1 + (factor*factor - 1) * simParams->rescaleFreq / step);
-      }
       broadcast->velocityRescaleFactor.publish(step,factor);
       //iout << "RESCALING VELOCITIES AT STEP " << step
       //     << " FROM AVERAGE TEMPERATURE OF " << avgTemp
@@ -1115,21 +1115,20 @@ void Controller::rescaleVelocitiesInit(void)
 {
   if ( numDegFreedom <= 0 )
     numDegFreedom = Node::Object()->molecule->num_deg_freedom();
-  if ( simParams->rescaleFreq <= 0 || !simParams->rescaleAdaptive )
+  if ( simParams->rescaleFreq <= 0 || !simParams->rescaleAdaptiveOn )
     return;
   rescaleVelocitiesLoad();
 }
 
 void Controller::rescaleVelocitiesLoad(void)
 {
-  if ( simParams->rescaleFreq <= 0 || !simParams->rescaleAdaptive )
+  if ( simParams->rescaleFreq <= 0 || !simParams->rescaleAdaptiveOn )
     return;
-  FILE *fp = fopen(simParams->rescaleAdaptiveFile, "r");
-  if ( fp == NULL )
-    return;
+  std::ifstream fs(simParams->rescaleAdaptiveFile);
+  if ( !fs ) return;
   double cnt, beta, beta2, dbde;
-  fscanf(fp, "%lf%lf%lf%lf", &cnt, &beta, &beta2, &dbde);
-  fclose(fp);
+  fs >> cnt >> beta >> beta2 >> dbde;
+  fs.close();
   iout << "LOADED ADAPTIVE VELOCITY-RESCALING DATA FROM "
        << simParams->rescaleAdaptiveFile << ": STEP " << cnt
        << ", BETA " << beta << ", VAR(BETA) " << beta2
@@ -1146,19 +1145,20 @@ void Controller::rescaleVelocitiesLoad(void)
 
 void Controller::rescaleVelocitiesSave(int step)
 {
-  if ( simParams->rescaleFreq <= 0 || !simParams->rescaleAdaptive )
+  if ( simParams->rescaleFreq <= 0 || !simParams->rescaleAdaptiveOn )
     return;
   if ( rescaleVelocities_sum1 <= 0 )
     return;
-  FILE *fp = fopen(simParams->rescaleAdaptiveFile, "w");
-  if ( fp == NULL )
-    return;
+  NAMD_backup_file(simParams->rescaleAdaptiveFile);
+  ofstream_namd fs(simParams->rescaleAdaptiveFile);
+  if ( !fs ) return;
   BigReal beta = rescaleVelocities_sumBeta / rescaleVelocities_sum1;
   BigReal beta2 = rescaleVelocities_sumBeta2 / rescaleVelocities_sum1
                 - beta * beta;
   BigReal dbde = rescaleVelocities_sumDbde / rescaleVelocities_sum1;
-  fprintf(fp, "%.0f %.10f %.10f %.10f\n", rescaleVelocities_sum1, beta, beta2, dbde);
-  fclose(fp);
+  char buf[200];
+  sprintf(buf, "%.0f %.10f %.10f %.10f\n", rescaleVelocities_sum1, beta, beta2, dbde);
+  fs << buf;
 }
 
 void Controller::correctMomentum(int step) {
@@ -1388,49 +1388,49 @@ void Controller::tNHCSave(int step)
 {
   if ( !simParams->tNHCOn ) return;
 
-  FILE *fp;
   int i, nnhc = simParams->tNHCLen;
+  NAMD_backup_file(simParams->tNHCFile);
+  ofstream_namd fs(simParams->tNHCFile);
 
-  if ( (fp = fopen(simParams->tNHCFile, "w")) == NULL ) {
+  if ( !fs ) {
     iout << "Error: cannot write " << simParams->tNHCFile << "\n" << endi;
     return;
   }
-  fprintf(fp, "%d %d\n", nnhc, step);
+
+  fs << nnhc << " " << step << "\n";
   for ( i = 0; i < nnhc; i++ )
-    fprintf(fp, "%.14f ", tNHCzeta[i]);
-  fprintf(fp, "\n");
+    fs << tNHCzeta[i] << " ";
+  fs << "\n";
   for ( i = 0; i < nnhc; i++ )
-    fprintf(fp, "%g ", tNHCmass[i]);
-  fprintf(fp, "\n");
-  fclose(fp);
+    fs << tNHCmass[i] << " ";
+  fs << "\n";
 }
 
 void Controller::tNHCLoad(void)
 {
   if ( !simParams->tNHCOn ) return;
 
-  FILE *fp;
   int i, nnhc, step;
+  std::ifstream fs(simParams->tNHCFile);
 
-  if ( (fp = fopen(simParams->tNHCFile, "r")) == NULL ) {
+  if ( !fs ) {
     iout << "Cannot read " << simParams->tNHCFile << "\n" << endi;
     return;
   }
-  fscanf(fp, "%d%d", &nnhc, &step);
+  fs >> nnhc >> step;
   if ( nnhc != simParams->tNHCLen ) {
     iout << "Error: NH-chain length mismatch " << nnhc
          << " vs. " << simParams->tNHCLen << "\n" << endi;
     return;
   }
   for ( i = 0; i < nnhc; i++ )
-    fscanf(fp, "%lf", &tNHCzeta[i]);
+    fs >> tNHCzeta[i];
 
   if ( simParams->tNHCFileReadMass ) {
     for ( i = 0; i < nnhc; i++ )
-      fscanf(fp, "%lf", &tNHCmass[i]);
+      fs >> tNHCmass[i];
   }
-
-  fclose(fp);
+  fs.close();
 }
 
 void Controller::keHistInit(void)
@@ -1463,9 +1463,10 @@ void Controller::keHistUpdate(int step)
 void Controller::keHistSave(int step)
 {
   if ( !simParams->keHistOn ) return;
-  FILE *fp = fopen(simParams->keHistFile, "w");
-  if ( fp == NULL ) return;
-  fprintf(fp, "# %d %d\n", numDegFreedom, step);
+  NAMD_backup_file(simParams->keHistFile);
+  ofstream_namd fs(simParams->keHistFile);
+  if ( !fs ) return;
+  fs << "# " << numDegFreedom << " " << step << "\n";
   int i;
   BigReal tot = 0;
   for ( i = 0; i < keHistBinMax; i++ )
@@ -1482,26 +1483,27 @@ void Controller::keHistSave(int step)
     double hist = keHist[i] / ( dk * tot );
     double ke = (i + 0.5) * dk;
     double histref = exp(log(ke/tp) * (numDegFreedom*0.5-1) -ke/tp - norm) / tp;
-    fprintf(fp, "%g\t%g\t%g\t%g\n", (i + 0.5) * dk, hist, histref, keHist[i]);
+    fs << (i + 0.5) * dk << "\t" << hist << "\t" << histref << "\t" << keHist[i] << "\n";
   }
-  fclose(fp);
 }
 
 void Controller::keHistLoad(void)
 {
   if ( !simParams->keHistOn ) return;
-  FILE *fp = fopen(simParams->keHistFile, "r");
-  if ( fp == NULL ) return;
-  char buf[128];
 
-  fgets(buf, sizeof buf, fp);
-  while ( fgets(buf, sizeof buf, fp) ) {
+  std::ifstream fs(simParams->keHistFile);
+  if ( !fs ) return;
+  std::string buf;
+
+  std::getline(fs, buf);
+  while ( fs.good() ) {
     double ke, hist1, hist2, hist;
-    sscanf(buf, "%lf%lf%lf%lf", &ke, &hist1, &hist2, &hist);
+    std::getline(fs, buf);
+    sscanf(buf.c_str(), "%lf%lf%lf%lf", &ke, &hist1, &hist2, &hist);
     int i = (int) (ke / simParams->keHistBin);
     keHist[i] = hist;
   }
-  fclose(fp);
+  fs.close();
   iout << "Loaded previous histogram from "
        << simParams->keHistFile << ".\n" << endi;
 }
@@ -2075,6 +2077,10 @@ void Controller::adaptTempWriteRestart(int step) {
     if (simParams->adaptTempOn && !(step%simParams->adaptTempRestartFreq)) {
         if ( !simParams->adaptTempRestartAppend ) {
           adaptTempRestartFile.seekbegin();
+          // alternatively, we can
+          //adaptTempRestartFile.close();
+          //NAMD_backup_file(simParams->adaptTempRestartFile);
+          //adaptTempRestartFile.open(simParams->adaptTempRestartFile);
         }
         iout << "ADAPTEMP: WRITING RESTART FILE AT STEP " << step << "\n" << endi;
         adaptTempRestartFile << step << " ";
@@ -2303,7 +2309,7 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
       
       BigReal tScale = dT / adaptTempT;
       BigReal vScale = sqrt(tScale);
-      // for velocity-rescaling-based thermostats
+      // for velocity-rescaling-based thermostats,
       // carry the velocity-rescaling factor to the next step
       if ( simParams->langRescaleOn ) {
         langRescaleFactorPrev *= vScale;

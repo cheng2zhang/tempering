@@ -187,7 +187,7 @@ void SimParameters::scriptSet(const char *param, const char *value) {
   }
   SCRIPT_PARSE_FLOAT("reassignTemp",reassignTemp)
   SCRIPT_PARSE_FLOAT("rescaleTemp",rescaleTemp)
-  SCRIPT_PARSE_BOOL("rescaleAdaptive",rescaleAdaptive)
+  SCRIPT_PARSE_BOOL("rescaleAdaptive",rescaleAdaptiveOn)
   SCRIPT_PARSE_FLOAT("rescaleAdaptiveDedk",rescaleAdaptiveDedk)
   SCRIPT_PARSE_FLOAT("langRescaleTemp",langRescaleTemp)
   SCRIPT_PARSE_FLOAT("langRescaleDt",langRescaleDt)
@@ -1238,7 +1238,7 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
    opts.range("rescaleTemp", NOT_NEGATIVE);
    opts.units("rescaleTemp", N_KELVIN);
    opts.optionalB("main", "rescaleAdaptive", "Adaptively reduce the magnitude "
-    "of the velocity rescaling factor", &rescaleAdaptive, FALSE);
+    "of the velocity rescaling", &rescaleAdaptiveOn, FALSE);
    opts.optional("rescaleAdaptive", "rescaleAdaptiveDedk", "Heuristic multiple of the reduction factor ",
     &rescaleAdaptiveDedk, 0.0);
    opts.optional("rescaleAdaptive", "rescaleAdaptiveFile",
@@ -1452,9 +1452,9 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
    opts.optionalB("adaptTempMD","adaptTempTNHC","Send adaptTemp temperature to Nose-Hoover chain thermostat",&adaptTempTNHC,TRUE);
    opts.optional("adaptTempMD", "adaptTempInFile", "File containing restart information for adaptTemp", adaptTempInFile);
    opts.optional("adaptTempMD", "adaptTempRestartFile", "File for writing adaptTemp restart information", adaptTempRestartFile);
-   opts.optionalB("adaptTempRestartFile", "adaptTempRestartAppend", "Appending instead of overwriting the restart file", &adaptTempRestartAppend, FALSE);
    opts.require("adaptTempRestartFile","adaptTempRestartFreq", "Frequency of writing restart file", &adaptTempRestartFreq,0);
    opts.range("adaptTempRestartFreq",NOT_NEGATIVE);
+   opts.optionalB("adaptTempRestartFile", "adaptTempRestartAppend", "Appending instead of overwriting the restart file", &adaptTempRestartAppend, FALSE);
    opts.optionalB("adaptTempMD", "adaptTempRandom", "Randomly assign a temperature if we step out of range", &adaptTempRandom, FALSE);
 
    // special atoms
@@ -3177,11 +3177,6 @@ void SimParameters::check_config(ParseOptions &opts, ConfigList *config, char *&
     {
       NAMD_die("Must give a rescale temperature if rescaleFreq is defined");
     }
-    if ( opts.defined("rescaleAdaptive") ) {
-      if ( !opts.defined("rescaleAdaptiveFile") ) {
-        strcpy(rescaleAdaptiveFile, "adaptvrescale.dat");
-      }
-    }
   }
    }
    else
@@ -3197,6 +3192,12 @@ void SimParameters::check_config(ParseOptions &opts, ConfigList *config, char *&
     NAMD_die("Must give a rescale freqency if rescaleTemp is given");
   }
    }
+
+    if ( rescaleAdaptiveOn ) {
+      if ( !opts.defined("rescaleAdaptiveFile") ) {
+        strcpy(rescaleAdaptiveFile, "adaptvrescale.dat");
+      }
+    }
 
    if (opts.defined("reassignFreq"))
    {

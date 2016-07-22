@@ -187,7 +187,8 @@ void SimParameters::scriptSet(const char *param, const char *value) {
   }
   SCRIPT_PARSE_FLOAT("reassignTemp",reassignTemp)
   SCRIPT_PARSE_FLOAT("rescaleTemp",rescaleTemp)
-  SCRIPT_PARSE_BOOL("rescaleAdaptive",rescaleAdaptive)
+  SCRIPT_PARSE_BOOL("rescaleAdaptive",rescaleAdaptiveOn)
+  SCRIPT_PARSE_FLOAT("rescaleAdaptiveDedk",rescaleAdaptiveDedk)
   SCRIPT_PARSE_FLOAT("langRescaleTemp",langRescaleTemp)
   SCRIPT_PARSE_FLOAT("langRescaleDt",langRescaleDt)
   SCRIPT_PARSE_FLOAT("tNHCTemp",langRescaleTemp)
@@ -1237,8 +1238,8 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
    opts.range("rescaleTemp", NOT_NEGATIVE);
    opts.units("rescaleTemp", N_KELVIN);
    opts.optionalB("main", "rescaleAdaptive", "Adaptively reduce the magnitude "
-    "of the velocity rescaling", &rescaleAdaptive, FALSE);
-   opts.optional("rescaleAdaptive", "rescaleAdaptiveDedk", "Multiple of the reduction factor ",
+    "of the velocity rescaling", &rescaleAdaptiveOn, FALSE);
+   opts.optional("rescaleAdaptive", "rescaleAdaptiveDedk", "Heuristic multiple of the reduction factor ",
     &rescaleAdaptiveDedk, 0.0);
    opts.optional("rescaleAdaptive", "rescaleAdaptiveFile",
        "File for writing the adaptive velocity-rescaling restart information",
@@ -1246,6 +1247,7 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
    opts.optional("rescaleAdaptive", "rescaleAdaptiveFileFreq",
        "Frequency of writing the adaptive velocity-rescaling restart information",
        &rescaleAdaptiveFileFreq, 10000);
+   opts.range("rescaleAdaptiveFileFreq", POSITIVE);
 
    opts.optional("main", "reassignFreq", "Number of steps between "
     "velocity reassignment", &reassignFreq);
@@ -3165,11 +3167,6 @@ void SimParameters::check_config(ParseOptions &opts, ConfigList *config, char *&
       NAMD_die("Must give a rescale temperature if rescaleFreq is defined");
     }
   }
-    if ( opts.defined("rescaleAdaptive") ) {
-      if ( !opts.defined("rescaleAdaptiveFile") ) {
-        strcpy(rescaleAdaptiveFile, "adaptvrescale.dat");
-      }
-    }
    }
    else
    {
@@ -3184,6 +3181,12 @@ void SimParameters::check_config(ParseOptions &opts, ConfigList *config, char *&
     NAMD_die("Must give a rescale freqency if rescaleTemp is given");
   }
    }
+
+    if ( rescaleAdaptiveOn ) {
+      if ( !opts.defined("rescaleAdaptiveFile") ) {
+        strcpy(rescaleAdaptiveFile, "adaptvrescale.dat");
+      }
+    }
 
    if (opts.defined("reassignFreq"))
    {

@@ -519,7 +519,7 @@ public:
 
 	int rescaleFreq;		//  Velocity rescale frequency
 	BigReal rescaleTemp;		//  Temperature to rescale to
-	Bool rescaleAdaptive;		//  Adaptively reduce the velocity rescaling factor
+	Bool rescaleAdaptiveOn;		//  Adaptively reduce the velocity-rescaling factor
 	BigReal rescaleAdaptiveDedk;	//  Heuristic multiple of the reduction factor
 	char rescaleAdaptiveFile[128];	//  File to save the adaptive veloctiy-rescaling data
 	int rescaleAdaptiveFileFreq;	//  Frequency to save the adaptive veloctiy-rescaling restart file

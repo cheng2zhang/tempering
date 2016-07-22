@@ -314,10 +314,43 @@ diff -u -wdB spec_old/CollectionMgr.h spec_new/CollectionMgr.h
  };
  
  #endif
+diff -u -wdB spec_old/common.C spec_new/common.C
+--- spec_old/common.C	2015-02-02 10:14:20.000000000 -0600
++++ spec_new/common.C	2016-07-22 12:36:45.100660227 -0500
+@@ -180,8 +180,8 @@
+ int NAMD_open_text(const char *fname, int append) {
+   int fd;
+ 
++#if defined(WIN32) && !defined(__CYGWIN__)
+   //  open the file and die if the open fails
+-#ifdef WIN32
+   while ( (fd = _open(fname, O_WRONLY|(append?O_APPEND:O_EXCL)|O_CREAT|O_TEXT,_S_IREAD|_S_IWRITE)) < 0) {
+ #else
+ #ifdef NAMD_NO_O_EXCL
+@@ -223,7 +223,7 @@
+ 
+ // same as close, only does error checking internally
+ void NAMD_close(int fd, const char *fname) {
+-#ifdef WIN32
++#if defined(WIN32) && !defined(__CYGWIN__)
+   while ( _close(fd) ) {
+ #else
+   while ( close(fd) ) {
 diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 --- spec_old/Controller.C	2015-12-17 15:22:03.000000000 -0600
-+++ spec_new/Controller.C	2016-07-21 17:28:26.084205304 -0500
-@@ -388,6 +388,15 @@
++++ spec_new/Controller.C	2016-07-22 16:53:09.159968528 -0500
+@@ -184,6 +184,10 @@
+     random->split(0,PatchMap::Object()->numPatches()+1);
+ 
+     rescaleVelocities_sumTemps = 0;  rescaleVelocities_numTemps = 0;
++    rescaleVelocities_sum1     = 0;
++    rescaleVelocities_sumBeta  = 0;
++    rescaleVelocities_sumBeta2 = 0;
++    rescaleVelocities_sumDbde  = 0;
+     berendsenPressure_avg = 0; berendsenPressure_count = 0;
+     // strainRate tensor is symmetric to avoid rotation
+     langevinPiston_strainRate =
+@@ -388,6 +392,15 @@
    typedef void (*namd_sighandler_t)(int);
  }
  
@@ -333,7 +366,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  void Controller::integrate(int scriptTask) {
      char traceNote[24];
    
-@@ -406,15 +415,24 @@
+@@ -406,15 +419,24 @@
        slowFreq = simParams->nonbondedFrequency;
      if ( step >= numberOfSteps ) slowFreq = nbondFreq = 1;
  
@@ -359,7 +392,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
      printFepMessage(step);
      printTiMessage(step);
      printDynamicsEnergies(step);
-@@ -429,6 +447,7 @@
+@@ -429,6 +451,7 @@
      rebalanceLoad(step);
  
    }
@@ -367,7 +400,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  
      // Handling SIGINT doesn't seem to be working on Lemieux, and it
      // sometimes causes the net-xxx versions of NAMD to segfault on exit, 
-@@ -437,18 +456,30 @@
+@@ -437,18 +460,30 @@
      //  (namd_sighandler_t)my_sigint_handler);
      for ( ++step ; step <= numberOfSteps; ++step )
      {
@@ -399,7 +432,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
          printDynamicsEnergies(step);
          outputFepEnergy(step);
          outputTiEnergy(step);
-@@ -493,7 +524,11 @@
+@@ -493,7 +528,11 @@
  		}
  	}
  #endif
@@ -412,7 +445,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
          rebalanceLoad(step);
  
  #if  PME_BARRIER
-@@ -501,6 +536,10 @@
+@@ -501,6 +540,10 @@
  #endif
      }
      // signal(SIGINT, oldhandler);
@@ -423,7 +456,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  }
  
  
-@@ -1016,6 +1055,12 @@
+@@ -1016,6 +1059,12 @@
    const int rescaleFreq = simParams->rescaleFreq;
    if ( rescaleFreq > 0 ) {
      rescaleVelocities_sumTemps += temperature;  ++rescaleVelocities_numTemps;
@@ -436,11 +469,11 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
      if ( rescaleVelocities_numTemps == rescaleFreq ) {
        BigReal avgTemp = rescaleVelocities_sumTemps / rescaleVelocities_numTemps;
        BigReal rescaleTemp = simParams->rescaleTemp;
-@@ -1024,6 +1069,39 @@
+@@ -1024,6 +1073,35 @@
          rescaleTemp = adaptTempT;
        }
        BigReal factor = sqrt(rescaleTemp/avgTemp);
-+      if ( simParams->rescaleAdaptive ) {
++      if ( simParams->rescaleAdaptiveOn ) {
 +        // recompute the velocity-rescaling factor
 +        BigReal bref = 1.0 / (BOLTZMANN * rescaleTemp);
 +        BigReal dbeta = bref - beta;
@@ -469,10 +502,6 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +          rescaleVelocitiesSave(step);
 +        }
 +      }
-+      if ( simParams->rescaleAdaptive ) {
-+        if ( step < simParams->rescaleFreq ) step = simParams->rescaleFreq;
-+        factor = sqrt(1 + (factor*factor - 1) * simParams->rescaleFreq / step);
-+      }
        broadcast->velocityRescaleFactor.publish(step,factor);
        //iout << "RESCALING VELOCITIES AT STEP " << step
        //     << " FROM AVERAGE TEMPERATURE OF " << avgTemp
@@ -484,21 +513,20 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +{
 +  if ( numDegFreedom <= 0 )
 +    numDegFreedom = Node::Object()->molecule->num_deg_freedom();
-+  if ( simParams->rescaleFreq <= 0 || !simParams->rescaleAdaptive )
++  if ( simParams->rescaleFreq <= 0 || !simParams->rescaleAdaptiveOn )
 +    return;
 +  rescaleVelocitiesLoad();
 +}
 +
 +void Controller::rescaleVelocitiesLoad(void)
 +{
-+  if ( simParams->rescaleFreq <= 0 || !simParams->rescaleAdaptive )
++  if ( simParams->rescaleFreq <= 0 || !simParams->rescaleAdaptiveOn )
 +    return;
-+  FILE *fp = fopen(simParams->rescaleAdaptiveFile, "r");
-+  if ( fp == NULL )
-+    return;
++  std::ifstream fs(simParams->rescaleAdaptiveFile);
++  if ( !fs ) return;
 +  double cnt, beta, beta2, dbde;
-+  fscanf(fp, "%lf%lf%lf%lf", &cnt, &beta, &beta2, &dbde);
-+  fclose(fp);
++  fs >> cnt >> beta >> beta2 >> dbde;
++  fs.close();
 +  iout << "LOADED ADAPTIVE VELOCITY-RESCALING DATA FROM "
 +       << simParams->rescaleAdaptiveFile << ": STEP " << cnt
 +       << ", BETA " << beta << ", VAR(BETA) " << beta2
@@ -515,25 +543,26 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +
 +void Controller::rescaleVelocitiesSave(int step)
 +{
-+  if ( simParams->rescaleFreq <= 0 || !simParams->rescaleAdaptive )
++  if ( simParams->rescaleFreq <= 0 || !simParams->rescaleAdaptiveOn )
 +    return;
 +  if ( rescaleVelocities_sum1 <= 0 )
 +    return;
-+  FILE *fp = fopen(simParams->rescaleAdaptiveFile, "w");
-+  if ( fp == NULL )
-+    return;
++  NAMD_backup_file(simParams->rescaleAdaptiveFile);
++  ofstream_namd fs(simParams->rescaleAdaptiveFile);
++  if ( !fs ) return;
 +  BigReal beta = rescaleVelocities_sumBeta / rescaleVelocities_sum1;
 +  BigReal beta2 = rescaleVelocities_sumBeta2 / rescaleVelocities_sum1
 +                - beta * beta;
 +  BigReal dbde = rescaleVelocities_sumDbde / rescaleVelocities_sum1;
-+  fprintf(fp, "%.0f %.10f %.10f %.10f\n", rescaleVelocities_sum1, beta, beta2, dbde);
-+  fclose(fp);
++  char buf[200];
++  sprintf(buf, "%.0f %.10f %.10f %.10f\n", rescaleVelocities_sum1, beta, beta2, dbde);
++  fs << buf;
 +}
 +
  void Controller::correctMomentum(int step) {
  
      Vector momentum;
-@@ -1110,6 +1238,281 @@
+@@ -1110,6 +1238,283 @@
    }
  }
  
@@ -687,49 +716,49 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +{
 +  if ( !simParams->tNHCOn ) return;
 +
-+  FILE *fp;
 +  int i, nnhc = simParams->tNHCLen;
++  NAMD_backup_file(simParams->tNHCFile);
++  ofstream_namd fs(simParams->tNHCFile);
 +
-+  if ( (fp = fopen(simParams->tNHCFile, "w")) == NULL ) {
++  if ( !fs ) {
 +    iout << "Error: cannot write " << simParams->tNHCFile << "\n" << endi;
 +    return;
 +  }
-+  fprintf(fp, "%d %d\n", nnhc, step);
++
++  fs << nnhc << " " << step << "\n";
 +  for ( i = 0; i < nnhc; i++ )
-+    fprintf(fp, "%.14f ", tNHCzeta[i]);
-+  fprintf(fp, "\n");
++    fs << tNHCzeta[i] << " ";
++  fs << "\n";
 +  for ( i = 0; i < nnhc; i++ )
-+    fprintf(fp, "%g ", tNHCmass[i]);
-+  fprintf(fp, "\n");
-+  fclose(fp);
++    fs << tNHCmass[i] << " ";
++  fs << "\n";
 +}
 +
 +void Controller::tNHCLoad(void)
 +{
 +  if ( !simParams->tNHCOn ) return;
 +
-+  FILE *fp;
 +  int i, nnhc, step;
++  std::ifstream fs(simParams->tNHCFile);
 +
-+  if ( (fp = fopen(simParams->tNHCFile, "r")) == NULL ) {
++  if ( !fs ) {
 +    iout << "Cannot read " << simParams->tNHCFile << "\n" << endi;
 +    return;
 +  }
-+  fscanf(fp, "%d%d", &nnhc, &step);
++  fs >> nnhc >> step;
 +  if ( nnhc != simParams->tNHCLen ) {
 +    iout << "Error: NH-chain length mismatch " << nnhc
 +         << " vs. " << simParams->tNHCLen << "\n" << endi;
 +    return;
 +  }
 +  for ( i = 0; i < nnhc; i++ )
-+    fscanf(fp, "%lf", &tNHCzeta[i]);
++    fs >> tNHCzeta[i];
 +
 +  if ( simParams->tNHCFileReadMass ) {
 +    for ( i = 0; i < nnhc; i++ )
-+      fscanf(fp, "%lf", &tNHCmass[i]);
++      fs >> tNHCmass[i];
 +  }
-+
-+  fclose(fp);
++  fs.close();
 +}
 +
 +void Controller::keHistInit(void)
@@ -762,9 +791,10 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +void Controller::keHistSave(int step)
 +{
 +  if ( !simParams->keHistOn ) return;
-+  FILE *fp = fopen(simParams->keHistFile, "w");
-+  if ( fp == NULL ) return;
-+  fprintf(fp, "# %d %d\n", numDegFreedom, step);
++  NAMD_backup_file(simParams->keHistFile);
++  ofstream_namd fs(simParams->keHistFile);
++  if ( !fs ) return;
++  fs << "# " << numDegFreedom << " " << step << "\n";
 +  int i;
 +  BigReal tot = 0;
 +  for ( i = 0; i < keHistBinMax; i++ )
@@ -781,26 +811,27 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +    double hist = keHist[i] / ( dk * tot );
 +    double ke = (i + 0.5) * dk;
 +    double histref = exp(log(ke/tp) * (numDegFreedom*0.5-1) -ke/tp - norm) / tp;
-+    fprintf(fp, "%g\t%g\t%g\t%g\n", (i + 0.5) * dk, hist, histref, keHist[i]);
++    fs << (i + 0.5) * dk << "\t" << hist << "\t" << histref << "\t" << keHist[i] << "\n";
 +  }
-+  fclose(fp);
 +}
 +
 +void Controller::keHistLoad(void)
 +{
 +  if ( !simParams->keHistOn ) return;
-+  FILE *fp = fopen(simParams->keHistFile, "r");
-+  if ( fp == NULL ) return;
-+  char buf[128];
 +
-+  fgets(buf, sizeof buf, fp);
-+  while ( fgets(buf, sizeof buf, fp) ) {
++  std::ifstream fs(simParams->keHistFile);
++  if ( !fs ) return;
++  std::string buf;
++
++  std::getline(fs, buf);
++  while ( fs.good() ) {
 +    double ke, hist1, hist2, hist;
-+    sscanf(buf, "%lf%lf%lf%lf", &ke, &hist1, &hist2, &hist);
++    std::getline(fs, buf);
++    sscanf(buf.c_str(), "%lf%lf%lf%lf", &ke, &hist1, &hist2, &hist);
 +    int i = (int) (ke / simParams->keHistBin);
 +    keHist[i] = hist;
 +  }
-+  fclose(fp);
++  fs.close();
 +  iout << "Loaded previous histogram from "
 +       << simParams->keHistFile << ".\n" << endi;
 +}
@@ -815,7 +846,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  static char *FORMAT(BigReal X)
  {
    static char tmp_string[25];
-@@ -1610,6 +2013,7 @@
+@@ -1610,6 +2015,7 @@
          adaptTempBetaN           = new BigReal[adaptTempBins];
          adaptTempDBeta = (adaptTempBetaMax - adaptTempBetaMin)/(adaptTempBins);
          for(int j = 0; j < adaptTempBins; ++j) {
@@ -823,7 +854,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
            adaptTempRead >> adaptTempPotEnergyAve[j];
            adaptTempRead >> adaptTempPotEnergyVar[j];
            adaptTempRead >> adaptTempPotEnergySamples[j];
-@@ -1636,11 +2040,7 @@
+@@ -1636,11 +2042,7 @@
        adaptTempCg = simParams->adaptTempCgamma;   
        adaptTempDt  = simParams->adaptTempDt;
        adaptTempDBeta = (adaptTempBetaMax - adaptTempBetaMin)/(adaptTempBins);
@@ -836,18 +867,22 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
        for(int j = 0; j < adaptTempBins; ++j){
            adaptTempPotEnergyAveNum[j] = 0.;
            adaptTempPotEnergyAveDen[j] = 0.;
-@@ -1673,7 +2073,9 @@
+@@ -1673,7 +2075,13 @@
  
  void Controller::adaptTempWriteRestart(int step) {
      if (simParams->adaptTempOn && !(step%simParams->adaptTempRestartFreq)) {
 -        adaptTempRestartFile.seekp(std::ios::beg);        
 +        if ( !simParams->adaptTempRestartAppend ) {
 +          adaptTempRestartFile.seekbegin();
++          // alternatively, we can
++          //adaptTempRestartFile.close();
++          //NAMD_backup_file(simParams->adaptTempRestartFile);
++          //adaptTempRestartFile.open(simParams->adaptTempRestartFile);
 +        }
          iout << "ADAPTEMP: WRITING RESTART FILE AT STEP " << step << "\n" << endi;
          adaptTempRestartFile << step << " ";
          // Start with min and max temperatures
-@@ -1685,6 +2087,7 @@
+@@ -1685,6 +2093,7 @@
          adaptTempRestartFile << adaptTempDt ;
          adaptTempRestartFile << "\n" ;
          for(int j = 0; j < adaptTempBins; ++j) {
@@ -855,7 +890,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
            adaptTempRestartFile << adaptTempPotEnergyAve[j] << " ";
            adaptTempRestartFile << adaptTempPotEnergyVar[j] << " ";
            adaptTempRestartFile << adaptTempPotEnergySamples[j] << " ";
-@@ -1697,17 +2100,18 @@
+@@ -1697,17 +2106,18 @@
      }
  }    
  
@@ -878,7 +913,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
      const int adaptTempOutFreq  = simParams->adaptTempOutFreq;
      const bool adaptTempDebug  = simParams->adaptTempDebug;
      //Calculate Current inverse temperature and bin 
-@@ -1720,13 +2124,48 @@
+@@ -1720,13 +2130,48 @@
                                << " adaptTempDBeta: " << adaptTempDBeta 
                                 << " betaMin:" << adaptTempBetaMin 
                                 << " betaMax: " << adaptTempBetaMax << "\n";
@@ -928,7 +963,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  
      //calculate new bin average and variance using adaptive averaging
      adaptTempPotEnergyAveNum[adaptTempBin] = adaptTempPotEnergyAveNum[adaptTempBin]*gammaAve + potentialEnergy;
-@@ -1745,75 +2184,53 @@
+@@ -1745,75 +2190,53 @@
      // is constant for each bin. This is to estimate <E(beta)> where beta \in
      // (beta_i,beta_{i+1}) using Eq 2 of JCP 132 244101
      if ( ! ( step % simParams->adaptTempFreq ) ) {
@@ -1036,7 +1071,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
              if (aplus < 0) {
                      aplus = 0;
              }
-@@ -1821,22 +2238,13 @@
+@@ -1821,22 +2244,13 @@
                      aplus = 1;
              }
              aminus = 1-aplus;
@@ -1061,7 +1096,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
              << "     adaptTemp:   " << adaptTempT<< "\n"
              << "     betaMin:   " << adaptTempBetaMin << "\n"
              << "     betaMax:   " << adaptTempBetaMax << "\n"
-@@ -1853,30 +2261,6 @@
+@@ -1853,30 +2267,6 @@
              << "     a-:        " << aminus << "\n"
              << endi;
            }
@@ -1092,7 +1127,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
        
        //dT is new temperature
        BigReal dT = ((potentialEnergy-potEnergyAverage)/BOLTZMANN+adaptTempT)*adaptTempDt;
-@@ -1886,70 +2270,8 @@
+@@ -1886,70 +2276,8 @@
       // Check if dT in [adaptTempTmin,adaptTempTmax]. If not try simpler estimate of mean
       // This helps sampling with poor statistics in the bins surrounding adaptTempBin.
        if ( dT > 1./adaptTempBetaMin || dT  < 1./adaptTempBetaMax ) {
@@ -1164,13 +1199,13 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
            //update temperature step size counter
            // FOR "TRUE" ADAPTIVE TEMPERING
            BigReal adaptTempTdiff = fabs(dT-adaptTempT);
-@@ -1979,8 +2301,24 @@
+@@ -1979,8 +2307,24 @@
            
        }
        
 +      BigReal tScale = dT / adaptTempT;
 +      BigReal vScale = sqrt(tScale);
-+      // for velocity-rescaling-based thermostats
++      // for velocity-rescaling-based thermostats,
 +      // carry the velocity-rescaling factor to the next step
 +      if ( simParams->langRescaleOn ) {
 +        langRescaleFactorPrev *= vScale;
@@ -1189,7 +1224,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
      }
      adaptTempWriteRestart(step);
      if ( ! (step % adaptTempOutFreq) ) {
-@@ -1991,7 +2329,7 @@
+@@ -1991,7 +2335,7 @@
               << " ENERGYVAR " << std::setprecision(10) << potEnergyVariance;
          iout << "\n" << endi;
     }
@@ -1198,7 +1233,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  }
  
  
-@@ -2277,6 +2615,15 @@
+@@ -2277,6 +2621,15 @@
        electEnergy = reduction->item(REDUCTION_ELECT_ENERGY);
        ljEnergy = reduction->item(REDUCTION_LJ_ENERGY);
  
@@ -1214,7 +1249,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
        // JLai
        groLJEnergy = reduction->item(REDUCTION_GRO_LJ_ENERGY);
        groGaussEnergy = reduction->item(REDUCTION_GRO_GAUSS_ENERGY);
-@@ -2310,15 +2657,6 @@
+@@ -2310,15 +2663,6 @@
  //fepe
      }
  
@@ -1230,7 +1265,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  
      momentum.x = reduction->item(REDUCTION_MOMENTUM_X);
      momentum.y = reduction->item(REDUCTION_MOMENTUM_Y);
-@@ -3147,6 +3485,7 @@
+@@ -3147,6 +3491,7 @@
      ldbSteps = LdbCoordinator::Object()->getNumStepsToRun();
    }
    if ( ! --ldbSteps ) {
@@ -1301,7 +1336,7 @@ diff -u -wdB spec_old/Controller.h spec_new/Controller.h
      static void threadRun(Controller*);
 diff -u -wdB spec_old/fstream_namd.h spec_new/fstream_namd.h
 --- spec_old/fstream_namd.h	2015-01-31 00:39:07.000000000 -0600
-+++ spec_new/fstream_namd.h	2016-07-21 17:16:59.987779279 -0500
++++ spec_new/fstream_namd.h	2016-07-22 12:32:03.851785830 -0500
 @@ -4,6 +4,11 @@
  
  #include <iostream>
@@ -1314,16 +1349,17 @@ diff -u -wdB spec_old/fstream_namd.h spec_new/fstream_namd.h
  
  class ofstream_namd : public std::ostringstream {
  
-@@ -31,6 +36,16 @@
+@@ -31,6 +36,17 @@
      if ( fd ) close();
    }
  
 +  void seekbegin() {
 +    str("");
-+    ftruncate(fd, 0);
 +#if !defined(WIN32) || defined(__CYGWIN__)
++    ftruncate(fd, 0);
 +    lseek(fd, 0, SEEK_SET);
 +#else
++    _chsize(fd, 0);
 +    _lseek(fd, 0, SEEK_SET);
 +#endif
 +  }
@@ -1639,12 +1675,12 @@ diff -u -wdB spec_old/Sequencer.h spec_new/Sequencer.h
        int checkpoint_berendsenPressure_count;
 diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
 --- spec_old/SimParameters.C	2015-12-08 09:41:37.000000000 -0600
-+++ spec_new/SimParameters.C	2016-07-20 19:28:24.035092757 -0500
++++ spec_new/SimParameters.C	2016-07-22 16:42:31.649601687 -0500
 @@ -187,6 +187,12 @@
    }
    SCRIPT_PARSE_FLOAT("reassignTemp",reassignTemp)
    SCRIPT_PARSE_FLOAT("rescaleTemp",rescaleTemp)
-+  SCRIPT_PARSE_BOOL("rescaleAdaptive",rescaleAdaptive)
++  SCRIPT_PARSE_BOOL("rescaleAdaptive",rescaleAdaptiveOn)
 +  SCRIPT_PARSE_FLOAT("rescaleAdaptiveDedk",rescaleAdaptiveDedk)
 +  SCRIPT_PARSE_FLOAT("langRescaleTemp",langRescaleTemp)
 +  SCRIPT_PARSE_FLOAT("langRescaleDt",langRescaleDt)
@@ -1711,7 +1747,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
     opts.range("rescaleTemp", NOT_NEGATIVE);
     opts.units("rescaleTemp", N_KELVIN);
 +   opts.optionalB("main", "rescaleAdaptive", "Adaptively reduce the magnitude "
-+    "of the velocity rescaling factor", &rescaleAdaptive, FALSE);
++    "of the velocity rescaling", &rescaleAdaptiveOn, FALSE);
 +   opts.optional("rescaleAdaptive", "rescaleAdaptiveDedk", "Heuristic multiple of the reduction factor ",
 +    &rescaleAdaptiveDedk, 0.0);
 +   opts.optional("rescaleAdaptive", "rescaleAdaptiveFile",
@@ -1741,9 +1777,9 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
 +   opts.optionalB("adaptTempMD","adaptTempTNHC","Send adaptTemp temperature to Nose-Hoover chain thermostat",&adaptTempTNHC,TRUE);
     opts.optional("adaptTempMD", "adaptTempInFile", "File containing restart information for adaptTemp", adaptTempInFile);
     opts.optional("adaptTempMD", "adaptTempRestartFile", "File for writing adaptTemp restart information", adaptTempRestartFile);
-+   opts.optionalB("adaptTempRestartFile", "adaptTempRestartAppend", "Appending instead of overwriting the restart file", &adaptTempRestartAppend, FALSE);
     opts.require("adaptTempRestartFile","adaptTempRestartFreq", "Frequency of writing restart file", &adaptTempRestartFreq,0);
     opts.range("adaptTempRestartFreq",NOT_NEGATIVE);
++   opts.optionalB("adaptTempRestartFile", "adaptTempRestartAppend", "Appending instead of overwriting the restart file", &adaptTempRestartAppend, FALSE);
     opts.optionalB("adaptTempMD", "adaptTempRandom", "Randomly assign a temperature if we step out of range", &adaptTempRandom, FALSE);
 +
 +   // special atoms
@@ -1821,19 +1857,20 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
     }
     if (langevinOn) {
       if ( ! opts.defined("langevinDamping") ) langevinDamping = 0.0;
-@@ -3073,6 +3177,11 @@
-     {
-       NAMD_die("Must give a rescale temperature if rescaleFreq is defined");
-     }
-+    if ( opts.defined("rescaleAdaptive") ) {
+@@ -3089,6 +3193,12 @@
+   }
+    }
+ 
++    if ( rescaleAdaptiveOn ) {
 +      if ( !opts.defined("rescaleAdaptiveFile") ) {
 +        strcpy(rescaleAdaptiveFile, "adaptvrescale.dat");
 +      }
 +    }
-   }
-    }
-    else
-@@ -3188,6 +3297,8 @@
++
+    if (opts.defined("reassignFreq"))
+    {
+   if (!opts.defined("reassignTemp"))
+@@ -3188,6 +3298,8 @@
       else if (reassignFreq > 0)	alchTemp = reassignTemp;
       else if (langevinOn) 	alchTemp = langevinTemp;
       else if (tCoupleOn) 	alchTemp = tCoupleTemp;
@@ -1842,7 +1879,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
       else NAMD_die("Alchemical FEP can be performed only in constant temperature simulations\n");
  
       if (reassignFreq > 0 && reassignIncr != 0)
-@@ -3820,6 +3931,16 @@
+@@ -3820,6 +3932,16 @@
    tCoupleTemp = 0.0;
     }
  
@@ -1859,7 +1896,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
     if (HydrogenBonds)
     {
       if (daCutoffDist > pairlistDist)
-@@ -4890,6 +5011,26 @@
+@@ -4890,6 +5012,26 @@
        iout << endi;
     }
  
@@ -1886,7 +1923,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
     if (minimizeOn)
     {
        iout << iINFO << "OLD STYLE MINIMIZATION ACTIVE\n";
-@@ -5102,6 +5243,11 @@
+@@ -5102,6 +5244,11 @@
          
     }
  
@@ -1900,7 +1937,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
       iout << iINFO << "FMA ACTIVE\n";
 diff -u -wdB spec_old/SimParameters.h spec_new/SimParameters.h
 --- spec_old/SimParameters.h	2015-09-04 17:20:03.000000000 -0500
-+++ spec_new/SimParameters.h	2016-07-20 19:27:14.533634018 -0500
++++ spec_new/SimParameters.h	2016-07-22 16:46:07.329485534 -0500
 @@ -497,8 +497,32 @@
  					//  active
  	BigReal tCoupleTemp;		//  Temperature for temp coupling
@@ -1927,7 +1964,7 @@ diff -u -wdB spec_old/SimParameters.h spec_new/SimParameters.h
 +
  	int rescaleFreq;		//  Velocity rescale frequency
  	BigReal rescaleTemp;		//  Temperature to rescale to
-+	Bool rescaleAdaptive;		//  Adaptively reduce the velocity rescaling factor
++	Bool rescaleAdaptiveOn;		//  Adaptively reduce the velocity-rescaling factor
 +	BigReal rescaleAdaptiveDedk;	//  Heuristic multiple of the reduction factor
 +	char rescaleAdaptiveFile[128];	//  File to save the adaptive veloctiy-rescaling data
 +	int rescaleAdaptiveFileFreq;	//  Frequency to save the adaptive veloctiy-rescaling restart file
