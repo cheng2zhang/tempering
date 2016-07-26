@@ -2012,7 +2012,7 @@ void Controller::adaptTempInit(int step) {
         adaptTempPotEnergyVarNum = new BigReal[adaptTempBins];
         adaptTempPotEnergyVar    = new BigReal[adaptTempBins];
         adaptTempPotEnergyAve    = new BigReal[adaptTempBins];
-        adaptTempBetaN           = new BigReal[adaptTempBins];
+        adaptTempBetaN           = new BigReal[adaptTempBins + 1];
         adaptTempDBeta = (adaptTempBetaMax - adaptTempBetaMin)/(adaptTempBins);
         for(int j = 0; j < adaptTempBins; ++j) {
           adaptTempRead >> readReal;
@@ -2022,6 +2022,8 @@ void Controller::adaptTempInit(int step) {
           adaptTempRead >> adaptTempPotEnergyAveNum[j];
           adaptTempRead >> adaptTempPotEnergyVarNum[j];
           adaptTempRead >> adaptTempPotEnergyAveDen[j];
+        }
+        for ( int j = 0; j <= adaptTempBins; ++j ) {
           adaptTempBetaN[j] = adaptTempBetaMin + j * adaptTempDBeta;
         } 
         adaptTempRead.close();
@@ -2036,7 +2038,7 @@ void Controller::adaptTempInit(int step) {
       adaptTempPotEnergyVarNum = new BigReal[adaptTempBins];
       adaptTempPotEnergyVar    = new BigReal[adaptTempBins];
       adaptTempPotEnergyAve    = new BigReal[adaptTempBins];
-      adaptTempBetaN           = new BigReal[adaptTempBins];
+      adaptTempBetaN           = new BigReal[adaptTempBins + 1];
       adaptTempBetaMax = 1./simParams->adaptTempTmin;
       adaptTempBetaMin = 1./simParams->adaptTempTmax;
       adaptTempCg = simParams->adaptTempCgamma;   
@@ -2050,6 +2052,8 @@ void Controller::adaptTempInit(int step) {
           adaptTempPotEnergyVarNum[j] = 0.;
           adaptTempPotEnergyVar[j] = 0.;
           adaptTempPotEnergyAve[j] = 0.;
+      }
+      for ( int j = 0; j <= adaptTempBins; ++j ) {
           adaptTempBetaN[j] = adaptTempBetaMin + j * adaptTempDBeta;
       }
     }
@@ -2137,6 +2141,7 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
     }
     adaptTempPotEnergySamples[adaptTempBin] += 1;
     BigReal gammaAve = 1.-adaptTempCg/adaptTempPotEnergySamples[adaptTempBin];
+    if ( gammaAve < 0 ) gammaAve = 0;
 
     BigReal potentialEnergy;
     BigReal potEnergyAverage;
@@ -2215,25 +2220,39 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
       BigReal A0 = 0; // Sum_{from beta_minus to beta_{i+1} }
                       //   (beta - beta_minus)/(beta_{i+1} - beta_minus) var(E)
       BigReal A1 = 0; // Sum_{from beta_{i+1} to beta_plus }
-                      //   (beta_plus - beta) /(beta_plus - beta_{i+1}) var(E)
+                      //   (beta - beta_plus) /(beta_plus - beta_{i+1}) var(E)
       BigReal A2 = 0; // 0.5 * DBeta * var(E) at bin i
       //A0 phi_s integral for beta_minus < beta < beta_{i+1}
+      int bins0 = 0;
       for (j = nMinus; j <= adaptTempBin; ++j) {
-          potEnergyAve0 += adaptTempPotEnergyAve[j] / (deltaBins + 1);
-          A0 += adaptTempPotEnergyVar[j] * (j - nMinus + 0.5) / (deltaBins + 1);
+        if ( adaptTempPotEnergySamples[j] > 0 ) {
+          potEnergyAve0 += adaptTempPotEnergyAve[j];;
+          A0 += adaptTempPotEnergyVar[j] * (j - nMinus + 0.5);
+          bins0 += 1;
+        }
       }
+      potEnergyAve0 /= bins0;
+      A0 /= bins0;
 
       //A1 phi_s integral for beta_{i+1} < beta < beta_plus
+      int bins1 = 0;
       for (j = adaptTempBin + 1; j < nPlus; j++) {
-          potEnergyAve1 += adaptTempPotEnergyAve[j] / deltaBins;
-          A1 += adaptTempPotEnergyVar[j] * (j - nPlus + 0.5) / deltaBins;
+        if ( adaptTempPotEnergySamples[j] > 0 ) {
+          potEnergyAve1 += adaptTempPotEnergyAve[j];
+          A1 += adaptTempPotEnergyVar[j] * (j - nPlus + 0.5);
+          bins1 += 1;
+        }
+      }
+      if ( bins1 > 0 ) {
+        potEnergyAve1 /= bins1;
+        A1 /= bins1;
       }
 
       //A2 phi_t integral for beta_i
       A2 = 0.5 * potEnergyVariance;
 
-      // Now calculate a- and a+
-      BigReal aminus = 0, aplus = 0;
+      // Now calculate a+ and a-
+      BigReal aplus = 0;
       if ( A0 != A1 ) {
         aplus = (A0-A2)/(A0-A1);
       }
@@ -2243,7 +2262,7 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
       if (aplus > 1) {
         aplus = 1;
       }
-      aminus = 1-aplus;
+      BigReal aminus = 1 - aplus;
       potEnergyAverage = aminus*potEnergyAve0 + aplus*potEnergyAve1;
       if (simParams->adaptTempDebug) {
         iout << "ADAPTEMP DEBUG:"  << "\n"
