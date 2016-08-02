@@ -517,6 +517,9 @@ public:
 	char keHistFile[128];		// Histogram file for the kinetic energy 
 	int keHistFileFreq;		// Frequency of writing the kinetic energy histogram file
 
+        char energyLogFile[128];        // Energy log file
+        int energyLogFreq;              // Frequency of writing the energy log file
+
 	int rescaleFreq;		//  Velocity rescale frequency
 	BigReal rescaleTemp;		//  Temperature to rescale to
 	Bool rescaleAdaptiveOn;		//  Adaptively reduce the velocity-rescaling factor 
@@ -558,6 +561,7 @@ public:
         char adaptTempRestartFile[128];        //  File to write restart information
         int  adaptTempRestartFreq;             //  Frequency of writing restart output
         Bool adaptTempRestartAppend;           //  Appending instead of overwriting the restart file
+        Bool adaptTempSepOn;                   //  Using a separate multiple-bin estimator for each bin
         Bool adaptTempRandom;                  //  Do we assign random temperatures when we step out of [Tmin,Tmax]?
         /* End Adaptive Temperature Sampling */
 

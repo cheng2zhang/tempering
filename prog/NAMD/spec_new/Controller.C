@@ -2223,24 +2223,22 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
                       //   (beta - beta_plus) /(beta_plus - beta_{i+1}) var(E)
       BigReal A2 = 0; // 0.5 * DBeta * var(E) at bin i
       //A0 phi_s integral for beta_minus < beta < beta_{i+1}
-      int bins0 = 0;
-      for (j = nMinus; j <= adaptTempBin; ++j) {
-        if ( adaptTempPotEnergySamples[j] > 0 ) {
-          potEnergyAve0 += adaptTempPotEnergyAve[j];;
-          A0 += adaptTempPotEnergyVar[j] * (j - nMinus + 0.5);
-          bins0 += 1;
-        }
+      BigReal den0 = 0, num0 = 0, bins0 = 0, var;
+      for (j = adaptTempBin; j >= nMinus; --j) {
+        den0 += adaptTempPotEnergyAveDen[j];
+        potEnergyAve0 += adaptTempPotEnergyAveNum[j];
+        if ( adaptTempPotEnergySamples[j] > 0 )
+          var = adaptTempPotEnergyVar[j];
+        A0 += var * (j - nMinus + 0.5) / (deltaBins + 1);
       }
-      potEnergyAve0 /= bins0;
-      A0 /= bins0;
 
       //A1 phi_s integral for beta_{i+1} < beta < beta_plus
-      int bins1 = 0;
       for (j = adaptTempBin + 1; j < nPlus; j++) {
         if ( adaptTempPotEnergySamples[j] > 0 ) {
           potEnergyAve1 += adaptTempPotEnergyAve[j];
-          A1 += adaptTempPotEnergyVar[j] * (j - nPlus + 0.5);
-          bins1 += 1;
+        if ( adaptTempPotEnergySamples[j] > 0 )
+          var = adaptTempPotEnergyVar[j];
+          A1 += adaptTempPotEnergyVar[j] * (j - nPlus + 0.5) / deltaBins;
         }
       }
       if ( bins1 > 0 ) {

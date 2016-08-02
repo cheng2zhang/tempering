@@ -5,15 +5,16 @@
 
 This patch contains several modifications to NAMD 2.11:
 
- 1. The correction of the velocity-scaling problem (due to Justin) after temperature transitions in adaptive tempering.
- 2. Fixing (hopefully) the one-step mismatch problem in Sequencer.C and Controller.C.
- 3. Fixing the bin index overflow problem (due to Justin) in adaptTempUpdate() in Controller.C.
- 4. Properly overwriting (instead of appending) the restart file (due to Justin). 
- 5. Disabling the code for the ad hoc adaptTempRandom scheme, which lacks theoretically foundation.
- 6. Issuing a warning for using adaptive tempering with the original velocity rescaling, which does not rigorously sample the Boltzmann distribution.
- 7. Integrating the Langevin-style velocity-rescaling thermostat and Nose-Hoover thermostat.
- 8. Adaptively rescaling the velocity to approach an asymptotic microcanonical ensemble.
- 9. Monitoring the distribution of the (reduced) kinetic energy.
+  * The correction of the velocity-scaling problem (due to Justin) after temperature transitions in adaptive tempering.
+  * Fixing (hopefully) the one-step mismatch problem in Sequencer.C and Controller.C.
+  * Fixing the bin index overflow problem (due to Justin) in adaptTempUpdate() in Controller.C.
+  * Properly overwriting (instead of appending) the restart file (due to Justin).
+  * Compute the potential energy at the beginning adaptTempUpdate() (due to Justin).
+  * Disabling the code for the ad hoc adaptTempRandom scheme, which lacks theoretically foundation.
+  * Issuing a warning for using adaptive tempering with the original velocity rescaling, which does not rigorously sample the Boltzmann distribution.
+  * Integrating the Langevin-style velocity-rescaling thermostat and Nose-Hoover thermostat.
+  * Adaptively rescaling the velocity to approach an asymptotic microcanonical ensemble.
+  * Monitoring the distribution of the (reduced) kinetic energy.
 
 
 #### Velocity-scaling after temperature transition
@@ -55,6 +56,13 @@ But the user should still make sure that the thermostat temperature lying within
 Currently the restart file is appended instead of overwritten because of a programming mistake.
 This is fixed in the patch.  If the appending behavior is desired,
 the user can set the option `adaptTempRestartAppend`.
+
+#### Recompute the potential energy in adaptTempUpdate()
+
+The old code deduce the potential energy from the conservation of the total energy.
+But that is inaccurate because the MD integrator only approximately conserves the total energy.
+The code now recompute the potential energy at the beginning of adaptTempUpdate().
+We also attempt to fix a possible bug of how often the LJcorrection is computed.
 
 #### Disabling the code for adaptTempRandom
 

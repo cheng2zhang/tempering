@@ -260,8 +260,50 @@ protected:
 
 //JS for adaptive temperature sampling
    void adaptTempInit(int step);
+   BigReal adaptTempGetAveEneSep(int adaptTempBin, BigReal potentialEnergy);
+   BigReal adaptTempGetAveEne(int adaptTempBin, BigReal potentialEnergy);
    Bool adaptTempUpdate(int step, int minimize = 0);
    void adaptTempWriteRestart(int step);
+   int *adaptTempBinMinus;
+   int *adaptTempBinPlus;
+   struct AdaptTempSepAcc {
+     BigReal invGamma;
+     int winSize;
+     int bin0; // first bin
+     BigReal *count;
+     BigReal *sumE;
+     BigReal *sumE2;
+     BigReal *ave;
+     BigReal *var;
+     BigReal total;
+     // return the cumulative weight back to 1.0
+     void trim(void) {
+       if ( invGamma <= 1.0 ) return;
+       BigReal gam = 1.0/invGamma;
+       for ( int j = 0; j < winSize; j++ ) {
+         count[j] *= gam;
+         sumE[j]  *= gam;
+         sumE2[j] *= gam;
+       }
+       invGamma = 1;
+     }
+     // add a data point from bin i to this accumulator
+     void add(int i, BigReal potEne, BigReal cg) {
+       i -= bin0; // convert to the local index
+       if ( i < 0 || i >= winSize ) {
+         CkPrintf("Bad local index for bin0 %d: i %d, winSize %d\n", bin0, i + bin0, winSize);
+         NAMD_die("Adaptive tempering: bad local index.");
+       }
+       total += 1;
+       BigReal gamma = 1 - cg / total;
+       if ( gamma < 0 ) gamma = 0;
+       invGamma /= gamma;
+       count[i] += invGamma;
+       sumE[i]  += invGamma * potEne;
+       sumE2[i] += invGamma * potEne * potEne;
+     }
+   };
+   AdaptTempSepAcc *adaptTempSepAcc;
    BigReal *adaptTempPotEnergyAveNum;
    BigReal *adaptTempPotEnergyAveDen;
    BigReal *adaptTempPotEnergyVarNum;

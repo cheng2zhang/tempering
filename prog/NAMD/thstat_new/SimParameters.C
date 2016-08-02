@@ -1230,6 +1230,12 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
        &keHistFileFreq, 10000);
    opts.range("keHistFileFreq", POSITIVE);
 
+   opts.optional("main", "energyLogFile", "Energy log file",
+       energyLogFile);
+   opts.optional("energyLogFile", "energyLogFreq", "Frequency of writing the energy log file",
+       &energyLogFreq, 1);
+   opts.range("energyLogFreq", POSITIVE);
+
    opts.optional("main", "rescaleFreq", "Number of steps between "
     "velocity rescaling", &rescaleFreq);
    opts.range("rescaleFreq", POSITIVE);
@@ -1455,6 +1461,7 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
    opts.require("adaptTempRestartFile","adaptTempRestartFreq", "Frequency of writing restart file", &adaptTempRestartFreq,0);
    opts.range("adaptTempRestartFreq",NOT_NEGATIVE);
    opts.optionalB("adaptTempRestartFile", "adaptTempRestartAppend", "Appending instead of overwriting the restart file", &adaptTempRestartAppend, FALSE);
+   opts.optionalB("adaptTempMD", "adaptTempSep", "Using a separate multiple-bin estimator for each bin", &adaptTempSepOn, FALSE);
    opts.optionalB("adaptTempMD", "adaptTempRandom", "Randomly assign a temperature if we step out of range", &adaptTempRandom, FALSE);
 }
 
@@ -3187,6 +3194,10 @@ void SimParameters::check_config(ParseOptions &opts, ConfigList *config, char *&
         strcpy(rescaleAdaptiveFile, "adaptvrescale.dat");
       }
     }
+
+   if ( !opts.defined("energyLogFile") ) { // disable energy logging
+     energyLogFreq = 0;
+   }
 
    if (opts.defined("reassignFreq"))
    {

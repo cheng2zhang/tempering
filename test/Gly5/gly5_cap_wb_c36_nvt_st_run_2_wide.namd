@@ -1,0 +1,111 @@
+#############################################################
+## JOB DESCRIPTION                                         ##
+#############################################################
+
+
+
+# Input files ###################################################################
+
+
+set cur 2
+set prv [expr $cur - 1]
+
+structure		./Structures/gly5_cap_wb_c36.psf
+
+set inname		gly5_cap_wb_c36_nvt_st_run_${prv}_wide
+set outname		gly5_cap_wb_c36_nvt_st_run_${cur}_wide
+#set outname		test_${cur}
+
+coordinates		$inname.coor
+velocities		$inname.vel
+extendedSystem		$inname.xsc
+
+paraTypeCharmm	   	 on
+parameters        	 ./Structures/par_all36_prot_jad_mod.prm
+
+
+
+# Simulation Parameters #########################################################
+
+proc get_first_ts { xscfile } {                                                            
+     set fd [open $xscfile r]     
+     gets $fd                    
+     gets $fd    
+     gets $fd line  
+     set ts [lindex $line 0]       
+     close $fd  
+     return $ts      
+     } 
+
+firstTimeStep   [get_first_ts $inname.restart.xsc] 
+#firstTimeStep	0
+
+set temperature		300
+wrapAll			on
+
+# Force-Field Parameters
+exclude             scaled1-4
+1-4scaling          1.0 
+cutoff              12.0
+switching           on
+switchdist          10.0
+pairlistdist        14.0
+
+
+# Integrator Parameters
+timestep            2.0  ;# 2fs/step
+rigidBonds          all  ;# needed for 2fs steps
+nonbondedFreq       1
+fullElectFrequency  2  
+stepspercycle       4
+
+
+# Constant Temperature Control
+langevin            on    ;# do langevin dynamics
+langevinDamping     1     ;# damping coefficient (gamma) of 1/ps
+langevinHydrogen    off    ;# don't couple langevin bath to hydrogens
+langevinTemp 	    $temperature
+
+# PME (for full-system periodic electrostatics)
+PME                 yes
+PMEGridSpacing      1.0
+
+# Output ########################################################################
+
+outputName          	$outname
+
+dcdFreq		    	500
+restartfreq         	500     ;# 500steps = every 1ps
+xstFreq             	500
+outputEnergies      	500
+outputPressure      	500
+outputTiming		500
+
+binaryoutput		no
+binaryrestart		no
+
+# Tempering parameters ###########################################################
+
+adaptTempMD		on
+adaptTempFreq		1
+#adaptTempTmin		280
+#adaptTempTmax		620
+#adaptTempBins		340
+adaptTempDt		0.0001
+adaptTempInFile		${inname}.rst
+adaptTempRestartFile	${outname}.rst
+adaptTempRestartFreq	500
+adaptTempLangevin	on
+adaptTempOutFreq	10
+adaptTempCgamma		1
+
+adaptTempWindowSize	0.04
+specAtoms		on
+specAtomsFreq		10
+
+keHist			on
+keHistBin		1.0
+keHistFile		ke.dat
+keHistFileFreq		1000
+
+run 40000000
