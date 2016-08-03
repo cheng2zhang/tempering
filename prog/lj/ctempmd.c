@@ -5,9 +5,9 @@
 
 
 
-int n = 100;
+int n = 1000;
 int nequil = 10000; /* number of equilibration steps */
-int nsteps = 500000; /* number of simulation steps */
+int nsteps = 2000000; /* number of simulation steps */
 double rho = 0.5;
 double rcdef = 2.5;
 double dt = 0.002;
@@ -23,8 +23,8 @@ double thdt = 0.02; /* strength of the thermostat */
 
 int nsttemp = 10; /* number of steps of trying tempering */
 double tpmin = 2.3; /* minimal temperature */
-double tpdel = 0.02; /* temperature increment */
-int ntp = 60; /* number of temperatures */
+double tpdel = 0.01; /* temperature increment */
+int ntp = 120; /* number of temperatures */
 
 double betamin;
 double betamax;

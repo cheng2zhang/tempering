@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 
+
+
 import sys, os, math, glob, getopt
+
+
 
 fninp = "ene.log"
 fnout = None
@@ -8,19 +12,24 @@ dE = 0.5
 dT = 5
 T = 300
 
+
+
 def showhelp():
-  print "mkhist.py ene.log"
+  print "mkhist.py [Options] ene.log"
   print "Options:"
-  print "  -T, --tp=:   set the temperature"
-  print "  --dE=:       set the energy bin size"
-  print "  --dT=:       set the temperature tolerance"
+  print "  -T, --tp=:     set the temperature"
+  print "  --dE=:         set the energy bin size"
+  print "  --dT=:         set the temperature tolerance"
+  print "  -o, --output=: set the output file"
+
 
 
 def doargs():
   global fninp, fnout, dE, dT, T
 
   try:
-    opts, args = getopt.gnu_getopt(sys.argv[1:], "hT:o:", ["dE=", "dT=", "tp="])
+    opts, args = getopt.gnu_getopt(sys.argv[1:],
+        "hT:o:i:", ["dE=", "de=", "dT=", "dt=", "tp=", "input=", "output="])
   except:
     print "Error parsing the command line"
     sys.exit(1)
@@ -30,16 +39,22 @@ def doargs():
       showhelp()
     elif o in ("-T", "--tp"):
       T = float(a)
-    elif o in ("--dT",):
+    elif o in ("--dT", "--dt"):
       dT = float(a)
-    elif o in ("--dE",):
+    elif o in ("--dE", "--de"):
       dE = float(a)
+    elif o in ("-i", "--input"):
+      fninp = a
+    elif o in ("-o", "--output"):
+      fnout = a
 
   if len( args ) > 0:
     fninp = args[0]
   elif not os.path.exists(fninp):
     fninp = glob.glob("e*.log")[0]
   #print args, opts, fninp, fnout, T, dT, dE
+
+
 
 class Hist:
   def __init__(self, xmin1, xmax1, dx):
@@ -86,7 +101,8 @@ class Hist:
       s += "%s\t%s\t%s\n" % (self.xmin + (i + 0.5) * self.dx,
           dist, self.arr[i])
     open(fn, "w").write(s)
-    print "saving histogram file", fn, ", total ", tot
+    print "saving histogram file %s, total %s" % (fn, tot)
+
 
 
 def mkhist2(s, fnout):
@@ -123,6 +139,7 @@ def mkhist3(s, fnout):
     hist.add(ene)
   if hist:
     hist.save(fnout)
+
 
 
 def mkhist(fnin):
