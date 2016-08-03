@@ -473,15 +473,19 @@ void Controller::integrate(int scriptTask) {
         Bool scaled = adaptTempUpdate(step);
         keHistUpdate(step);
         printDynamicsEnergies(step);
-        outputFepEnergy(step);
-        outputTiEnergy(step);
         if(traceIsOn()){
             traceUserEvent(eventEndOfTimeStep);
             sprintf(traceNote, "s:%d", step);
             traceUserSuppliedNote(traceNote);
         }
-        if ( fpEnergyLog )
-          fprintf(fpEnergyLog, "%d %g %g\n", step, totalEnergy - kineticEnergy, adaptTempT);
+        if ( fpEnergyLog && step % simParams->energyLogFreq == 0 ) {
+          fprintf(fpEnergyLog, "%d %g", step, totalEnergy - kineticEnergy);
+          if ( simParams->adaptTempOn )
+            fprintf(fpEnergyLog, " %g", adaptTempT);
+          fprintf(fpEnergyLog, "\n");
+        }
+        outputFepEnergy(step);
+        outputTiEnergy(step);
   // if (gotsigint) {
   //   iout << iINFO << "Received SIGINT; shutting down.\n" << endi;
   //   NAMD_quit();

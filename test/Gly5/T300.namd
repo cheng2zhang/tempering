@@ -1,0 +1,86 @@
+#############################################################
+## JOB DESCRIPTION                                         ##
+#############################################################
+
+
+
+# Input files ###################################################################
+
+
+set cur 1
+set prv [expr $cur - 1]
+
+structure		./Structures/gly5_cap_wb_c36.psf
+
+set inname		./Structures/gly5_cap_wb_c36_run_13
+set outname		gly5_cap_wb_c36_nvt_st_run_${cur}_wide
+#set outname		test
+
+coordinates		$inname.coor
+velocities		$inname.vel
+extendedSystem		$inname.xsc
+
+paraTypeCharmm	   	 on
+parameters        	 ./Structures/par_all36_prot_jad_mod.prm
+
+
+
+# Simulation Parameters #########################################################
+
+firstTimeStep	0
+
+set temperature		300
+wrapAll			on
+
+# Force-Field Parameters
+exclude             scaled1-4
+1-4scaling          1.0 
+cutoff              12.0
+switching           on
+switchdist          10.0
+pairlistdist        14.0
+
+
+# Integrator Parameters
+timestep            2.0  ;# 2fs/step
+rigidBonds          all  ;# needed for 2fs steps
+nonbondedFreq       1
+fullElectFrequency  2  
+stepspercycle       4
+
+
+# Constant Temperature Control
+langevin            on    ;# do langevin dynamics
+langevinDamping     1     ;# damping coefficient (gamma) of 1/ps
+langevinHydrogen    off    ;# don't couple langevin bath to hydrogens
+langevinTemp 	    $temperature
+
+# PME (for full-system periodic electrostatics)
+PME                 yes
+PMEGridSpacing      1.0
+
+# Output ########################################################################
+
+outputName          	$outname
+
+dcdFreq		    	50000
+restartfreq         	50000    ;# 500steps = every 1ps
+xstFreq             	50000
+outputEnergies      	50000
+outputPressure      	50000
+outputTiming		50000
+
+binaryoutput		no
+binaryrestart		no
+
+#specAtoms		on
+#specAtomsFreq		10
+
+keHist			on
+keHistBin		1.0
+keHistFile		ke.dat
+keHistFileFreq		1000
+
+energyLogFile		ene0.log
+
+run 40000000
