@@ -80,7 +80,7 @@ adaptTempFreq		1
 adaptTempTmin		280
 adaptTempTmax	        340
 adaptTempBins		60
-adaptTempDt		0.0001
+adaptTempDt		0.00001
 adaptTempRestartFile	${outname}.rst
 adaptTempRestartFreq	500
 adaptTempLangevin	on

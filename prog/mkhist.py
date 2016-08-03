@@ -1,14 +1,45 @@
 #!/usr/bin/env python
 
-import sys, os, math, glob
+import sys, os, math, glob, getopt
 
 fninp = "ene.log"
-
+fnout = None
 dE = 0.5
 dT = 5
 T = 300
 
+def showhelp():
+  print "mkhist.py ene.log"
+  print "Options:"
+  print "  -T, --tp=:   set the temperature"
+  print "  --dE=:       set the energy bin size"
+  print "  --dT=:       set the temperature tolerance"
 
+
+def doargs():
+  global fninp, fnout, dE, dT, T
+
+  try:
+    opts, args = getopt.gnu_getopt(sys.argv[1:], "hT:o:", ["dE=", "dT=", "tp="])
+  except:
+    print "Error parsing the command line"
+    sys.exit(1)
+
+  for o, a in opts:
+    if o == "-h":
+      showhelp()
+    elif o in ("-T", "--tp"):
+      T = float(a)
+    elif o in ("--dT",):
+      dT = float(a)
+    elif o in ("--dE",):
+      dE = float(a)
+
+  if len( args ) > 0:
+    fninp = args[0]
+  elif not os.path.exists(fninp):
+    fninp = glob.glob("e*.log")[0]
+  #print args, opts, fninp, fnout, T, dT, dE
 
 class Hist:
   def __init__(self, xmin1, xmax1, dx):
@@ -95,8 +126,10 @@ def mkhist3(s, fnout):
 
 
 def mkhist(fnin):
+  global fnout
   s = open(fnin).readlines()
-  fnout = os.path.splitext(fnin)[0] + ".his"
+  if not fnout:
+    fnout = os.path.splitext(fnin)[0] + ".his"
 
   tp = len( s[0].split() )
   if tp == 3:
@@ -107,9 +140,5 @@ def mkhist(fnin):
 
 
 if __name__ == "__main__":
-  if len( sys.argv ) > 1:
-    fninp = sys.argv[1]
-  elif not os.path.exists(fninp):
-    fninp = glob.glob("e*.log")[0]
-
+  doargs()
   mkhist(fninp)

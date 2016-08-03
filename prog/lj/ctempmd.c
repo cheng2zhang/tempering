@@ -11,6 +11,7 @@ int nsteps = 500000; /* number of simulation steps */
 double rho = 0.5;
 double rcdef = 2.5;
 double dt = 0.002;
+int logep = 1;
 
 enum {
   THERMOSTAT_LANGEVIN,
@@ -21,7 +22,7 @@ int thermostat_type = THERMOSTAT_VRESCALE;
 double thdt = 0.02; /* strength of the thermostat */
 
 int nsttemp = 10; /* number of steps of trying tempering */
-double tpmin = 2.5; /* minimal temperature */
+double tpmin = 2.3; /* minimal temperature */
 double tpdel = 0.02; /* temperature increment */
 int ntp = 60; /* number of temperatures */
 
@@ -74,6 +75,9 @@ static int simtempmd(void)
   simtemp_t *st;
   int t, itp = 0;
   double beta, tp; /* current temperature */
+  FILE *fplog;
+
+  if ( logep ) fplog = fopen("ene.log", "w");
 
   lj = lj_open(n, rho, rcdef);
 
@@ -118,7 +122,11 @@ static int simtempmd(void)
     }
 
     if ( t <= nequil ) continue;
+    if ( fplog != NULL ) {
+      fprintf(fplog, "%d %g %g\n", t, lj->epot, tp);
+    }
   }
+  if ( fplog != NULL ) fclose(fplog);
   simtemp_dump(st);
   simtemp_close(st);
   lj_close(lj);
