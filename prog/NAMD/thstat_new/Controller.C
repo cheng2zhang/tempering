@@ -2031,44 +2031,6 @@ void Controller::adaptTempInit(int step) {
         adaptTempPotEnergyAve    = new BigReal[adaptTempBins];
         adaptTempBetaN           = new BigReal[adaptTempBins + 1];
         adaptTempDBeta = (adaptTempBetaMax - adaptTempBetaMin)/(adaptTempBins);
-        
-        adaptTempMakeWin();
-
-        // read in data for separate accumulators
-        if ( simParams->adaptTempSepOn ) {
-          char buf[2048];
-          adaptTempRead.clear();
-          adaptTempRead.seekg(0); // go back to the beginning of the file
-          adaptTempRead.getline(buf, sizeof buf);
-          adaptTempRead.getline(buf, sizeof buf);
-          if ( strncmp(buf, "SEP BEGIN", 9) != 0 ) {
-            sprintf(buf, "Broken input for separate accumulators beginning\n");
-            NAMD_die(buf);
-          }
-          adaptTempSepAcc = new AdaptTempSepAcc[adaptTempBins];
-          // loop over each accumulator
-          int i, j, i1, j1;
-          BigReal total;
-          for ( i = 0; i < adaptTempBins; i++ ) {
-            AdaptTempSepAcc *acc = adaptTempSepAcc + i;
-            adaptTempRead.getline(buf, sizeof buf);
-            sscanf(buf, "%d%d%d%g", &i1, &adaptTempBinMinus[i], &adaptTempBinPlus[i], &total);
-            acc->init(adaptTempBinMinus[i], adaptTempBinPlus[i]);
-            for ( j = 0; j < acc->winSize; j++ ) {
-              adaptTempRead.getline(buf, sizeof buf);
-              sscanf(buf, "%d%g%g%g\n", &j1, &acc->count[j], &acc->ave[j], &acc->var[j]);
-              acc->sumE[j] = acc->count[j] * acc->ave[j];
-              acc->sumE2[j] = acc->count[j] * (acc->var[j] + acc->ave[j] * acc->ave[j]);
-            }
-            adaptTempRead.getline(buf, sizeof buf);
-          }
-          adaptTempRead.getline(buf, sizeof buf);
-          if ( strncmp(buf, "SEP END", 7) != 0 ) {
-            sprintf(buf, "Broken input for separator accumulators ending\n");
-            NAMD_die(buf);
-          }
-        }
-
         for(int j = 0; j < adaptTempBins; ++j) {
           adaptTempRead >> readReal;
           adaptTempRead >> adaptTempPotEnergyAve[j];
@@ -2081,6 +2043,44 @@ void Controller::adaptTempInit(int step) {
         for ( int j = 0; j <= adaptTempBins; ++j ) {
           adaptTempBetaN[j] = adaptTempBetaMin + j * adaptTempDBeta;
         } 
+        adaptTempMakeWin();
+        // read in data for separate accumulators
+        if ( simParams->adaptTempSepOn ) {
+          char buf[2048], info[256];
+          adaptTempRead.getline(buf, sizeof buf);
+          if ( strncmp(buf, "SEP BEGIN", 9) != 0 ) {
+            sprintf(info, "Broken input for separate accumulators beginning\n");
+            NAMD_die(info);
+          }
+          adaptTempSepAcc = new AdaptTempSepAcc[adaptTempBins];
+          // loop over each accumulator
+          int i, j, i1, j1;
+          BigReal total;
+          for ( i = 0; i < adaptTempBins; i++ ) {
+            AdaptTempSepAcc *acc = adaptTempSepAcc + i;
+            adaptTempRead.getline(buf, sizeof buf);
+            if ( 4 != sscanf(buf, "%d%d%d%g", &i1, &adaptTempBinMinus[i], &adaptTempBinPlus[i], &total) ) {
+              sprintf(info, "Broken info for estimator %d, file %s\n", i, simParams->adaptTempInFile);
+              NAMD_die(info);
+            }
+            acc->init(adaptTempBinMinus[i], adaptTempBinPlus[i]);
+            for ( j = 0; j < acc->winSize; j++ ) {
+              adaptTempRead.getline(buf, sizeof buf);
+              if ( 4 != sscanf(buf, "%d%g%g%g\n", &j1, &acc->count[j], &acc->ave[j], &acc->var[j]) ) {
+                sprintf(info, "Broken member %d/%d for estimator %d, file %s\n", j, acc->winSize, i, simParams->adaptTempInFile);
+                NAMD_die(info);
+              }
+              acc->sumE[j] = acc->count[j] * acc->ave[j];
+              acc->sumE2[j] = acc->count[j] * (acc->var[j] + acc->ave[j] * acc->ave[j]);
+            }
+            adaptTempRead.getline(buf, sizeof buf);
+          }
+          adaptTempRead.getline(buf, sizeof buf);
+          if ( strncmp(buf, "SEP END", 7) != 0 ) {
+            sprintf(buf, "Broken input for separator accumulators ending\n");
+            NAMD_die(buf);
+          }
+        }
         adaptTempRead.close();
       }
       else NAMD_die("Could not open ADAPTIVE TEMPERING restart file.\n");
@@ -2112,7 +2112,7 @@ void Controller::adaptTempInit(int step) {
           adaptTempBetaN[j] = adaptTempBetaMin + j * adaptTempDBeta;
       }
       adaptTempMakeWin();
-      // initialize the separate estimators
+      // initialize the separate accumulators
       if ( simParams->adaptTempSepOn ) {
         adaptTempSepAcc = new AdaptTempSepAcc[adaptTempBins];
         for ( int i = 0; i < adaptTempBins; ++i )
@@ -2154,14 +2154,24 @@ void Controller::adaptTempWriteRestart(int step) {
         adaptTempRestartFile << adaptTempCg << " ";
         adaptTempRestartFile << adaptTempDt ;
         adaptTempRestartFile << "\n" ;
-        
-        // data for separator estimators
+        for(int j = 0; j < adaptTempBins; ++j) {
+          adaptTempRestartFile << adaptTempBetaN[j] << " ";
+          adaptTempRestartFile << adaptTempPotEnergyAve[j] << " ";
+          adaptTempRestartFile << adaptTempPotEnergyVar[j] << " ";
+          adaptTempRestartFile << adaptTempPotEnergySamples[j] << " ";
+          adaptTempRestartFile << adaptTempPotEnergyAveNum[j] << " ";
+          adaptTempRestartFile << adaptTempPotEnergyVarNum[j] << " ";
+          adaptTempRestartFile << adaptTempPotEnergyAveDen[j] << " ";
+          adaptTempRestartFile << "\n";          
+        }
+
+        // data for separator accumulators
         if ( simParams->adaptTempSepOn ) {
           char s[1024];
           int i, j;
 
           adaptTempRestartFile << "SEP BEGIN\n";
-          // loop over each estimator
+          // loop over each accumulator
           for ( i = 0; i < adaptTempBins; i++ ) {
             AdaptTempSepAcc *acc = adaptTempSepAcc + i;
             acc->trim();
@@ -2178,16 +2188,6 @@ void Controller::adaptTempWriteRestart(int step) {
           adaptTempRestartFile << "SEP END\n";
         }
         
-        for(int j = 0; j < adaptTempBins; ++j) {
-          adaptTempRestartFile << adaptTempBetaN[j] << " ";
-          adaptTempRestartFile << adaptTempPotEnergyAve[j] << " ";
-          adaptTempRestartFile << adaptTempPotEnergyVar[j] << " ";
-          adaptTempRestartFile << adaptTempPotEnergySamples[j] << " ";
-          adaptTempRestartFile << adaptTempPotEnergyAveNum[j] << " ";
-          adaptTempRestartFile << adaptTempPotEnergyVarNum[j] << " ";
-          adaptTempRestartFile << adaptTempPotEnergyAveDen[j] << " ";
-          adaptTempRestartFile << "\n";          
-        }
         adaptTempRestartFile.flush(); 
     }
 }    

@@ -3132,10 +3132,10 @@ void SimParameters::check_config(ParseOptions &opts, ConfigList *config, char *&
    if (adaptTempOn) {
      if (!adaptTempRescale && !adaptTempLangevin && !adaptTempLangRescale && !adaptTempTNHC) 
         NAMD_die("Adaptive tempering needs to be coupled to one of following: Langevin thermostat, velocity rescaling, Langevin velocity rescaling thermostat, and Nose-Hoover chain thermostat.");
-     if (opts.defined("adaptTempInFile") && (opts.defined("adaptTempTmin") ||
-                                             opts.defined("adaptTempTmax") ||
-                                             adaptTempBins != 0)) 
-        NAMD_die("cannot simultaneously specify adaptTempInFile and any of {adaptTempTmin, adaptTempTmax,adaptTempBins} as these are read from the input file");
+     //if (opts.defined("adaptTempInFile") && (opts.defined("adaptTempTmin") ||
+     //                                        opts.defined("adaptTempTmax") ||
+     //                                        adaptTempBins != 0)) 
+     //   NAMD_die("cannot simultaneously specify adaptTempInFile and any of {adaptTempTmin, adaptTempTmax,adaptTempBins} as these are read from the input file");
      if (!opts.defined("adaptTempInFile") && !(opts.defined("adaptTempTmin") &&
                                              opts.defined("adaptTempTmax") &&
                                              adaptTempBins != 0 ))  

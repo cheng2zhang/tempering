@@ -6,7 +6,7 @@ import sys, os, math, glob, getopt
 
 
 
-fninp = "ene.log"
+fnins = ["ene.log",]
 fnout = None
 dE = 0.5
 dT = 5
@@ -25,7 +25,7 @@ def showhelp():
 
 
 def doargs():
-  global fninp, fnout, dE, dT, T
+  global fnins, fnout, dE, dT, T
 
   try:
     opts, args = getopt.gnu_getopt(sys.argv[1:],
@@ -34,6 +34,7 @@ def doargs():
     print "Error parsing the command line"
     sys.exit(1)
 
+  fnins = args
   for o, a in opts:
     if o == "-h":
       showhelp()
@@ -44,15 +45,13 @@ def doargs():
     elif o in ("--dE", "--de"):
       dE = float(a)
     elif o in ("-i", "--input"):
-      fninp = a
+      fnins += a
     elif o in ("-o", "--output"):
       fnout = a
 
-  if len( args ) > 0:
-    fninp = args[0]
-  elif not os.path.exists(fninp):
-    fninp = glob.glob("e*.log")[0]
-  #print args, opts, fninp, fnout, T, dT, dE
+  if len(fnins) == 0:
+    fnins = glob.glob("e*.log")
+  #print args, opts, fnins, fnout, T, dT, dE
 
 
 
@@ -106,7 +105,7 @@ class Hist:
 
 
 def mkhist2(s, fnout):
-  n = len(s)
+  n = len(s) - 1 # drop the last frame
   hist = None
   for i in range(n):
     x = s[i].split()
@@ -123,7 +122,7 @@ def mkhist2(s, fnout):
 
 
 def mkhist3(s, fnout):
-  n = len(s)
+  n = len(s) - 1 # drop the last frame
   hist = None
   for i in range(n):
     x = s[i].split()
@@ -145,17 +144,19 @@ def mkhist3(s, fnout):
 def mkhist(fnin):
   global fnout
   s = open(fnin).readlines()
-  if not fnout:
-    fnout = os.path.splitext(fnin)[0] + ".his"
+  fno = fnout
+  if not fno:
+    fno = os.path.splitext(fnin)[0] + ".his"
 
   tp = len( s[0].split() )
   if tp == 3:
-    mkhist3(s, fnout)
+    mkhist3(s, fno)
   else:
-    mkhist2(s, fnout)
+    mkhist2(s, fno)
 
 
 
 if __name__ == "__main__":
   doargs()
-  mkhist(fninp)
+  for fn in fnins:
+    mkhist(fn)
