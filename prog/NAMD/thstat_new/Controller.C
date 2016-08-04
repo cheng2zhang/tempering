@@ -1999,7 +1999,7 @@ void Controller::adaptTempInit(int step) {
     adaptTempDtMin = 0;
     adaptTempDtMax = 0;
     adaptTempAutoDt = false;
-    if (simParams->adaptTempBins == 0) {
+    if (simParams->adaptTempInFile[0] == '\0') {
       iout << iINFO << "READING ADAPTIVE TEMPERING RESTART FILE\n" << endi;
       std::ifstream adaptTempRead(simParams->adaptTempInFile);
       if (adaptTempRead) {
