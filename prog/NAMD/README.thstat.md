@@ -10,11 +10,14 @@ This patch contains several modifications to NAMD 2.11:
   * Fixing the bin index overflow problem (due to Justin) in adaptTempUpdate() in Controller.C.
   * Properly overwriting (instead of appending) the restart file (due to Justin).
   * Compute the potential energy at the beginning adaptTempUpdate() (due to Justin).
+  * Implement the separate accumulator scheme.
   * Disabling the code for the ad hoc adaptTempRandom scheme, which lacks theoretically foundation.
   * Issuing a warning for using adaptive tempering with the original velocity rescaling, which does not rigorously sample the Boltzmann distribution.
+  * Miscellaneous changes.
   * Integrating the Langevin-style velocity-rescaling thermostat and Nose-Hoover thermostat.
   * Adaptively rescaling the velocity to approach an asymptotic microcanonical ensemble.
   * Monitoring the distribution of the (reduced) kinetic energy.
+  * Logging the potential energy.
 
 
 #### Velocity-scaling after temperature transition
@@ -64,6 +67,15 @@ But that is inaccurate because the MD integrator only approximately conserves th
 The code now recompute the potential energy at the beginning of adaptTempUpdate().
 We also attempt to fix a possible bug of how often the LJcorrection is computed.
 
+#### Implement the separate accumulator scheme
+
+To make the adaptive averaging scheme work most efficiently,
+each bin need a separator accumulator associated with the window.
+This feature is now implemented.  To use it, set
+```
+adaptTempSep    on
+```
+
 #### Disabling the code for adaptTempRandom
 
 If the Langevin equation drives the temperature out of range,
@@ -71,6 +83,10 @@ the scheme by adaptTempRandom will randomly pick a new temperature in the range.
 This is an ad hoc and theoretically-unfounded strategy.
 Our fix is to simply abandon the invalid temperature transition and keep the old adaptive temperature,
 just as one would do in a failed Monte Carlo move.
+
+#### Miscellaneous changes
+
+Now allowing adaptTempInFile and adaptTempBins to be set simultaneously, the former overrides the latter.
 
 #### Issuing a warning for using adaptive tempering with the original velocity rescaling
 
@@ -160,7 +176,6 @@ change of the kinetic energy in response to a temperature change
 rescaleAdaptiveDedk 1.5
 ```
 
-
 #### Monitoring the distribution of the (reduced) kinetic energy
 
 To monitor the distribution of the kinetic energy,
@@ -190,6 +205,14 @@ The instantaneous temperature is defined as twice the kinetic energy
 divided by the number of degrees of freedom divided by the Boltzmann constant.
 Please see ../test/Argon_NAMD_ST/ke.png for an example.
 
+#### Logging the potential energy
+
+To log the potential energy, set `energyLogFile`.
+```
+energyLogFile      ene.log
+energyLogFreq      1
+```
+By default the frequency of logging the potential energy is 1. 
 
 ## Apply patches
 

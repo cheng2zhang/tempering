@@ -269,6 +269,8 @@ void Sequencer::integrate(int scriptTask) {
     if ( accelMDOn && !accelMDdihe ) doEnergy=1;
     //Update energy every timestep for adaptive tempering
     if ( adaptTempOn ) doEnergy=1;
+    if ( simParams->energyLogFreq > 0 && step % simParams->energyLogFreq == 0 )
+      doEnergy = 1;
     runComputeObjects(1,step<numberOfSteps); // must migrate here!
     rescaleaccelMD(step, doNonbonded, doFullElectrostatics); // for accelMD 
     adaptTempUpdate(step); // update adaptive tempering temperature
@@ -379,6 +381,8 @@ void Sequencer::integrate(int scriptTask) {
       doEnergy = ! ( step % energyFrequency );
       if ( accelMDOn && !accelMDdihe ) doEnergy=1;
       if ( adaptTempOn ) doEnergy=1; 
+      if ( simParams->energyLogFreq > 0 && step % simParams->energyLogFreq == 0 )
+        doEnergy = 1;
       runComputeObjects(!(step%stepsPerCycle),step<numberOfSteps);
  
       rescaleaccelMD(step, doNonbonded, doFullElectrostatics); // for accelMD

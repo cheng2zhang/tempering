@@ -473,11 +473,6 @@ void Controller::integrate(int scriptTask) {
         Bool scaled = adaptTempUpdate(step);
         keHistUpdate(step);
         printDynamicsEnergies(step);
-        if(traceIsOn()){
-            traceUserEvent(eventEndOfTimeStep);
-            sprintf(traceNote, "s:%d", step);
-            traceUserSuppliedNote(traceNote);
-        }
         if ( fpEnergyLog && step % simParams->energyLogFreq == 0 ) {
           fprintf(fpEnergyLog, "%d %g", step, totalEnergy - kineticEnergy);
           if ( simParams->adaptTempOn )
@@ -486,6 +481,11 @@ void Controller::integrate(int scriptTask) {
         }
         outputFepEnergy(step);
         outputTiEnergy(step);
+        if(traceIsOn()){
+            traceUserEvent(eventEndOfTimeStep);
+            sprintf(traceNote, "s:%d", step);
+            traceUserSuppliedNote(traceNote);
+        }
   // if (gotsigint) {
   //   iout << iINFO << "Received SIGINT; shutting down.\n" << endi;
   //   NAMD_quit();
@@ -1069,6 +1069,7 @@ void Controller::rescaleVelocities(int step)
       }
       BigReal factor = sqrt(rescaleTemp/avgTemp);
       if ( simParams->rescaleAdaptiveOn ) {
+        // recompute the velocity-rescaling factor
         BigReal bref = 1.0 / (BOLTZMANN * rescaleTemp);
         BigReal dbeta = bref - beta;
         BigReal dbdk = rescaleVelocities_sumDbde / rescaleVelocities_sum1;
@@ -1385,7 +1386,6 @@ void Controller::tNHCSave(int step)
   int i, nnhc = simParams->tNHCLen;
   NAMD_backup_file(simParams->tNHCFile);
   ofstream_namd fs(simParams->tNHCFile);
-
   if ( !fs ) {
     iout << "Error: cannot write " << simParams->tNHCFile << "\n" << endi;
     return;
@@ -1404,7 +1404,6 @@ void Controller::tNHCLoad(void)
   if ( !simParams->tNHCOn ) return;
 
   int i, nnhc, step;
-
   std::ifstream fs(simParams->tNHCFile);
   if ( !fs ) {
     iout << "Cannot read " << simParams->tNHCFile << "\n" << endi;
@@ -1423,7 +1422,6 @@ void Controller::tNHCLoad(void)
     for ( i = 0; i < nnhc; i++ )
       fs >> tNHCmass[i];
   }
-
   fs.close();
 }
 
@@ -1999,7 +1997,7 @@ void Controller::adaptTempInit(int step) {
     adaptTempDtMin = 0;
     adaptTempDtMax = 0;
     adaptTempAutoDt = false;
-    if (simParams->adaptTempInFile[0] == '\0') {
+    if (simParams->adaptTempInFile[0] != '\0') {
       iout << iINFO << "READING ADAPTIVE TEMPERING RESTART FILE\n" << endi;
       std::ifstream adaptTempRead(simParams->adaptTempInFile);
       if (adaptTempRead) {
@@ -2042,11 +2040,12 @@ void Controller::adaptTempInit(int step) {
         }
         for ( int j = 0; j <= adaptTempBins; ++j ) {
           adaptTempBetaN[j] = adaptTempBetaMin + j * adaptTempDBeta;
-        } 
+        }
         adaptTempMakeWin();
         // read in data for separate accumulators
         if ( simParams->adaptTempSepOn ) {
           char buf[2048], info[256];
+          adaptTempRead.getline(buf, sizeof buf);
           adaptTempRead.getline(buf, sizeof buf);
           if ( strncmp(buf, "SEP BEGIN", 9) != 0 ) {
             sprintf(info, "Broken input for separate accumulators beginning\n");
@@ -2164,7 +2163,6 @@ void Controller::adaptTempWriteRestart(int step) {
           adaptTempRestartFile << adaptTempPotEnergyAveDen[j] << " ";
           adaptTempRestartFile << "\n";          
         }
-
         // data for separator accumulators
         if ( simParams->adaptTempSepOn ) {
           char s[1024];
@@ -2187,7 +2185,6 @@ void Controller::adaptTempWriteRestart(int step) {
           }
           adaptTempRestartFile << "SEP END\n";
         }
-        
         adaptTempRestartFile.flush(); 
     }
 }    
@@ -2282,7 +2279,7 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
         adaptTempSepAcc[j].add(adaptTempBin, potentialEnergy, adaptTempCg);
       }
     }
-    
+
     // Weighted integral of <Delta E^2>_beta dbeta <= Eq 4 of JCP 132 244101
     // Integrals of Eqs 5 and 6 is done as piecewise assuming <Delta E^2>_beta
     // is constant for each bin. This is to estimate <E(beta)> where beta \in

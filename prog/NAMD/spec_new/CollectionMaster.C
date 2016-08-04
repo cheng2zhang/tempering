@@ -98,8 +98,9 @@ void CollectionMaster::disposeSpecPositions(CollectVectorInstance *c)
       endtoend += c->lattice.delta(data[k+1], data[k]); 
     }
     BigReal dist = endtoend.length();
-    CkPrintf("step %d, end-to-end distance %g: (%g, %g, %g)\n",
-        seq, dist, endtoend.x, endtoend.y, endtoend.z);
+    CkPrintf("step %d, n2n-dist. %g\n", seq, dist);
+    //CkPrintf("step %d, end-to-end distance %g: (%g, %g, %g)\n",
+    //    seq, dist, endtoend.x, endtoend.y, endtoend.z);
     c->free();
 }
  

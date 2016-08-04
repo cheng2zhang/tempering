@@ -180,8 +180,8 @@ void NAMD_backup_file(const char *filename, const char *extension)
 int NAMD_open_text(const char *fname, int append) {
   int fd;
 
-#if defined(WIN32) && !defined(__CYGWIN__)
   //  open the file and die if the open fails
+#if defined(WIN32) && !defined(__CYGWIN__)
   while ( (fd = _open(fname, O_WRONLY|(append?O_APPEND:O_EXCL)|O_CREAT|O_TEXT,_S_IREAD|_S_IWRITE)) < 0) {
 #else
 #ifdef NAMD_NO_O_EXCL

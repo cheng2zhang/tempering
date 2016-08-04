@@ -517,13 +517,16 @@ public:
 	char keHistFile[128];		// Histogram file for the kinetic energy 
 	int keHistFileFreq;		// Frequency of writing the kinetic energy histogram file
 
+        char energyLogFile[128];        // Energy log file
+        int energyLogFreq;              // Frequency of writing the energy log file
+
 	int rescaleFreq;		//  Velocity rescale frequency
 	BigReal rescaleTemp;		//  Temperature to rescale to
 	Bool rescaleAdaptiveOn;		//  Adaptively reduce the velocity-rescaling factor
 	BigReal rescaleAdaptiveDedk;	//  Heuristic multiple of the reduction factor
 	char rescaleAdaptiveFile[128];	//  File to save the adaptive veloctiy-rescaling data
 	int rescaleAdaptiveFileFreq;	//  Frequency to save the adaptive veloctiy-rescaling restart file
- 
+
         Bool accelMDOn;                 //  Perform accelerated MD
         Bool accelMDdihe;               //  Apply boost to the dihedral potential
         Bool accelMDdual;               //  dual boost mode  
@@ -558,6 +561,7 @@ public:
         char adaptTempRestartFile[128];        //  File to write restart information
         int  adaptTempRestartFreq;             //  Frequency of writing restart output
         Bool adaptTempRestartAppend;           //  Appending instead of overwriting the restart file
+        Bool adaptTempSepOn;                   //  Using a separate multiple-bin estimator for each bin
         Bool adaptTempRandom;                  //  Do we assign random temperatures when we step out of [Tmin,Tmax]?
         /* End Adaptive Temperature Sampling */
 

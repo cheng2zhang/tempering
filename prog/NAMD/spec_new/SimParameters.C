@@ -1230,6 +1230,12 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
        &keHistFileFreq, 10000);
    opts.range("keHistFileFreq", POSITIVE);
 
+   opts.optional("main", "energyLogFile", "Energy log file",
+       energyLogFile);
+   opts.optional("energyLogFile", "energyLogFreq", "Frequency of writing the energy log file",
+       &energyLogFreq, 1);
+   opts.range("energyLogFreq", POSITIVE);
+
    opts.optional("main", "rescaleFreq", "Number of steps between "
     "velocity rescaling", &rescaleFreq);
    opts.range("rescaleFreq", POSITIVE);
@@ -1437,7 +1443,7 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
    opts.range("adaptTempTmax", POSITIVE);
    opts.optional("adaptTempMD", "adaptTempBins","Number of bins to store average energies", &adaptTempBins,0);
    opts.range("adaptTempBins", NOT_NEGATIVE);
-   opts.optional("adaptTempMD", "adaptTempWindowSize","Window size as a fraction of the inverse temperature range", &adaptTempWindowSize, 0.04);
+   opts.optional("adaptTempMD", "adaptTempWindowSize", "Window size as a fraction of the inverse temperature range", &adaptTempWindowSize, 0.04);
    opts.range("adaptTempWindowSize", NOT_NEGATIVE);
    opts.optional("adaptTempMD", "adaptTempDt", "Integration timestep for Temp. updates", &adaptTempDt, 0.0001);
    opts.units("adaptTempDt", N_FSEC);
@@ -1455,6 +1461,7 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
    opts.require("adaptTempRestartFile","adaptTempRestartFreq", "Frequency of writing restart file", &adaptTempRestartFreq,0);
    opts.range("adaptTempRestartFreq",NOT_NEGATIVE);
    opts.optionalB("adaptTempRestartFile", "adaptTempRestartAppend", "Appending instead of overwriting the restart file", &adaptTempRestartAppend, FALSE);
+   opts.optionalB("adaptTempMD", "adaptTempSep", "Using a separate multiple-bin estimator for each bin", &adaptTempSepOn, FALSE);
    opts.optionalB("adaptTempMD", "adaptTempRandom", "Randomly assign a temperature if we step out of range", &adaptTempRandom, FALSE);
 
    // special atoms
@@ -3130,10 +3137,13 @@ void SimParameters::check_config(ParseOptions &opts, ConfigList *config, char *&
    if (adaptTempOn) {
      if (!adaptTempRescale && !adaptTempLangevin && !adaptTempLangRescale && !adaptTempTNHC) 
         NAMD_die("Adaptive tempering needs to be coupled to one of following: Langevin thermostat, velocity rescaling, Langevin velocity rescaling thermostat, and Nose-Hoover chain thermostat.");
-     if (opts.defined("adaptTempInFile") && (opts.defined("adaptTempTmin") ||
-                                             opts.defined("adaptTempTmax") ||
-                                             adaptTempBins != 0)) 
-        NAMD_die("cannot simultaneously specify adaptTempInFile and any of {adaptTempTmin, adaptTempTmax,adaptTempBins} as these are read from the input file");
+     if ( !opts.defined("adaptTempInFile") ) {
+       adaptTempInFile[0] = '\0';
+     }
+     //if (opts.defined("adaptTempInFile") && (opts.defined("adaptTempTmin") ||
+     //                                        opts.defined("adaptTempTmax") ||
+     //                                        adaptTempBins != 0)) 
+     //   NAMD_die("cannot simultaneously specify adaptTempInFile and any of {adaptTempTmin, adaptTempTmax,adaptTempBins} as these are read from the input file");
      if (!opts.defined("adaptTempInFile") && !(opts.defined("adaptTempTmin") &&
                                              opts.defined("adaptTempTmax") &&
                                              adaptTempBins != 0 ))  
@@ -3198,6 +3208,10 @@ void SimParameters::check_config(ParseOptions &opts, ConfigList *config, char *&
         strcpy(rescaleAdaptiveFile, "adaptvrescale.dat");
       }
     }
+
+   if ( !opts.defined("energyLogFile") ) { // disable energy logging
+     energyLogFreq = 0;
+   }
 
    if (opts.defined("reassignFreq"))
    {

@@ -452,6 +452,10 @@ void Controller::integrate(int scriptTask) {
 
   }
     keHistInit();
+    FILE *fpEnergyLog = NULL;
+    if ( simParams->energyLogFreq > 0 ) {
+      fpEnergyLog = fopen(simParams->energyLogFile, "a");
+    }
 
     // Handling SIGINT doesn't seem to be working on Lemieux, and it
     // sometimes causes the net-xxx versions of NAMD to segfault on exit, 
@@ -485,6 +489,12 @@ void Controller::integrate(int scriptTask) {
         Bool scaled = adaptTempUpdate(step);
         keHistUpdate(step);
         printDynamicsEnergies(step);
+        if ( fpEnergyLog && step % simParams->energyLogFreq == 0 ) {
+          fprintf(fpEnergyLog, "%d %g", step, totalEnergy - kineticEnergy);
+          if ( simParams->adaptTempOn )
+            fprintf(fpEnergyLog, " %g", adaptTempT);
+          fprintf(fpEnergyLog, "\n");
+        }
         outputFepEnergy(step);
         outputTiEnergy(step);
         if(traceIsOn()){
@@ -542,6 +552,7 @@ void Controller::integrate(int scriptTask) {
     // signal(SIGINT, oldhandler);
     
     rescaleVelocitiesSave(step);
+    if ( fpEnergyLog != NULL ) fclose(fpEnergyLog);
     tNHCDone(step);
     keHistDone(step);
 }
@@ -1391,12 +1402,10 @@ void Controller::tNHCSave(int step)
   int i, nnhc = simParams->tNHCLen;
   NAMD_backup_file(simParams->tNHCFile);
   ofstream_namd fs(simParams->tNHCFile);
-
   if ( !fs ) {
     iout << "Error: cannot write " << simParams->tNHCFile << "\n" << endi;
     return;
   }
-
   fs << nnhc << " " << step << "\n";
   for ( i = 0; i < nnhc; i++ )
     fs << tNHCzeta[i] << " ";
@@ -1412,7 +1421,6 @@ void Controller::tNHCLoad(void)
 
   int i, nnhc, step;
   std::ifstream fs(simParams->tNHCFile);
-
   if ( !fs ) {
     iout << "Cannot read " << simParams->tNHCFile << "\n" << endi;
     return;
@@ -1490,7 +1498,6 @@ void Controller::keHistSave(int step)
 void Controller::keHistLoad(void)
 {
   if ( !simParams->keHistOn ) return;
-
   std::ifstream fs(simParams->keHistFile);
   if ( !fs ) return;
   std::string buf;
@@ -1976,13 +1983,37 @@ void Controller::rescaleaccelMD(int step, int minimize)
    }
 }
 
+// compute window boundaries
+void Controller::adaptTempMakeWin(void)
+{
+    adaptTempBinMinus  = new int[adaptTempBins];
+    adaptTempBinPlus   = new int[adaptTempBins];
+    adaptTempInvW      = new BigReal[adaptTempBins];
+    for ( int j = 0; j < adaptTempBins; j++ ) {
+        // compute the window boundary
+        BigReal betaMid = adaptTempBetaMin + (j + 0.5) * adaptTempDBeta;
+        BigReal deltaBeta = betaMid * simParams->adaptTempWindowSize;
+        int deltaBins = (int) (deltaBeta / adaptTempDBeta + 0.5);
+        // adjust the window size such that it does not exceed the boundary
+        if ( j - deltaBins < 0 ) {
+          deltaBins = j;
+        }
+        if ( j + deltaBins + 1 > adaptTempBins ) {
+          deltaBins = adaptTempBins - j - 1;
+        }
+        adaptTempBinMinus[j] = j - deltaBins;
+        adaptTempBinPlus[j] = j + deltaBins + 1;
+        adaptTempInvW[j] = betaMid;
+    }
+}
+
 void Controller::adaptTempInit(int step) {
     if (!simParams->adaptTempOn) return;
     iout << iINFO << "INITIALISING ADAPTIVE TEMPERING\n" << endi;
     adaptTempDtMin = 0;
     adaptTempDtMax = 0;
     adaptTempAutoDt = false;
-    if (simParams->adaptTempBins == 0) {
+    if (simParams->adaptTempInFile[0] != '\0') {
       iout << iINFO << "READING ADAPTIVE TEMPERING RESTART FILE\n" << endi;
       std::ifstream adaptTempRead(simParams->adaptTempInFile);
       if (adaptTempRead) {
@@ -2025,7 +2056,46 @@ void Controller::adaptTempInit(int step) {
         }
         for ( int j = 0; j <= adaptTempBins; ++j ) {
           adaptTempBetaN[j] = adaptTempBetaMin + j * adaptTempDBeta;
-        } 
+        }
+        adaptTempMakeWin();
+        // read in data for separate accumulators
+        if ( simParams->adaptTempSepOn ) {
+          char buf[2048], info[256];
+          adaptTempRead.getline(buf, sizeof buf);
+          adaptTempRead.getline(buf, sizeof buf);
+          if ( strncmp(buf, "SEP BEGIN", 9) != 0 ) {
+            sprintf(info, "Broken input for separate accumulators beginning\n");
+            NAMD_die(info);
+          }
+          adaptTempSepAcc = new AdaptTempSepAcc[adaptTempBins];
+          // loop over each accumulator
+          int i, j, i1, j1;
+          BigReal total;
+          for ( i = 0; i < adaptTempBins; i++ ) {
+            AdaptTempSepAcc *acc = adaptTempSepAcc + i;
+            adaptTempRead.getline(buf, sizeof buf);
+            if ( 4 != sscanf(buf, "%d%d%d%g", &i1, &adaptTempBinMinus[i], &adaptTempBinPlus[i], &total) ) {
+              sprintf(info, "Broken info for estimator %d, file %s\n", i, simParams->adaptTempInFile);
+              NAMD_die(info);
+            }
+            acc->init(adaptTempBinMinus[i], adaptTempBinPlus[i]);
+            for ( j = 0; j < acc->winSize; j++ ) {
+              adaptTempRead.getline(buf, sizeof buf);
+              if ( 4 != sscanf(buf, "%d%g%g%g\n", &j1, &acc->count[j], &acc->ave[j], &acc->var[j]) ) {
+                sprintf(info, "Broken member %d/%d for estimator %d, file %s\n", j, acc->winSize, i, simParams->adaptTempInFile);
+                NAMD_die(info);
+              }
+              acc->sumE[j] = acc->count[j] * acc->ave[j];
+              acc->sumE2[j] = acc->count[j] * (acc->var[j] + acc->ave[j] * acc->ave[j]);
+            }
+            adaptTempRead.getline(buf, sizeof buf);
+          }
+          adaptTempRead.getline(buf, sizeof buf);
+          if ( strncmp(buf, "SEP END", 7) != 0 ) {
+            sprintf(buf, "Broken input for separator accumulators ending\n");
+            NAMD_die(buf);
+          }
+        }
         adaptTempRead.close();
       }
       else NAMD_die("Could not open ADAPTIVE TEMPERING restart file.\n");
@@ -2055,6 +2125,13 @@ void Controller::adaptTempInit(int step) {
       }
       for ( int j = 0; j <= adaptTempBins; ++j ) {
           adaptTempBetaN[j] = adaptTempBetaMin + j * adaptTempDBeta;
+      }
+      adaptTempMakeWin();
+      // initialize the separate accumulators
+      if ( simParams->adaptTempSepOn ) {
+        adaptTempSepAcc = new AdaptTempSepAcc[adaptTempBins];
+        for ( int i = 0; i < adaptTempBins; ++i )
+          adaptTempSepAcc[i].init(adaptTempBinMinus[i], adaptTempBinPlus[i]);
       }
     }
     if (simParams->adaptTempAutoDt > 0.0) {
@@ -2105,6 +2182,28 @@ void Controller::adaptTempWriteRestart(int step) {
           adaptTempRestartFile << adaptTempPotEnergyVarNum[j] << " ";
           adaptTempRestartFile << adaptTempPotEnergyAveDen[j] << " ";
           adaptTempRestartFile << "\n";          
+        }
+        // data for separator accumulators
+        if ( simParams->adaptTempSepOn ) {
+          char s[1024];
+          int i, j;
+
+          adaptTempRestartFile << "SEP BEGIN\n";
+          // loop over each accumulator
+          for ( i = 0; i < adaptTempBins; i++ ) {
+            AdaptTempSepAcc *acc = adaptTempSepAcc + i;
+            acc->trim();
+            sprintf(s, "%d %d %d %g\n", i,
+                adaptTempBinMinus[i], adaptTempBinPlus[i], acc->total);
+            adaptTempRestartFile << s;
+            for ( j = 0; j < acc->winSize; j++ ) {
+              sprintf(s, "%d %g %g %g\n", j, acc->count[j],
+                  acc->ave[j], acc->var[j]);
+              adaptTempRestartFile << s;
+            }
+            adaptTempRestartFile << "\n";
+          }
+          adaptTempRestartFile << "SEP END\n";
         }
         adaptTempRestartFile.flush(); 
     }
@@ -2190,69 +2289,91 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
     adaptTempPotEnergyAve[adaptTempBin] = potEnergyAverage;
     adaptTempPotEnergyVar[adaptTempBin] = potEnergyVariance;
     
+    if ( simParams->adaptTempSepOn ) {
+      for ( j = adaptTempBin; j >= 0; j-- ) { // search downward
+        if ( adaptTempBinPlus[j] <= adaptTempBin ) break;
+        adaptTempSepAcc[j].add(adaptTempBin, potentialEnergy, adaptTempCg);
+      }
+      for ( j = adaptTempBin + 1; j < adaptTempBins; j++ ) { // search upward
+        if ( adaptTempBinMinus[j] > adaptTempBin ) break;
+        adaptTempSepAcc[j].add(adaptTempBin, potentialEnergy, adaptTempCg);
+      }
+    }
+
     // Weighted integral of <Delta E^2>_beta dbeta <= Eq 4 of JCP 132 244101
     // Integrals of Eqs 5 and 6 is done as piecewise assuming <Delta E^2>_beta
     // is constant for each bin. This is to estimate <E(beta)> where beta \in
     // (beta_i,beta_{i+1}) using Eq 2 of JCP 132 244101
     if ( ! ( step % simParams->adaptTempFreq ) ) {
+     const BigReal varDenMin = simParams->adaptTempFreq * 10;
+     if ( simParams->adaptTempSepOn ) {
+       potEnergyAverage = adaptTempSepAcc[adaptTempBin].iiave(adaptTempInvW, varDenMin);
+     } else {
+      int j;
       // Get Averaging Limits:
-      BigReal centralBeta = adaptTempBetaMin + adaptTempDBeta * (adaptTempBins + 0.5);
-      BigReal deltaBeta = simParams->adaptTempWindowSize * centralBeta;
-      int deltaBins = (int) (deltaBeta / adaptTempDBeta + 0.5);
-      int nMinus = adaptTempBin - deltaBins;
-      if ( nMinus < 0 ) {
-        // solve the equation nMinus = 0;
-        deltaBins = adaptTempBin;
-      }
-      int nPlus = adaptTempBin + 1 + deltaBins;
-      if ( nPlus > adaptTempBins ) {
-        // solve the equation nPlus = adaptTempBins
-        deltaBins = adaptTempBins - (adaptTempBin + 1);
-      }
-      nMinus = adaptTempBin - deltaBins;
-      nPlus  = adaptTempBin + 1 + deltaBins;
-      BigReal betaMinus = adaptTempBetaN[nMinus];
-      BigReal betaPlus  = adaptTempBetaN[nPlus];
+      int nMinus = adaptTempBinMinus[adaptTempBin];
+      int nPlus  = adaptTempBinPlus[adaptTempBin];
       // Variables for <E(beta)> estimate:
       BigReal potEnergyAve0 = 0.0;
       BigReal potEnergyAve1 = 0.0;
+      BigReal potEnergyDen0 = 0.0;
+      BigReal potEnergyDen1 = 0.0;
       // Integral terms
       BigReal A0 = 0; // Sum_{from beta_minus to beta_{i+1} }
                       //   (beta - beta_minus)/(beta_{i+1} - beta_minus) var(E)
       BigReal A1 = 0; // Sum_{from beta_{i+1} to beta_plus }
-                      //   (beta - beta_plus) /(beta_plus - beta_{i+1}) var(E)
+                      //   (beta - beta_plus) /(beta_plus  - beta_{i+1}) var(E)
       BigReal A2 = 0; // 0.5 * DBeta * var(E) at bin i
       //A0 phi_s integral for beta_minus < beta < beta_{i+1}
-      BigReal den0 = 0, num0 = 0, bins0 = 0, var;
-      for (j = adaptTempBin; j >= nMinus; --j) {
-        den0 += adaptTempPotEnergyAveDen[j];
-        potEnergyAve0 += adaptTempPotEnergyAveNum[j];
-        if ( adaptTempPotEnergySamples[j] > 0 )
-          var = adaptTempPotEnergyVar[j];
-        A0 += var * (j - nMinus + 0.5) / (deltaBins + 1);
-      }
 
-      //A1 phi_s integral for beta_{i+1} < beta < beta_plus
-      for (j = adaptTempBin + 1; j < nPlus; j++) {
-        if ( adaptTempPotEnergySamples[j] > 0 ) {
-          potEnergyAve1 += adaptTempPotEnergyAve[j];
-        if ( adaptTempPotEnergySamples[j] > 0 )
-          var = adaptTempPotEnergyVar[j];
-          A1 += adaptTempPotEnergyVar[j] * (j - nPlus + 0.5) / deltaBins;
+      // compute the default variance for lack of data
+      BigReal denMax = 0, defVar = 0;
+      for ( j = nMinus; j < nPlus; j++ ) {
+        if ( adaptTempPotEnergyAveDen[j] > denMax ) {
+          denMax = adaptTempPotEnergyAveDen[j];
+          defVar = adaptTempPotEnergyVar[j];
         }
       }
-      if ( bins1 > 0 ) {
-        potEnergyAve1 /= bins1;
-        A1 /= bins1;
+
+      BigReal invwj, var;
+      for ( j = nMinus; j <= adaptTempBin; j++ ) {
+        invwj = adaptTempBetaMin + (j + 0.5) * adaptTempDBeta;
+        potEnergyAve0 += adaptTempPotEnergyAveNum[j] * invwj;
+        potEnergyDen0 += adaptTempPotEnergyAveDen[j] * invwj;
+        if ( adaptTempPotEnergyAveDen[j] > varDenMin ) {
+          var = adaptTempPotEnergyVar[j];
+        } else {
+          var = defVar;
+        }
+        A0 += var * (j - nMinus + 0.5);
+      }
+      potEnergyAve0 /= potEnergyDen0;
+      A0 /= potEnergyDen0;
+
+      //A1 phi_s integral for beta_{i+1} < beta < beta_plus
+      for ( j = adaptTempBin + 1; j < nPlus; j++ ) {
+        invwj = adaptTempBetaMin + (j + 0.5) * adaptTempDBeta;
+        potEnergyAve1 += adaptTempPotEnergyAveNum[j] * invwj;
+        potEnergyDen1 += adaptTempPotEnergyAveDen[j] * invwj;
+        if ( adaptTempPotEnergyAveDen[j] > varDenMin ) {
+          var = adaptTempPotEnergyVar[j];
+        } else {
+          var = defVar;
+        }
+        A1 += var * (j - nPlus + 0.5);
+      }
+      if ( potEnergyDen1 > 0 ) {
+        potEnergyAve1 /= potEnergyDen1;
+        A1 /= potEnergyDen1;
       }
 
       //A2 phi_t integral for beta_i
-      A2 = 0.5 * potEnergyVariance;
+      A2 = 0.5 * adaptTempPotEnergyVar[adaptTempBin] * (adaptTempBin - nMinus + 1) / potEnergyDen0;
 
       // Now calculate a+ and a-
       BigReal aplus = 0;
-      if ( A0 != A1 ) {
-        aplus = (A0-A2)/(A0-A1);
+      if ( potEnergyDen1 > 0 ) {
+        aplus = (A0 - A2)/(A0 - A1);
       }
       if (aplus < 0) {
         aplus = 0;
@@ -2261,7 +2382,7 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
         aplus = 1;
       }
       BigReal aminus = 1 - aplus;
-      potEnergyAverage = aminus*potEnergyAve0 + aplus*potEnergyAve1;
+      BigReal potEnergyAverage = aminus*potEnergyAve0 + aplus*potEnergyAve1;
       if (simParams->adaptTempDebug) {
         iout << "ADAPTEMP DEBUG:"  << "\n"
              << "     adaptTempBin:    " << adaptTempBin << "\n"
@@ -2272,9 +2393,9 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
              << "     betaMin:   " << adaptTempBetaMin << "\n"
              << "     betaMax:   " << adaptTempBetaMax << "\n"
              << "     gammaAve:  " << gammaAve << "\n"
-             << "     deltaBeta: " << deltaBeta << "\n"
-             << "     betaMinus: " << betaMinus << "\n"
-             << "     betaPlus:  " << betaPlus << "\n"
+             << "     deltaBeta: " << (adaptTempBin - nMinus) * adaptTempDBeta << "\n"
+             << "     betaMinus: " << adaptTempBetaN[nMinus] << "\n"
+             << "     betaPlus:  " << adaptTempBetaN[nPlus] << "\n"
              << "     nMinus:    " << nMinus << "\n"
              << "     nPlus:     " << nPlus << "\n"
              << "     A0:        " << A0 << "\n"
@@ -2282,9 +2403,16 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
              << "     A2:        " << A2 << "\n"
              << "     a+:        " << aplus << "\n"
              << "     a-:        " << aminus << "\n"
+             << "     potEner:   " << potentialEnergy << "\n"
+             << "     aveEner:   " << potEnergyAverage << "\n"
+             << "     aveEne0:   " << potEnergyAve0 << "\n"
+             << "     aveEne1:   " << potEnergyAve1 << "\n"
+             << "     aveDen0:   " << potEnergyDen0 << "\n"
+             << "     aveDen1:   " << potEnergyDen1 << "\n"
              << endi;
-      } 
-      
+      }
+     }
+
       //dT is new temperature
       BigReal dT = ((potentialEnergy-potEnergyAverage)/BOLTZMANN+adaptTempT)*adaptTempDt;
       dT += random->gaussian()*sqrt(2.*adaptTempDt)*adaptTempT;
@@ -2679,7 +2807,6 @@ void Controller::printEnergies(int step, int minimize)
       electEnergyPME_ti_2 = reduction->item(REDUCTION_ELECT_ENERGY_PME_TI_2);
 //fepe
     }
-
 
     momentum.x = reduction->item(REDUCTION_MOMENTUM_X);
     momentum.y = reduction->item(REDUCTION_MOMENTUM_Y);

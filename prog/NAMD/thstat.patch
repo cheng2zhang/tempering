@@ -251,7 +251,7 @@ diff -u -wdB thstat_old/common.C thstat_new/common.C
    while ( close(fd) ) {
 diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 --- thstat_old/Controller.C	2015-12-17 15:22:03.000000000 -0600
-+++ thstat_new/Controller.C	2016-08-03 19:04:53.888979049 -0500
++++ thstat_new/Controller.C	2016-08-03 20:10:41.245074371 -0500
 @@ -184,6 +184,10 @@
      random->split(0,PatchMap::Object()->numPatches()+1);
  
@@ -312,7 +312,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
  	berendsenPressure(step);
  	langevinPiston1(step);
          rescaleaccelMD(step);
-@@ -449,14 +467,25 @@
+@@ -449,7 +467,18 @@
  						correctMomentum(step);
  	langevinPiston2(step);
          reassignVelocities(step);
@@ -322,24 +322,15 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 +        Bool scaled = adaptTempUpdate(step);
 +        keHistUpdate(step);
          printDynamicsEnergies(step);
--        outputFepEnergy(step);
--        outputTiEnergy(step);
-         if(traceIsOn()){
-             traceUserEvent(eventEndOfTimeStep);
-             sprintf(traceNote, "s:%d", step);
-             traceUserSuppliedNote(traceNote);
-         }
 +        if ( fpEnergyLog && step % simParams->energyLogFreq == 0 ) {
 +          fprintf(fpEnergyLog, "%d %g", step, totalEnergy - kineticEnergy);
 +          if ( simParams->adaptTempOn )
 +            fprintf(fpEnergyLog, " %g", adaptTempT);
 +          fprintf(fpEnergyLog, "\n");
 +        }
-+        outputFepEnergy(step);
-+        outputTiEnergy(step);
-   // if (gotsigint) {
-   //   iout << iINFO << "Received SIGINT; shutting down.\n" << endi;
-   //   NAMD_quit();
+         outputFepEnergy(step);
+         outputTiEnergy(step);
+         if(traceIsOn()){
 @@ -493,7 +522,11 @@
  		}
  	}
@@ -378,11 +369,12 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
      if ( rescaleVelocities_numTemps == rescaleFreq ) {
        BigReal avgTemp = rescaleVelocities_sumTemps / rescaleVelocities_numTemps;
        BigReal rescaleTemp = simParams->rescaleTemp;
-@@ -1024,6 +1068,34 @@
+@@ -1024,6 +1068,35 @@
          rescaleTemp = adaptTempT;
        }
        BigReal factor = sqrt(rescaleTemp/avgTemp);
 +      if ( simParams->rescaleAdaptiveOn ) {
++        // recompute the velocity-rescaling factor
 +        BigReal bref = 1.0 / (BOLTZMANN * rescaleTemp);
 +        BigReal dbeta = bref - beta;
 +        BigReal dbdk = rescaleVelocities_sumDbde / rescaleVelocities_sum1;
@@ -413,7 +405,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
        broadcast->velocityRescaleFactor.publish(step,factor);
        //iout << "RESCALING VELOCITIES AT STEP " << step
        //     << " FROM AVERAGE TEMPERATURE OF " << avgTemp
-@@ -1033,6 +1105,56 @@
+@@ -1033,6 +1106,56 @@
    }
  }
  
@@ -470,7 +462,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
  void Controller::correctMomentum(int step) {
  
      Vector momentum;
-@@ -1110,6 +1232,282 @@
+@@ -1110,6 +1233,279 @@
    }
  }
  
@@ -627,7 +619,6 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 +  int i, nnhc = simParams->tNHCLen;
 +  NAMD_backup_file(simParams->tNHCFile);
 +  ofstream_namd fs(simParams->tNHCFile);
-+
 +  if ( !fs ) {
 +    iout << "Error: cannot write " << simParams->tNHCFile << "\n" << endi;
 +    return;
@@ -646,7 +637,6 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 +  if ( !simParams->tNHCOn ) return;
 +
 +  int i, nnhc, step;
-+
 +  std::ifstream fs(simParams->tNHCFile);
 +  if ( !fs ) {
 +    iout << "Cannot read " << simParams->tNHCFile << "\n" << endi;
@@ -665,7 +655,6 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 +    for ( i = 0; i < nnhc; i++ )
 +      fs >> tNHCmass[i];
 +  }
-+
 +  fs.close();
 +}
 +
@@ -753,7 +742,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
  static char *FORMAT(BigReal X)
  {
    static char tmp_string[25];
-@@ -1571,13 +1969,37 @@
+@@ -1571,13 +1967,37 @@
     }
  }
  
@@ -788,11 +777,11 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
      adaptTempDtMax = 0;
      adaptTempAutoDt = false;
 -    if (simParams->adaptTempBins == 0) {
-+    if (simParams->adaptTempInFile[0] == '\0') {
++    if (simParams->adaptTempInFile[0] != '\0') {
        iout << iINFO << "READING ADAPTIVE TEMPERING RESTART FILE\n" << endi;
        std::ifstream adaptTempRead(simParams->adaptTempInFile);
        if (adaptTempRead) {
-@@ -1607,17 +2029,58 @@
+@@ -1607,17 +2027,59 @@
          adaptTempPotEnergyVarNum = new BigReal[adaptTempBins];
          adaptTempPotEnergyVar    = new BigReal[adaptTempBins];
          adaptTempPotEnergyAve    = new BigReal[adaptTempBins];
@@ -815,6 +804,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 +        // read in data for separate accumulators
 +        if ( simParams->adaptTempSepOn ) {
 +          char buf[2048], info[256];
++          adaptTempRead.getline(buf, sizeof buf);
 +          adaptTempRead.getline(buf, sizeof buf);
 +          if ( strncmp(buf, "SEP BEGIN", 9) != 0 ) {
 +            sprintf(info, "Broken input for separate accumulators beginning\n");
@@ -852,7 +842,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
          adaptTempRead.close();
        }
        else NAMD_die("Could not open ADAPTIVE TEMPERING restart file.\n");
-@@ -1630,17 +2093,13 @@
+@@ -1630,17 +2092,13 @@
        adaptTempPotEnergyVarNum = new BigReal[adaptTempBins];
        adaptTempPotEnergyVar    = new BigReal[adaptTempBins];
        adaptTempPotEnergyAve    = new BigReal[adaptTempBins];
@@ -872,7 +862,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
        for(int j = 0; j < adaptTempBins; ++j){
            adaptTempPotEnergyAveNum[j] = 0.;
            adaptTempPotEnergyAveDen[j] = 0.;
-@@ -1648,8 +2107,17 @@
+@@ -1648,8 +2106,17 @@
            adaptTempPotEnergyVarNum[j] = 0.;
            adaptTempPotEnergyVar[j] = 0.;
            adaptTempPotEnergyAve[j] = 0.;
@@ -890,7 +880,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
      }
      if (simParams->adaptTempAutoDt > 0.0) {
         adaptTempAutoDt = true;
-@@ -1673,7 +2141,9 @@
+@@ -1673,7 +2140,9 @@
  
  void Controller::adaptTempWriteRestart(int step) {
      if (simParams->adaptTempOn && !(step%simParams->adaptTempRestartFreq)) {
@@ -901,7 +891,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
          iout << "ADAPTEMP: WRITING RESTART FILE AT STEP " << step << "\n" << endi;
          adaptTempRestartFile << step << " ";
          // Start with min and max temperatures
-@@ -1685,6 +2155,7 @@
+@@ -1685,6 +2154,7 @@
          adaptTempRestartFile << adaptTempDt ;
          adaptTempRestartFile << "\n" ;
          for(int j = 0; j < adaptTempBins; ++j) {
@@ -909,11 +899,10 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
            adaptTempRestartFile << adaptTempPotEnergyAve[j] << " ";
            adaptTempRestartFile << adaptTempPotEnergyVar[j] << " ";
            adaptTempRestartFile << adaptTempPotEnergySamples[j] << " ";
-@@ -1693,21 +2164,46 @@
+@@ -1693,21 +2163,44 @@
            adaptTempRestartFile << adaptTempPotEnergyAveDen[j] << " ";
            adaptTempRestartFile << "\n";          
          }
-+
 +        // data for separator accumulators
 +        if ( simParams->adaptTempSepOn ) {
 +          char s[1024];
@@ -936,7 +925,6 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 +          }
 +          adaptTempRestartFile << "SEP END\n";
 +        }
-+        
          adaptTempRestartFile.flush(); 
      }
  }    
@@ -960,7 +948,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
      const int adaptTempOutFreq  = simParams->adaptTempOutFreq;
      const bool adaptTempDebug  = simParams->adaptTempDebug;
      //Calculate Current inverse temperature and bin 
-@@ -1720,13 +2216,49 @@
+@@ -1720,13 +2213,49 @@
                                << " adaptTempDBeta: " << adaptTempDBeta 
                                 << " betaMin:" << adaptTempBetaMin 
                                 << " betaMax: " << adaptTempBetaMax << "\n";
@@ -1011,7 +999,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
  
      //calculate new bin average and variance using adaptive averaging
      adaptTempPotEnergyAveNum[adaptTempBin] = adaptTempPotEnergyAveNum[adaptTempBin]*gammaAve + potentialEnergy;
-@@ -1740,110 +2272,113 @@
+@@ -1740,110 +2269,113 @@
      adaptTempPotEnergyAve[adaptTempBin] = potEnergyAverage;
      adaptTempPotEnergyVar[adaptTempBin] = potEnergyVariance;
      
@@ -1025,7 +1013,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 +        adaptTempSepAcc[j].add(adaptTempBin, potentialEnergy, adaptTempCg);
 +      }
 +    }
-+    
++
      // Weighted integral of <Delta E^2>_beta dbeta <= Eq 4 of JCP 132 244101
      // Integrals of Eqs 5 and 6 is done as piecewise assuming <Delta E^2>_beta
      // is constant for each bin. This is to estimate <E(beta)> where beta \in
@@ -1085,7 +1073,6 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 +        if ( adaptTempPotEnergyAveDen[j] > denMax ) {
 +          denMax = adaptTempPotEnergyAveDen[j];
 +          defVar = adaptTempPotEnergyVar[j];
-+        }
            }
 -          A0 *= adaptTempDBeta;
 -          A0 += (adaptTempBetaMin+0.5*adaptTempDBeta-betaMinus)*DeltaE2AveSum;
@@ -1094,6 +1081,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 -          betaj *= betaj;
 -          A0 += 0.5*betaj*adaptTempPotEnergyVar[nMinus];
 -          A0 /= (betaNp1-betaMinus);
++      }
 +
 +      BigReal invwj, var;
 +      for ( j = nMinus; j <= adaptTempBin; j++ ) {
@@ -1191,7 +1179,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
              << "     nMinus:    " << nMinus << "\n"
              << "     nPlus:     " << nPlus << "\n"
              << "     A0:        " << A0 << "\n"
-@@ -1851,29 +2386,12 @@
+@@ -1851,29 +2383,12 @@
              << "     A2:        " << A2 << "\n"
              << "     a+:        " << aplus << "\n"
              << "     a-:        " << aminus << "\n"
@@ -1227,7 +1215,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
              << endi;
            }
        }
-@@ -1886,70 +2404,8 @@
+@@ -1886,70 +2401,8 @@
       // Check if dT in [adaptTempTmin,adaptTempTmax]. If not try simpler estimate of mean
       // This helps sampling with poor statistics in the bins surrounding adaptTempBin.
        if ( dT > 1./adaptTempBetaMin || dT  < 1./adaptTempBetaMax ) {
@@ -1299,7 +1287,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
            //update temperature step size counter
            // FOR "TRUE" ADAPTIVE TEMPERING
            BigReal adaptTempTdiff = fabs(dT-adaptTempT);
-@@ -1979,8 +2435,24 @@
+@@ -1979,8 +2432,24 @@
            
        }
        
@@ -1324,7 +1312,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
      }
      adaptTempWriteRestart(step);
      if ( ! (step % adaptTempOutFreq) ) {
-@@ -1991,7 +2463,7 @@
+@@ -1991,7 +2460,7 @@
               << " ENERGYVAR " << std::setprecision(10) << potEnergyVariance;
          iout << "\n" << endi;
     }
@@ -1333,7 +1321,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
  }
  
  
-@@ -2277,6 +2749,15 @@
+@@ -2277,6 +2746,15 @@
        electEnergy = reduction->item(REDUCTION_ELECT_ENERGY);
        ljEnergy = reduction->item(REDUCTION_LJ_ENERGY);
  
@@ -1349,7 +1337,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
        // JLai
        groLJEnergy = reduction->item(REDUCTION_GRO_LJ_ENERGY);
        groGaussEnergy = reduction->item(REDUCTION_GRO_GAUSS_ENERGY);
-@@ -2310,16 +2791,6 @@
+@@ -2310,16 +2788,6 @@
  //fepe
      }
  
@@ -1366,7 +1354,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
      momentum.x = reduction->item(REDUCTION_MOMENTUM_X);
      momentum.y = reduction->item(REDUCTION_MOMENTUM_Y);
      momentum.z = reduction->item(REDUCTION_MOMENTUM_Z);
-@@ -3147,6 +3618,7 @@
+@@ -3147,6 +3615,7 @@
      ldbSteps = LdbCoordinator::Object()->getNumStepsToRun();
    }
    if ( ! --ldbSteps ) {
@@ -1793,7 +1781,7 @@ diff -u -wdB thstat_old/Sequencer.h thstat_new/Sequencer.h
        int checkpoint_berendsenPressure_count;
 diff -u -wdB thstat_old/SimParameters.C thstat_new/SimParameters.C
 --- thstat_old/SimParameters.C	2015-12-08 09:41:37.000000000 -0600
-+++ thstat_new/SimParameters.C	2016-08-03 19:05:32.682311728 -0500
++++ thstat_new/SimParameters.C	2016-08-03 19:33:46.932734585 -0500
 @@ -187,6 +187,12 @@
    }
    SCRIPT_PARSE_FLOAT("reassignTemp",reassignTemp)
@@ -1888,7 +1876,7 @@ diff -u -wdB thstat_old/SimParameters.C thstat_new/SimParameters.C
     opts.range("adaptTempTmax", POSITIVE);
     opts.optional("adaptTempMD", "adaptTempBins","Number of bins to store average energies", &adaptTempBins,0);
     opts.range("adaptTempBins", NOT_NEGATIVE);
-+   opts.optional("adaptTempMD", "adaptTempWindowSize","Window size as a fraction of the inverse temperature range", &adaptTempWindowSize,0.04);
++   opts.optional("adaptTempMD", "adaptTempWindowSize", "Window size as a fraction of the inverse temperature range", &adaptTempWindowSize, 0.04);
 +   opts.range("adaptTempWindowSize", NOT_NEGATIVE);
     opts.optional("adaptTempMD", "adaptTempDt", "Integration timestep for Temp. updates", &adaptTempDt, 0.0001);
     opts.units("adaptTempDt", N_FSEC);
@@ -2050,7 +2038,7 @@ diff -u -wdB thstat_old/SimParameters.C thstat_new/SimParameters.C
        iout << iINFO << "OLD STYLE MINIMIZATION ACTIVE\n";
 diff -u -wdB thstat_old/SimParameters.h thstat_new/SimParameters.h
 --- thstat_old/SimParameters.h	2015-09-04 17:20:03.000000000 -0500
-+++ thstat_new/SimParameters.h	2016-08-02 17:23:46.334497336 -0500
++++ thstat_new/SimParameters.h	2016-08-03 19:29:26.130169288 -0500
 @@ -497,8 +497,35 @@
  					//  active
  	BigReal tCoupleTemp;		//  Temperature for temp coupling
@@ -2080,7 +2068,7 @@ diff -u -wdB thstat_old/SimParameters.h thstat_new/SimParameters.h
 +
  	int rescaleFreq;		//  Velocity rescale frequency
  	BigReal rescaleTemp;		//  Temperature to rescale to
-+	Bool rescaleAdaptiveOn;		//  Adaptively reduce the velocity-rescaling factor 
++	Bool rescaleAdaptiveOn;		//  Adaptively reduce the velocity-rescaling factor
 +	BigReal rescaleAdaptiveDedk;	//  Heuristic multiple of the reduction factor
 +	char rescaleAdaptiveFile[128];	//  File to save the adaptive veloctiy-rescaling data
 +	int rescaleAdaptiveFileFreq;	//  Frequency to save the adaptive veloctiy-rescaling restart file
