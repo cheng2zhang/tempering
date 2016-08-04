@@ -1997,6 +1997,8 @@ void Controller::adaptTempInit(int step) {
     adaptTempDtMin = 0;
     adaptTempDtMax = 0;
     adaptTempAutoDt = false;
+    adaptTempMCTot = 0;
+    adaptTempMCAcc = 0;
     if (simParams->adaptTempInFile[0] != '\0') {
       iout << iINFO << "READING ADAPTIVE TEMPERING RESTART FILE\n" << endi;
       std::ifstream adaptTempRead(simParams->adaptTempInFile);
@@ -2046,12 +2048,14 @@ void Controller::adaptTempInit(int step) {
         if ( simParams->adaptTempSepOn ) {
           std::string buf("");
           char info[256];
-          while ( std::getline(adaptTempRead, buf) ) {
+          int attempts;
+          for ( attempts = 0; attempts < 10 && std::getline(adaptTempRead, buf); attempts++ ) {
             if ( strncmp(buf.c_str(), "SEP BEGIN", 9) == 0 )
               break;
           }
           if ( strncmp(buf.c_str(), "SEP BEGIN", 9) != 0 ) {
-            sprintf(info, "Broken input for separate accumulators beginning\n");
+            sprintf(info, "No beginning of separate accumulators, file %s, %d attempts\n%s",
+                simParams->adaptTempInFile, attempts, buf.c_str());
             NAMD_die(info);
           }
           adaptTempSepAcc = new AdaptTempSepAcc[adaptTempBins];
@@ -2082,7 +2086,7 @@ void Controller::adaptTempInit(int step) {
           }
           std::getline(adaptTempRead, buf);
           if ( strncmp(buf.c_str(), "SEP END", 7) != 0 ) {
-            sprintf(info, "Broken input for separator accumulators ending, file %s\n%s",
+            sprintf(info, "No ending for separator accumulators, file %s\n%s",
                 simParams->adaptTempInFile, buf.c_str());
             NAMD_die(info);
           }
@@ -2201,13 +2205,13 @@ void Controller::adaptTempWriteRestart(int step) {
     }
 }    
 
-BigReal Controller::adaptTempGetPEAve(int i)
+BigReal Controller::adaptTempGetPEAve(int i, BigReal def)
 {
     const BigReal varDenMin = simParams->adaptTempFreq * 10;
     BigReal potEnergyAverage;
 
     if ( simParams->adaptTempSepOn ) {
-      potEnergyAverage = adaptTempSepAcc[i].iiave(adaptTempInvW, varDenMin);
+      potEnergyAverage = adaptTempSepAcc[i].iiave(adaptTempInvW, varDenMin, def);
     } else {
       int j;
       // Get Averaging Limits:
@@ -2312,6 +2316,66 @@ BigReal Controller::adaptTempGetPEAve(int i)
     return potEnergyAverage;
 }
 
+BigReal Controller::adaptTempMCMove(BigReal tp, BigReal ep)
+{
+    BigReal lnbeta = log(1./tp), nlnbeta, beta, nbeta, delta, epave;
+    int i, ni, j, acc = 0;
+    adaptTempMCTot += 1;
+    nlnbeta = lnbeta + sqrt(3 * adaptTempDt) * (random->uniform() * 2 - 1);
+    nbeta = exp(nlnbeta);
+    beta = 1.0 / tp;
+    i = (int) ( (beta - adaptTempBetaMin) / adaptTempDBeta );
+    ni = (int) ( (nbeta - adaptTempBetaMin) / adaptTempDBeta );
+    //CkPrintf("delta %g, beta %g, %g, ep %g, i %d, %d\n", delta, beta, nbeta, ep, i, ni);
+    if ( nbeta < adaptTempBetaMin || ni >= adaptTempBins ) {
+      // out of boundary move
+      return tp;
+    }
+    // recompute the average values
+    if ( !simParams->adaptTempFixedAve ) {
+      adaptTempPotEnergyAve[i] = epave = adaptTempGetPEAve(i);
+      if ( i <= ni ) {
+        for ( j = i + 1; j <= ni; j++ )
+          adaptTempPotEnergyAve[j] = adaptTempGetPEAve(j, epave);
+      } else {
+        for ( j = i - 1; j >= ni; j-- )
+          adaptTempPotEnergyAve[j] = adaptTempGetPEAve(j, epave);
+      }
+    }
+    // compute Integrate E dbeta
+    if ( i < ni ) {
+      epave = adaptTempPotEnergyAve[i];
+      delta = epave * (adaptTempBetaN[i+1] - beta);
+      epave = adaptTempPotEnergyAve[ni];
+      delta += epave * (nbeta - adaptTempBetaN[ni]);
+      for ( j = i + 1; j < ni; j++ ) {
+        epave = adaptTempPotEnergyAve[j];
+        delta += epave * adaptTempDBeta;
+      }
+    } else if ( i == ni ) {
+      epave = adaptTempPotEnergyAve[i];
+      delta = epave * (nbeta - beta);
+    } else {
+      epave = adaptTempPotEnergyAve[i];
+      delta = epave * (adaptTempBetaN[i] - beta);
+      epave = adaptTempPotEnergyAve[ni];
+      delta += epave * (nbeta - adaptTempBetaN[ni + 1]);
+      for ( j = i - 1; j > ni; j-- ) {
+        epave = adaptTempPotEnergyAve[j];
+        delta -= epave * adaptTempDBeta;
+      }
+    }
+    delta = (delta -ep * (nbeta - beta)) / BOLTZMANN;
+    //CkPrintf("delta %g, beta %g, %g, ep %g, %g, bin %d, %d\n", delta, beta, nbeta, ep, epave, i, ni); getchar();
+    if ( delta > 0 ) {
+      acc = 1;
+    } else if ( random->uniform() < exp(delta) ) {
+      acc = 1;
+    }
+    adaptTempMCAcc += acc;
+    return acc ? 1.0/nbeta : tp;
+}
+
 Bool Controller::adaptTempUpdate(int step, int minimize)
 {
     Bool scaled = FALSE;
@@ -2410,17 +2474,22 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
     // is constant for each bin. This is to estimate <E(beta)> where beta \in
     // (beta_i,beta_{i+1}) using Eq 2 of JCP 132 244101
     if ( ! ( step % simParams->adaptTempFreq ) ) {
-      if ( simParams->adaptTempFixedAve ) {
-        potEnergyAverage = adaptTempPotEnergyAve[adaptTempBin];
-      } else {
-        potEnergyAverage = adaptTempGetPEAve(adaptTempBin);
-      }
+      BigReal dT; //dT is new temperature
 
-      //dT is new temperature
-      BigReal dT = ((potentialEnergy-potEnergyAverage)/BOLTZMANN+adaptTempT)*adaptTempDt;
-      dT += random->gaussian()*sqrt(2.*adaptTempDt)*adaptTempT;
-      dT += adaptTempT;
-      
+      if ( simParams->adaptTempMCMove ) {
+        dT = adaptTempMCMove(adaptTempT, potentialEnergy);
+      } else {
+        if ( simParams->adaptTempFixedAve ) {
+          potEnergyAverage = adaptTempPotEnergyAve[adaptTempBin];
+        } else {
+          potEnergyAverage = adaptTempGetPEAve(adaptTempBin);
+        }
+
+        dT = ((potentialEnergy-potEnergyAverage)/BOLTZMANN+adaptTempT)*adaptTempDt;
+        dT += random->gaussian()*sqrt(2.*adaptTempDt)*adaptTempT;
+        dT += adaptTempT;
+     }
+
      // Check if dT in [adaptTempTmin,adaptTempTmax]. If not try simpler estimate of mean
      // This helps sampling with poor statistics in the bins surrounding adaptTempBin.
       if ( dT > 1./adaptTempBetaMin || dT  < 1./adaptTempBetaMax ) {
@@ -2480,8 +2549,11 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
              << " TEMP "   << adaptTempT
              << " BIN " << adaptTempBin
              << " ENERGY " << std::setprecision(10) << potentialEnergy   
-             << " ENERGYAVG " << std::setprecision(10) << potEnergyAverage
+             << " ENERGYAVG " << std::setprecision(10) << adaptTempPotEnergyAve[adaptTempBin]
              << " ENERGYVAR " << std::setprecision(10) << adaptTempPotEnergyVar[adaptTempBin];
+        if ( simParams->adaptTempMCMove ) {
+          iout << " ACC " << 1.0 * adaptTempMCAcc / (adaptTempMCTot + 1e-6);
+        }
         iout << "\n" << endi;
    }
    return scaled;

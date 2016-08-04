@@ -9,27 +9,34 @@ import sys, os, math, glob, getopt
 fnins = ["ene.log",]
 fnout = None
 dE = 0.5
-dT = 5
+dT = 1
 T = 300
+colE = 2
 
 
 
 def showhelp():
   print "mkhist.py [Options] ene.log"
+  print "Description:"
+  print "  Make a histogram of an energy log file"
   print "Options:"
   print "  -T, --tp=:     set the temperature"
   print "  --dE=:         set the energy bin size"
   print "  --dT=:         set the temperature tolerance"
   print "  -o, --output=: set the output file"
+  print "  -i, --input=:  set the input file"
+  print "  -c, --col=:    set the column for the energy"
 
 
 
 def doargs():
-  global fnins, fnout, dE, dT, T
+  global fnins, fnout, dE, dT, T, colE
 
   try:
     opts, args = getopt.gnu_getopt(sys.argv[1:],
-        "hT:o:i:", ["dE=", "de=", "dT=", "dt=", "tp=", "input=", "output="])
+        "hT:o:i:c:",
+        ["dE=", "de=", "dT=", "dt=", "tp=", "input=", "output=",
+         "col="])
   except:
     print "Error parsing the command line"
     sys.exit(1)
@@ -45,9 +52,11 @@ def doargs():
     elif o in ("--dE", "--de"):
       dE = float(a)
     elif o in ("-i", "--input"):
-      fnins += a
+      fnins += [a,]
     elif o in ("-o", "--output"):
       fnout = a
+    elif o in ("-c", "--col"):
+      colE = int(a)
 
   if len(fnins) == 0:
     fnins = glob.glob("e*.log")
@@ -110,7 +119,7 @@ def mkhist2(s, fnout):
   for i in range(n):
     x = s[i].split()
     try:
-      ene = float(x[1])
+      ene = float(x[colE - 1])
     except:
       break
     if i == 0:
@@ -132,7 +141,7 @@ def mkhist3(s, fnout):
       break
     if tp < T - dT or tp > T + dT:
       continue
-    ene = float(x[1])
+    ene = float(x[colE - 1])
     if not hist:
       hist = Hist(ene, ene, dE)
     hist.add(ene)
