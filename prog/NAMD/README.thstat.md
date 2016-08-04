@@ -13,7 +13,7 @@ This patch contains several modifications to NAMD 2.11:
   * Implement the separate accumulator scheme.
   * Disabling the code for the ad hoc adaptTempRandom scheme, which lacks theoretically foundation.
   * Issuing a warning for using adaptive tempering with the original velocity rescaling, which does not rigorously sample the Boltzmann distribution.
-  * Miscellaneous changes.
+  * Miscellaneous modifications.
   * Integrating the Langevin-style velocity-rescaling thermostat and Nose-Hoover thermostat.
   * Adaptively rescaling the velocity to approach an asymptotic microcanonical ensemble.
   * Monitoring the distribution of the (reduced) kinetic energy.
@@ -84,9 +84,12 @@ This is an ad hoc and theoretically-unfounded strategy.
 Our fix is to simply abandon the invalid temperature transition and keep the old adaptive temperature,
 just as one would do in a failed Monte Carlo move.
 
-#### Miscellaneous changes
+#### Miscellaneous modifications
 
-Now allowing adaptTempInFile and adaptTempBins to be set simultaneously, the former overrides the latter.
+  * Allowing adaptTempInFile and adaptTempBins to be set simultaneously, the former overrides the latter.
+  * Adding the first column of the restart file with the inverse temperature.
+  * Using the average energy computed from the integral identity as the average energy in the restart file.
+  * Adding the option `adaptTempFixedAve` to the fix the average energies from the input restart file.
 
 #### Issuing a warning for using adaptive tempering with the original velocity rescaling
 

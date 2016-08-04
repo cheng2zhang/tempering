@@ -261,6 +261,7 @@ protected:
 //JS for adaptive temperature sampling
    void adaptTempMakeWin(void);
    void adaptTempInit(int step);
+   BigReal adaptTempGetPEAve(int i);
    Bool adaptTempUpdate(int step, int minimize = 0);
    void adaptTempWriteRestart(int step);
    int *adaptTempBinMinus;

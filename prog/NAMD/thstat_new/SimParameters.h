@@ -558,6 +558,7 @@ public:
         Bool adaptTempLangRescale;             //  Couple to Langevin-style velocity rescaling thermostat
         Bool adaptTempTNHC;                    //  Couple to Nose-Hoover chain thermostat
         char adaptTempInFile[128];             //  Restart information for adaptTemp to read
+        Bool adaptTempFixedAve;                //  Fixing the average values from the input restart file
         char adaptTempRestartFile[128];        //  File to write restart information
         int  adaptTempRestartFreq;             //  Frequency of writing restart output
         Bool adaptTempRestartAppend;           //  Appending instead of overwriting the restart file
