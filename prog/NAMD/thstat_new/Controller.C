@@ -442,9 +442,9 @@ void Controller::integrate(int scriptTask) {
 
   }
     keHistInit();
-    FILE *fpEnergyLog = NULL;
+    std::ofstream fsEnergyLog;
     if ( simParams->energyLogFreq > 0 ) {
-      fpEnergyLog = fopen(simParams->energyLogFile, "a");
+      fsEnergyLog.open(simParams->energyLogFile, std::ios_base::app);
     }
 
     // Handling SIGINT doesn't seem to be working on Lemieux, and it
@@ -473,11 +473,11 @@ void Controller::integrate(int scriptTask) {
         Bool scaled = adaptTempUpdate(step);
         keHistUpdate(step);
         printDynamicsEnergies(step);
-        if ( fpEnergyLog && step % simParams->energyLogFreq == 0 ) {
-          fprintf(fpEnergyLog, "%d %g", step, totalEnergy - kineticEnergy);
+        if ( fsEnergyLog.is_open() && step % simParams->energyLogFreq == 0 ) {
+          fsEnergyLog << step << " " << (totalEnergy - kineticEnergy);
           if ( simParams->adaptTempOn )
-            fprintf(fpEnergyLog, " %g", adaptTempT);
-          fprintf(fpEnergyLog, "\n");
+            fsEnergyLog << " " << adaptTempT;
+          fsEnergyLog << std::endl;
         }
         outputFepEnergy(step);
         outputTiEnergy(step);
@@ -536,7 +536,7 @@ void Controller::integrate(int scriptTask) {
     // signal(SIGINT, oldhandler);
     
     rescaleVelocitiesSave(step);
-    if ( fpEnergyLog != NULL ) fclose(fpEnergyLog);
+    if ( fsEnergyLog.is_open() ) fsEnergyLog.close();
     tNHCDone(step);
     keHistDone(step);
 }
@@ -2372,7 +2372,9 @@ BigReal Controller::adaptTempMCMove(BigReal tp, BigReal ep)
     }
     delta = (delta - ep * (nbeta - beta)) / BOLTZMANN;
     if ( simParams->adaptTempDebug ) {
-      CkPrintf("delta %g cf %g, beta %g, %g, ep %g, %g, bin %d, %d\n", delta, (0.5*(adaptTempPotEnergyAve[i]+adaptTempPotEnergyAve[ni])-ep)*(nbeta - beta)/BOLTZMANN, beta, nbeta, ep, epave, i, ni); getchar();
+      CkPrintf("delta %g cf %g, beta %g, %g, ep %g, %g, bin %d, %d\n", delta,
+          ((adaptTempPotEnergyAve[i]+adaptTempPotEnergyAve[ni])/2 - ep) * (nbeta - beta) / BOLTZMANN,
+          beta, nbeta, ep, epave, i, ni); // getchar();
     }
     if ( delta > 0 ) {
       acc = 1;
