@@ -9,8 +9,9 @@ This patch contains several modifications to NAMD 2.11:
   * Fixing (hopefully) the one-step mismatch problem in Sequencer.C and Controller.C.
   * Fixing the bin index overflow problem (due to Justin) in adaptTempUpdate() in Controller.C.
   * Properly overwriting (instead of appending) the restart file (due to Justin).
-  * Compute the potential energy at the beginning adaptTempUpdate() (due to Justin).
-  * Implement the separate accumulator scheme.
+  * Computing the potential energy at the beginning adaptTempUpdate() (due to Justin).
+  * Implementing the separate accumulator scheme.
+  * Implementing the Monte Carlo scheme for temperature change.
   * Disabling the code for the ad hoc adaptTempRandom scheme, which lacks theoretically foundation.
   * Issuing a warning for using adaptive tempering with the original velocity rescaling, which does not rigorously sample the Boltzmann distribution.
   * Miscellaneous modifications.
@@ -22,7 +23,7 @@ This patch contains several modifications to NAMD 2.11:
 
 #### Velocity-scaling after temperature transition
 
-Since the temperature is a dynamic variable in adaptive tempering, 
+Since the temperature is a dynamic variable in adaptive tempering,
 the velocities must be scaled corresponding after a temperature transition.
 The original implementation lacks this step, and thus is incorrect.
 Please see details in doc/vsTmove.pdf, and ../test/Argon_NAMD_ST/cmp.png for an example.
@@ -60,20 +61,28 @@ Currently the restart file is appended instead of overwritten because of a progr
 This is fixed in the patch.  If the appending behavior is desired,
 the user can set the option `adaptTempRestartAppend`.
 
-#### Recompute the potential energy in adaptTempUpdate()
+#### Recomputing the potential energy in adaptTempUpdate()
 
 The old code deduce the potential energy from the conservation of the total energy.
 But that is inaccurate because the MD integrator only approximately conserves the total energy.
 The code now recompute the potential energy at the beginning of adaptTempUpdate().
 We also attempt to fix a possible bug of how often the LJcorrection is computed.
 
-#### Implement the separate accumulator scheme
+#### Implementing the separate accumulator scheme
 
 To make the adaptive averaging scheme work most efficiently,
 each bin need a separator accumulator associated with the window.
 This feature is now implemented.  To use it, set
 ```
 adaptTempSep    on
+```
+
+#### Implementing a Monte Carlo scheme for temperature transition
+
+In addition to the Langevin equation, adaptive tempering can now be done through a Monte Carlo scheme.
+To use this feature, set
+```
+adaptTempMCMove    on
 ```
 
 #### Disabling the code for adaptTempRandom
@@ -87,9 +96,10 @@ just as one would do in a failed Monte Carlo move.
 #### Miscellaneous modifications
 
   * Allowing adaptTempInFile and adaptTempBins to be set simultaneously, the former overrides the latter.
-  * Adding the first column of the restart file with the inverse temperature.
-  * Using the average energy computed from the integral identity as the average energy in the restart file.
-  * Adding the option `adaptTempFixedAve` to the fix the average energies from the input restart file.
+  * Adding the inverse temperature as the first column of the restart file.
+  * Using the average energy computed from the integral identity as the average energy in the restart file (the second column).
+  * Throwing out an exception when reading from the restart file fails.
+  * Adding the option `adaptTempFixedAve` to the fix the average energies from the input restart file (due to Justin).
 
 #### Issuing a warning for using adaptive tempering with the original velocity rescaling
 
@@ -215,7 +225,11 @@ To log the potential energy, set `energyLogFile`.
 energyLogFile      ene.log
 energyLogFreq      1
 ```
-By default the frequency of logging the potential energy is 1. 
+By default the frequency of logging the potential energy is 1.
+
+For a regular simulation, the logging outputs step and the potential energy.
+For a simulation using adaptive tempering, the logging also outputs the temperature as the last column.
+
 
 ## Apply patches
 

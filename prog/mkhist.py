@@ -158,7 +158,7 @@ def mkhist(fnin):
     fno = os.path.splitext(fnin)[0] + ".his"
 
   tp = len( s[0].split() )
-  if tp == 3:
+  if tp == 3 and colE == 2:
     mkhist3(s, fno)
   else:
     mkhist2(s, fno)

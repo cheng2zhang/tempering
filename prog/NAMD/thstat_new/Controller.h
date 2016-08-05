@@ -304,6 +304,7 @@ protected:
      // compute the average and variance of each bin
      void trim(void) {
        int j;
+
        if ( invGamma > 1.0 ) { // renormalize the running weight
          BigReal gam = 1.0/invGamma;
          for ( j = 0; j < winSize; j++ ) {

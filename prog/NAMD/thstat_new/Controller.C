@@ -2007,89 +2007,94 @@ void Controller::adaptTempInit(int step) {
         BigReal readReal;
         bool readBool;
         // step
-        adaptTempRead >> readInt;
-        // Start with min and max temperatures
-        adaptTempRead >> adaptTempT;     // KELVIN
-        adaptTempRead >> adaptTempBetaMin;  // KELVIN
-        adaptTempRead >> adaptTempBetaMax;  // KELVIN
-        adaptTempBetaMin = 1./adaptTempBetaMin; // KELVIN^-1
-        adaptTempBetaMax = 1./adaptTempBetaMax; // KELVIN^-1
-        // In case file is manually edited
-        if (adaptTempBetaMin > adaptTempBetaMax){
-            readReal = adaptTempBetaMax;
-            adaptTempBetaMax = adaptTempBetaMin;
-            adaptTempBetaMin = adaptTempBetaMax;
-        }
-        adaptTempRead >> adaptTempBins;     
-        adaptTempRead >> adaptTempCg;
-        adaptTempRead >> adaptTempDt;
-        adaptTempPotEnergyAveNum = new BigReal[adaptTempBins];
-        adaptTempPotEnergyAveDen = new BigReal[adaptTempBins];
-        adaptTempPotEnergySamples = new int[adaptTempBins];
-        adaptTempPotEnergyVarNum = new BigReal[adaptTempBins];
-        adaptTempPotEnergyVar    = new BigReal[adaptTempBins];
-        adaptTempPotEnergyAve    = new BigReal[adaptTempBins];
-        adaptTempBetaN           = new BigReal[adaptTempBins + 1];
-        adaptTempDBeta = (adaptTempBetaMax - adaptTempBetaMin)/(adaptTempBins);
-        for(int j = 0; j < adaptTempBins; ++j) {
-          adaptTempRead >> readReal;
-          adaptTempRead >> adaptTempPotEnergyAve[j];
-          adaptTempRead >> adaptTempPotEnergyVar[j];
-          adaptTempRead >> adaptTempPotEnergySamples[j];
-          adaptTempRead >> adaptTempPotEnergyAveNum[j];
-          adaptTempRead >> adaptTempPotEnergyVarNum[j];
-          adaptTempRead >> adaptTempPotEnergyAveDen[j];
-        }
-        for ( int j = 0; j <= adaptTempBins; ++j ) {
-          adaptTempBetaN[j] = adaptTempBetaMin + j * adaptTempDBeta;
-        }
-        adaptTempMakeWin();
-        // read in data for separate accumulators
-        if ( simParams->adaptTempSepOn ) {
-          std::string buf("");
-          char info[256];
-          int attempts;
-          for ( attempts = 0; attempts < 10 && std::getline(adaptTempRead, buf); attempts++ ) {
-            if ( strncmp(buf.c_str(), "SEP BEGIN", 9) == 0 )
-              break;
+        adaptTempRead.exceptions( std::ifstream::failbit | std::ifstream::badbit );
+        try {
+          adaptTempRead >> readInt;
+          // Start with min and max temperatures
+          adaptTempRead >> adaptTempT;     // KELVIN
+          adaptTempRead >> adaptTempBetaMin;  // KELVIN
+          adaptTempRead >> adaptTempBetaMax;  // KELVIN
+          adaptTempBetaMin = 1./adaptTempBetaMin; // KELVIN^-1
+          adaptTempBetaMax = 1./adaptTempBetaMax; // KELVIN^-1
+          // In case file is manually edited
+          if (adaptTempBetaMin > adaptTempBetaMax){
+              readReal = adaptTempBetaMax;
+              adaptTempBetaMax = adaptTempBetaMin;
+              adaptTempBetaMin = adaptTempBetaMax;
           }
-          if ( strncmp(buf.c_str(), "SEP BEGIN", 9) != 0 ) {
-            sprintf(info, "No beginning of separate accumulators, file %s, %d attempts\n%s",
-                simParams->adaptTempInFile, attempts, buf.c_str());
-            NAMD_die(info);
+          adaptTempRead >> adaptTempBins;     
+          adaptTempRead >> adaptTempCg;
+          adaptTempRead >> adaptTempDt;
+          adaptTempPotEnergyAveNum = new BigReal[adaptTempBins];
+          adaptTempPotEnergyAveDen = new BigReal[adaptTempBins];
+          adaptTempPotEnergySamples = new int[adaptTempBins];
+          adaptTempPotEnergyVarNum = new BigReal[adaptTempBins];
+          adaptTempPotEnergyVar    = new BigReal[adaptTempBins];
+          adaptTempPotEnergyAve    = new BigReal[adaptTempBins];
+          adaptTempBetaN           = new BigReal[adaptTempBins + 1];
+          adaptTempDBeta = (adaptTempBetaMax - adaptTempBetaMin)/(adaptTempBins);
+          for(int j = 0; j < adaptTempBins; ++j) {
+            adaptTempRead >> readReal;
+            adaptTempRead >> adaptTempPotEnergyAve[j];
+            adaptTempRead >> adaptTempPotEnergyVar[j];
+            adaptTempRead >> adaptTempPotEnergySamples[j];
+            adaptTempRead >> adaptTempPotEnergyAveNum[j];
+            adaptTempRead >> adaptTempPotEnergyVarNum[j];
+            adaptTempRead >> adaptTempPotEnergyAveDen[j];
           }
-          adaptTempSepAcc = new AdaptTempSepAcc[adaptTempBins];
-          // loop over each accumulator
-          int i, j, i1, j1;
-          BigReal total;
-          for ( i = 0; i < adaptTempBins; i++ ) {
-            AdaptTempSepAcc *acc = adaptTempSepAcc + i;
-            std::getline(adaptTempRead, buf);
-            if ( 4 != sscanf(buf.c_str(), "%d%d%d%lf", &i1, &adaptTempBinMinus[i], &adaptTempBinPlus[i], &total) ) {
-              sprintf(info, "Broken info for estimator %d, file %s\n%s",
-                  i, simParams->adaptTempInFile, buf.c_str());
+          for ( int j = 0; j <= adaptTempBins; ++j ) {
+            adaptTempBetaN[j] = adaptTempBetaMin + j * adaptTempDBeta;
+          }
+          adaptTempMakeWin();
+          // read in data for separate accumulators
+          if ( simParams->adaptTempSepOn ) {
+            std::string buf("");
+            char info[256];
+            int attempts;
+            for ( attempts = 0; attempts < 10 && std::getline(adaptTempRead, buf); attempts++ ) {
+              if ( strncmp(buf.c_str(), "SEP BEGIN", 9) == 0 )
+                break;
+            }
+            if ( strncmp(buf.c_str(), "SEP BEGIN", 9) != 0 ) {
+              sprintf(info, "No beginning of separate accumulators, file %s, %d attempts\n%s",
+                  simParams->adaptTempInFile, attempts, buf.c_str());
               NAMD_die(info);
             }
-            acc->init(adaptTempBinMinus[i], adaptTempBinPlus[i]);
-            acc->total = total;
-            for ( j = 0; j < acc->winSize; j++ ) {
+            adaptTempSepAcc = new AdaptTempSepAcc[adaptTempBins];
+            // loop over each accumulator
+            int i, j, i1, j1;
+            BigReal total;
+            for ( i = 0; i < adaptTempBins; i++ ) {
+              AdaptTempSepAcc *acc = adaptTempSepAcc + i;
               std::getline(adaptTempRead, buf);
-              if ( 4 != sscanf(buf.c_str(), "%d%lf%lf%lf\n", &j1, &acc->count[j], &acc->ave[j], &acc->var[j]) ) {
-                sprintf(info, "Broken member %d/%d for estimator %d, file %s\n%s",
-                    j, acc->winSize, i, simParams->adaptTempInFile, buf.c_str());
+              if ( 4 != sscanf(buf.c_str(), "%d%d%d%lf", &i1, &adaptTempBinMinus[i], &adaptTempBinPlus[i], &total) ) {
+                sprintf(info, "Broken info for estimator %d, file %s\n%s",
+                    i, simParams->adaptTempInFile, buf.c_str());
                 NAMD_die(info);
               }
-              acc->sumE[j] = acc->count[j] * acc->ave[j];
-              acc->sumE2[j] = acc->count[j] * (acc->var[j] + acc->ave[j] * acc->ave[j]);
+              acc->init(adaptTempBinMinus[i], adaptTempBinPlus[i]);
+              acc->total = total;
+              for ( j = 0; j < acc->winSize; j++ ) {
+                std::getline(adaptTempRead, buf);
+                if ( 4 != sscanf(buf.c_str(), "%d%lf%lf%lf\n", &j1, &acc->count[j], &acc->ave[j], &acc->var[j]) ) {
+                  sprintf(info, "Broken member %d/%d for estimator %d, file %s\n%s",
+                      j, acc->winSize, i, simParams->adaptTempInFile, buf.c_str());
+                  NAMD_die(info);
+                }
+                acc->sumE[j] = acc->count[j] * acc->ave[j];
+                acc->sumE2[j] = acc->count[j] * (acc->var[j] + acc->ave[j] * acc->ave[j]);
+              }
+              std::getline(adaptTempRead, buf);
             }
             std::getline(adaptTempRead, buf);
+            if ( strncmp(buf.c_str(), "SEP END", 7) != 0 ) {
+              sprintf(info, "No ending for separator accumulators, file %s\n%s",
+                  simParams->adaptTempInFile, buf.c_str());
+              NAMD_die(info);
+            }
           }
-          std::getline(adaptTempRead, buf);
-          if ( strncmp(buf.c_str(), "SEP END", 7) != 0 ) {
-            sprintf(info, "No ending for separator accumulators, file %s\n%s",
-                simParams->adaptTempInFile, buf.c_str());
-            NAMD_die(info);
-          }
+        } catch ( std::ifstream::failure e ) {
+          NAMD_die("Failed to read the ADAPTIVE TEMPERING restart file.\n");
         }
         adaptTempRead.close();
       }
@@ -2337,7 +2342,7 @@ BigReal Controller::adaptTempMCMove(BigReal tp, BigReal ep)
       if ( i <= ni ) {
         for ( j = i + 1; j <= ni; j++ )
           adaptTempPotEnergyAve[j] = adaptTempGetPEAve(j, epave);
-      } else {
+      } else { // i > ni
         for ( j = i - 1; j >= ni; j-- )
           adaptTempPotEnergyAve[j] = adaptTempGetPEAve(j, epave);
       }
@@ -2346,27 +2351,29 @@ BigReal Controller::adaptTempMCMove(BigReal tp, BigReal ep)
     if ( i < ni ) {
       epave = adaptTempPotEnergyAve[i];
       delta = epave * (adaptTempBetaN[i+1] - beta);
-      epave = adaptTempPotEnergyAve[ni];
-      delta += epave * (nbeta - adaptTempBetaN[ni]);
       for ( j = i + 1; j < ni; j++ ) {
         epave = adaptTempPotEnergyAve[j];
         delta += epave * adaptTempDBeta;
       }
+      epave = adaptTempPotEnergyAve[ni];
+      delta += epave * (nbeta - adaptTempBetaN[ni]);
     } else if ( i == ni ) {
       epave = adaptTempPotEnergyAve[i];
       delta = epave * (nbeta - beta);
-    } else {
+    } else { // i > ni
       epave = adaptTempPotEnergyAve[i];
       delta = epave * (adaptTempBetaN[i] - beta);
-      epave = adaptTempPotEnergyAve[ni];
-      delta += epave * (nbeta - adaptTempBetaN[ni + 1]);
       for ( j = i - 1; j > ni; j-- ) {
         epave = adaptTempPotEnergyAve[j];
         delta -= epave * adaptTempDBeta;
       }
+      epave = adaptTempPotEnergyAve[ni];
+      delta += epave * (nbeta - adaptTempBetaN[ni + 1]);
     }
-    delta = (delta -ep * (nbeta - beta)) / BOLTZMANN;
-    //CkPrintf("delta %g, beta %g, %g, ep %g, %g, bin %d, %d\n", delta, beta, nbeta, ep, epave, i, ni); getchar();
+    delta = (delta - ep * (nbeta - beta)) / BOLTZMANN;
+    if ( simParams->adaptTempDebug ) {
+      CkPrintf("delta %g cf %g, beta %g, %g, ep %g, %g, bin %d, %d\n", delta, (0.5*(adaptTempPotEnergyAve[i]+adaptTempPotEnergyAve[ni])-ep)*(nbeta - beta)/BOLTZMANN, beta, nbeta, ep, epave, i, ni); getchar();
+    }
     if ( delta > 0 ) {
       acc = 1;
     } else if ( random->uniform() < exp(delta) ) {
@@ -2388,8 +2395,6 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
     }
     if ( minimize || (step < simParams->adaptTempFirstStep ) || 
         ( simParams->adaptTempLastStep > 0 && step > simParams->adaptTempLastStep )) return scaled;
-    const int adaptTempOutFreq  = simParams->adaptTempOutFreq;
-    const bool adaptTempDebug  = simParams->adaptTempDebug;
     //Calculate Current inverse temperature and bin 
     BigReal adaptTempBeta = 1./adaptTempT;
     adaptTempBin   = (int)floor((adaptTempBeta - adaptTempBetaMin)/adaptTempDBeta);
@@ -2544,7 +2549,7 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
       kineticEnergyCentered *= tScale;
     }
     adaptTempWriteRestart(step);
-    if ( ! (step % adaptTempOutFreq) ) {
+    if ( ! (step % simParams->adaptTempOutFreq) ) {
         iout << "ADAPTEMP: STEP " << step
              << " TEMP "   << adaptTempT
              << " BIN " << adaptTempBin
@@ -2552,7 +2557,7 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
              << " ENERGYAVG " << std::setprecision(10) << adaptTempPotEnergyAve[adaptTempBin]
              << " ENERGYVAR " << std::setprecision(10) << adaptTempPotEnergyVar[adaptTempBin];
         if ( simParams->adaptTempMCMove ) {
-          iout << " ACC " << 1.0 * adaptTempMCAcc / (adaptTempMCTot + 1e-6);
+          iout << " ACC " << std::setprecision(5) << 1.0 * adaptTempMCAcc / (adaptTempMCTot + 1e-6);
         }
         iout << "\n" << endi;
    }
