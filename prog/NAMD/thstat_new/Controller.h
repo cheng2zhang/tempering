@@ -369,9 +369,9 @@ protected:
        if ( cnt0 > 0 ) {
          ave0 /= cnt0;
          A0 /= cnt0;
+         // middle bin correction
+         A2 = 0.5 * var[mid] * (mid + 1) / cnt0;
        }
-       // middle bin correction
-       A2 = 0.5 * var[mid] * (mid + 1) / cnt0;
        // right side
        for ( j = mid + 1; j < winSize; j++ ) {
          invwj = invw[j + bin0];
@@ -387,7 +387,7 @@ protected:
        }
        if ( cnt0 + cnt1 <= 0 ) return def;
        // compute a+ and a-
-       BigReal aplus = (cnt1 > 0) ? (A0 - A2) / (A0 - A1) : 0;
+       BigReal aplus = (cnt0 + cnt1 > 0) ? (A0 - A2) / (A0 - A1) : 0;
        if ( aplus < 0 ) aplus = 0;
        if ( aplus > 1 ) aplus = 1;
        BigReal aminus = 1 - aplus;

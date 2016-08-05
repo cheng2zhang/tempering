@@ -71,11 +71,13 @@ We also attempt to fix a possible bug of how often the LJcorrection is computed.
 #### Implementing the separate accumulator scheme
 
 To make the adaptive averaging scheme work most efficiently,
-each bin need a separator accumulator associated with the window.
+each bin needs a separator accumulator associated with the window.
 This feature is now implemented.  To use it, set
 ```
 adaptTempSep    on
 ```
+We usually use an `adaptTempCgamma` around 0.1 with such a scheme, during the beginning of simulation.
+Later on, one may choose to set `adaptTempCgamma` to 0.0, or fixing the weight with `adaptTempFixedAve`.
 
 #### Implementing a Monte Carlo scheme for temperature transition
 
@@ -83,7 +85,10 @@ In addition to the Langevin equation, adaptive tempering can now be done through
 To use this feature, set
 ```
 adaptTempMCMove    on
+adaptTempMCSize    0.01
 ```
+The move size, specified by `adaptTempMCSize` is given as a fraction of the current temperature.
+The value should be adjusted such that the acceptance ratio ACC. RATIO printed out on the screen is roughly 50%.
 
 #### Disabling the code for adaptTempRandom
 
@@ -93,18 +98,19 @@ This is an ad hoc and theoretically-unfounded strategy.
 Our fix is to simply abandon the invalid temperature transition and keep the old adaptive temperature,
 just as one would do in a failed Monte Carlo move.
 
-#### Miscellaneous modifications
-
-  * Allowing adaptTempInFile and adaptTempBins to be set simultaneously, the former overrides the latter.
-  * Adding the inverse temperature as the first column of the restart file.
-  * Using the average energy computed from the integral identity as the average energy in the restart file (the second column).
-  * Throwing out an exception when reading from the restart file fails.
-  * Adding the option `adaptTempFixedAve` to the fix the average energies from the input restart file (due to Justin).
-
 #### Issuing a warning for using adaptive tempering with the original velocity rescaling
 
 The orginal velocity rescaling does not sample a canonical distribution.
 Therefore, it should not be used with adaptive tempering for production runs.
+
+#### Miscellaneous modifications
+
+  * Adding the inverse temperature as the first column of the restart file (due to Justin).
+  * Adding the option `adaptTempWindowSize` to adjust the window size of integral identity (due to Justin).
+  * Adding the option `adaptTempFixedAve` to the fix the average energies from the input restart file (due to Justin).
+  * Allowing `adaptTempInFile` and `adaptTempBins` to be set simultaneously, the former overrides the latter.
+  * Using the average energy computed from the integral identity as the average energy in the restart file (the second column).
+  * Throwing out an exception when reading from the restart file fails.
 
 #### Integrating the Langevin-style velocity rescaling thermostat and Nose-Hoover thermostat
 
@@ -227,8 +233,17 @@ energyLogFreq      1
 ```
 By default the frequency of logging the potential energy is 1.
 
-For a regular simulation, the logging outputs step and the potential energy.
+For a regular simulation, the logging outputs the MD step and the potential energy.
 For a simulation using adaptive tempering, the logging also outputs the temperature as the last column.
+
+Once we have the log file, the histogram can be constructed using the Python script `mkhist.py`:
+```
+./mkhist.py --dE=5 --dT=0.5 -T300 ene1.log
+```
+The command will produce an output `ene1.his` accordingly,
+with the energy bin size being 5 kcal/mol,
+and in the adaptive tempering case, collecting frame whose temperature is between 299.5K to 300.5K.
+If the input log file is omitted, all `ene*.log` files under the current directory will be processed.
 
 
 ## Apply patches

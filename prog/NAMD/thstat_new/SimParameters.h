@@ -552,6 +552,7 @@ public:
         int adaptTempBins;                     //  Number of bins to store average energy values
         BigReal adaptTempWindowSize;           //  Window size as a fraction of the inverse temperature range
         Bool adaptTempMCMove;                  //  Use Monte Carlo to update the temperature
+        BigReal adaptTempMCSize;               //  Magnitude of Monte Carlo temperature moves a faction of the current temperture
         BigReal adaptTempDt;                   //  timestep for adaptTemp updates - only affects Temperature random walk
         BigReal adaptTempCgamma;               //  Cgamma variable for adaptive bin averaging Cgamma = 0 is normal Averaging. 1 > Cgamma >= 0
         Bool adaptTempLangevin;                //  Couple to Langevin Thermostat

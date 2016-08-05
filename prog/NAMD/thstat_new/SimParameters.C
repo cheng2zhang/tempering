@@ -1446,6 +1446,7 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
    opts.optional("adaptTempMD", "adaptTempWindowSize", "Window size as a fraction of the inverse temperature range", &adaptTempWindowSize, 0.04);
    opts.range("adaptTempWindowSize", NOT_NEGATIVE);
    opts.optionalB("adaptTempMD", "adaptTempMCMove", "Use Monte Carlo to update the temperature", &adaptTempMCMove, FALSE);
+   opts.optional("adaptTempMCMove", "adaptTempMCSize", "Magnitude of Monte Carlo temperature moves as a fraction of the current temperature", &adaptTempMCSize, 0.01);
    opts.optional("adaptTempMD", "adaptTempDt", "Integration timestep for Temp. updates", &adaptTempDt, 0.0001);
    opts.units("adaptTempDt", N_FSEC);
    opts.range("adaptTempDt", NOT_NEGATIVE);

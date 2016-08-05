@@ -261,7 +261,8 @@ protected:
 //JS for adaptive temperature sampling
    void adaptTempMakeWin(void);
    void adaptTempInit(int step);
-   BigReal adaptTempGetPEAve(int i);
+   BigReal adaptTempGetPEAve(int i, BigReal def = 0);
+   BigReal adaptTempMCMove(BigReal tp, BigReal ep);
    Bool adaptTempUpdate(int step, int minimize = 0);
    void adaptTempWriteRestart(int step);
    int *adaptTempBinMinus;
@@ -343,7 +344,7 @@ protected:
      }
 
      // compute the average energy from the integral identity
-     BigReal iiave(BigReal *invw, BigReal varCntMin) {
+     BigReal iiave(BigReal *invw, BigReal varCntMin, BigReal def = 0) {
        int j, mid = winSize / 2;
        BigReal ave0 = 0.0, ave1 = 0.0, cnt0 = 0.0, cnt1 = 0.0;
        BigReal A0 = 0, A1 = 0, A2 = 0, cntMax = 0, defVar = 0, invwj, varj;
@@ -364,10 +365,12 @@ protected:
          A0 += varj * (j + 0.5);
          //CkPrintf("+ %d %g %g %g\n", j, count[j], sumE[j], invw[j]);
        }
-       ave0 /= cnt0;
-       A0 /= cnt0;
-       // middle bin correction
-       A2 = 0.5 * var[mid] * (mid + 1) / cnt0;
+       if ( cnt0 > 0 ) {
+         ave0 /= cnt0;
+         A0 /= cnt0;
+         // middle bin correction
+         A2 = 0.5 * var[mid] * (mid + 1) / cnt0;
+       }
        // right side
        for ( j = mid + 1; j < winSize; j++ ) {
          invwj = invw[j + bin0];
@@ -381,8 +384,9 @@ protected:
          ave1 /= cnt1;
          A1 /= cnt1;
        }
+       if ( cnt0 + cnt1 <= 0 ) return def;
        // compute a+ and a-
-       BigReal aplus = (cnt1 > 0) ? (A0 - A2) / (A0 - A1) : 0;
+       BigReal aplus = (cnt0 + cnt1 > 0) ? (A0 - A2) / (A0 - A1) : 0;
        if ( aplus < 0 ) aplus = 0;
        if ( aplus > 1 ) aplus = 1;
        BigReal aminus = 1 - aplus;
@@ -391,6 +395,7 @@ protected:
      }
    };
    AdaptTempSepAcc *adaptTempSepAcc;
+   int adaptTempMCTot, adaptTempMCAcc;
    BigReal *adaptTempPotEnergyAveNum;
    BigReal *adaptTempPotEnergyAveDen;
    BigReal *adaptTempPotEnergyVarNum;

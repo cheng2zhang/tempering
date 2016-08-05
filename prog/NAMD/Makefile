@@ -14,14 +14,14 @@ minmod.patch::
 	diff -u -wdB minmod_old minmod_new > $@; [ $$? -eq 1 ]
 
 spec.patch::
-	rm -f $@ spec_*/*
+	rm -f $@ spec_*/* spec_*/.*~
 	ln -f `diff -wdBqr --exclude="*~" --exclude=".*" $(dir_orig) $(dir_spec) | cut -f2 -d" "` spec_old/
 	ln -f `diff -wdBqr --exclude="*~" --exclude=".*" $(dir_orig) $(dir_spec) | cut -f4 -d" "` spec_new/
 	git add spec_*/*
 	diff -u -wdB spec_old spec_new > $@; [ $$? -eq 1 ]
 
 thstat.patch::
-	rm -f $@ thstat_*/*
+	rm -f $@ thstat_*/* thstat_*/.*~
 	ln -f `diff -wdBqr --exclude="*~" --exclude=".*" $(dir_orig) $(dir_thstat) | cut -f2 -d" "` thstat_old/
 	ln -f `diff -wdBqr --exclude="*~" --exclude=".*" $(dir_orig) $(dir_thstat) | cut -f4 -d" "` thstat_new/
 	git add thstat_*/*
@@ -32,28 +32,36 @@ NAMD_thstat.zip::
 	$(MAKE) -B thstat.patch
 	zip -r $@ thstat* Nose*.pdf vrescal*.pdf *.html \
 	  README.thstat.md \
-	  ../../doc/vsTmove.tex ../../doc/vsTmove.pdf \
-	  ../../test/Argon_NAMD_ST/*.prm \
-	  ../../test/Argon_NAMD_ST/*.conf \
-	  ../../test/Argon_NAMD_ST/argon_300K.coor \
-	  ../../test/Argon_NAMD_ST/*.psf \
-	  ../../test/Argon_NAMD_ST/cmp.png \
-	  ../../test/Argon_NAMD_ST/ke.png \
-	  ../../doc/fig/*.gp ../../doc/fig/*.eps ../../doc/fig/*.pdf \
-	  ../../test/alanin/*.conf
+	  doc/vsTmove.tex doc/vsTmove.pdf \
+	  doc/fig/*.gp doc/fig/*.eps doc/fig/*.pdf \
+	  test/Argon_NAMD_ST/*.prm \
+	  test/Argon_NAMD_ST/*.conf \
+	  test/Argon_NAMD_ST/argon_300K.coor \
+	  test/Argon_NAMD_ST/*.psf \
+	  test/Argon_NAMD_ST/cmp.png \
+	  test/Argon_NAMD_ST/ke.png \
+	  test/waterbox/*.conf \
+	  test/waterbox/*.inp \
+	  test/waterbox/waterbox.* \
+	  ./mkhist.py \
+	  test/alanin/*.conf
 
 NAMD_spec.zip::
 	$(RM) -f $@
 	$(MAKE) -B spec.patch
 	zip -r $@ spec* Nose*.pdf vrescal*.pdf *.html \
 	  README.thstat.md README.spec.md \
-	  ../../doc/vsTmove.tex ../../doc/vsTmove.pdf \
-	  ../../test/Argon_NAMD_ST/*.prm \
-	  ../../test/Argon_NAMD_ST/*.conf \
-	  ../../test/Argon_NAMD_ST/argon_300K.coor \
-	  ../../test/Argon_NAMD_ST/*.psf \
-	  ../../test/Argon_NAMD_ST/cmp.png \
-	  ../../test/Argon_NAMD_ST/ke.png \
-	  ../../doc/fig/*.gp ../../doc/fig/*.eps ../../doc/fig/*.pdf \
-	  ../../test/alanin/*.conf
+	  doc/vsTmove.tex doc/vsTmove.pdf \
+	  doc/fig/*.gp doc/fig/*.eps doc/fig/*.pdf \
+	  test/Argon_NAMD_ST/*.prm \
+	  test/Argon_NAMD_ST/*.conf \
+	  test/Argon_NAMD_ST/argon_300K.coor \
+	  test/Argon_NAMD_ST/*.psf \
+	  test/Argon_NAMD_ST/cmp.png \
+	  test/Argon_NAMD_ST/ke.png \
+	  test/waterbox/*.conf \
+	  test/waterbox/*.inp \
+	  test/waterbox/waterbox.* \
+	  ./mkhist.py \
+	  test/alanin/*.conf
 

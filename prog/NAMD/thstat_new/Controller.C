@@ -2006,9 +2006,9 @@ void Controller::adaptTempInit(int step) {
         int readInt;
         BigReal readReal;
         bool readBool;
-        // step
         adaptTempRead.exceptions( std::ifstream::failbit | std::ifstream::badbit );
         try {
+          // step
           adaptTempRead >> readInt;
           // Start with min and max temperatures
           adaptTempRead >> adaptTempT;     // KELVIN
@@ -2256,8 +2256,12 @@ BigReal Controller::adaptTempGetPEAve(int i, BigReal def)
         }
         A0 += var * (j - nMinus + 0.5);
       }
-      potEnergyAve0 /= potEnergyDen0;
-      A0 /= potEnergyDen0;
+      if ( potEnergyDen0 > 0 ) {
+        potEnergyAve0 /= potEnergyDen0;
+        A0 /= potEnergyDen0;
+        //A2 phi_t integral for beta_i
+        A2 = 0.5 * adaptTempPotEnergyVar[i] * (i - nMinus + 1) / potEnergyDen0;
+      }
 
       //A1 phi_s integral for beta_{i+1} < beta < beta_plus
       for ( j = i + 1; j < nPlus; j++ ) {
@@ -2276,46 +2280,47 @@ BigReal Controller::adaptTempGetPEAve(int i, BigReal def)
         A1 /= potEnergyDen1;
       }
 
-      //A2 phi_t integral for beta_i
-      A2 = 0.5 * adaptTempPotEnergyVar[i] * (i - nMinus + 1) / potEnergyDen0;
-
-      // Now calculate a+ and a-
-      BigReal aplus = 0;
-      if ( potEnergyDen1 > 0 ) {
-        aplus = (A0 - A2)/(A0 - A1);
-      }
-      if (aplus < 0) {
-        aplus = 0;
-      }
-      if (aplus > 1) {
-        aplus = 1;
-      }
-      BigReal aminus = 1 - aplus;
-      potEnergyAverage = aminus*potEnergyAve0 + aplus*potEnergyAve1;
-      if (simParams->adaptTempDebug) {
-        iout << "ADAPTEMP DEBUG:"  << "\n"
-             << "     adaptTempBin:    " << i << "\n"
-             << "     Samples:   " << adaptTempPotEnergySamples[i] << "\n"
-             << "     potentialEnergeAverage:  " << potEnergyAverage << "\n"
-             << "     adaptTemp:   " << adaptTempT<< "\n"
-             << "     betaMin:   " << adaptTempBetaMin << "\n"
-             << "     betaMax:   " << adaptTempBetaMax << "\n"
-             << "     deltaBeta: " << (i - nMinus) * adaptTempDBeta << "\n"
-             << "     betaMinus: " << adaptTempBetaN[nMinus] << "\n"
-             << "     betaPlus:  " << adaptTempBetaN[nPlus] << "\n"
-             << "     nMinus:    " << nMinus << "\n"
-             << "     nPlus:     " << nPlus << "\n"
-             << "     A0:        " << A0 << "\n"
-             << "     A1:        " << A1 << "\n"
-             << "     A2:        " << A2 << "\n"
-             << "     a+:        " << aplus << "\n"
-             << "     a-:        " << aminus << "\n"
-             << "     aveEner:   " << potEnergyAverage << "\n"
-             << "     aveEne0:   " << potEnergyAve0 << "\n"
-             << "     aveEne1:   " << potEnergyAve1 << "\n"
-             << "     aveDen0:   " << potEnergyDen0 << "\n"
-             << "     aveDen1:   " << potEnergyDen1 << "\n"
-             << endi;
+      if ( potEnergyDen0 + potEnergyDen1 <= 0 ) {
+        potEnergyAverage = def;
+      } else {
+        // Now calculate a+ and a-
+        BigReal aplus = 0;
+        if ( potEnergyDen0 + potEnergyDen1 > 0 ) {
+          aplus = (A0 - A2)/(A0 - A1);
+        }
+        if (aplus < 0) {
+          aplus = 0;
+        }
+        if (aplus > 1) {
+          aplus = 1;
+        }
+        BigReal aminus = 1 - aplus;
+        potEnergyAverage = aminus*potEnergyAve0 + aplus*potEnergyAve1;
+        if (simParams->adaptTempDebug) {
+          iout << "ADAPTEMP DEBUG:"  << "\n"
+               << "     adaptTempBin:    " << i << "\n"
+               << "     Samples:   " << adaptTempPotEnergySamples[i] << "\n"
+               << "     potentialEnergeAverage:  " << potEnergyAverage << "\n"
+               << "     adaptTemp:   " << adaptTempT<< "\n"
+               << "     betaMin:   " << adaptTempBetaMin << "\n"
+               << "     betaMax:   " << adaptTempBetaMax << "\n"
+               << "     deltaBeta: " << (i - nMinus) * adaptTempDBeta << "\n"
+               << "     betaMinus: " << adaptTempBetaN[nMinus] << "\n"
+               << "     betaPlus:  " << adaptTempBetaN[nPlus] << "\n"
+               << "     nMinus:    " << nMinus << "\n"
+               << "     nPlus:     " << nPlus << "\n"
+               << "     A0:        " << A0 << "\n"
+               << "     A1:        " << A1 << "\n"
+               << "     A2:        " << A2 << "\n"
+               << "     a+:        " << aplus << "\n"
+               << "     a-:        " << aminus << "\n"
+               << "     aveEner:   " << potEnergyAverage << "\n"
+               << "     aveEne0:   " << potEnergyAve0 << "\n"
+               << "     aveEne1:   " << potEnergyAve1 << "\n"
+               << "     aveDen0:   " << potEnergyDen0 << "\n"
+               << "     aveDen1:   " << potEnergyDen1 << "\n"
+               << endi;
+        }
       }
     }
     return potEnergyAverage;
@@ -2326,7 +2331,7 @@ BigReal Controller::adaptTempMCMove(BigReal tp, BigReal ep)
     BigReal lnbeta = log(1./tp), nlnbeta, beta, nbeta, delta, epave;
     int i, ni, j, acc = 0;
     adaptTempMCTot += 1;
-    nlnbeta = lnbeta + sqrt(3 * adaptTempDt) * (random->uniform() * 2 - 1);
+    nlnbeta = lnbeta + simParams->adaptTempMCSize * random->gaussian();
     nbeta = exp(nlnbeta);
     beta = 1.0 / tp;
     i = (int) ( (beta - adaptTempBetaMin) / adaptTempDBeta );
@@ -2481,7 +2486,7 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
     // is constant for each bin. This is to estimate <E(beta)> where beta \in
     // (beta_i,beta_{i+1}) using Eq 2 of JCP 132 244101
     if ( ! ( step % simParams->adaptTempFreq ) ) {
-      BigReal dT; //dT is new temperature
+      BigReal dT; // dT is the new temperature
 
       if ( simParams->adaptTempMCMove ) {
         dT = adaptTempMCMove(adaptTempT, potentialEnergy);
@@ -2559,7 +2564,7 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
              << " ENERGYAVG " << std::setprecision(10) << adaptTempPotEnergyAve[adaptTempBin]
              << " ENERGYVAR " << std::setprecision(10) << adaptTempPotEnergyVar[adaptTempBin];
         if ( simParams->adaptTempMCMove ) {
-          iout << " ACC " << std::setprecision(5) << 1.0 * adaptTempMCAcc / (adaptTempMCTot + 1e-6);
+          iout << " ACC. RATIO " << std::setprecision(5) << 100.0 * adaptTempMCAcc / (adaptTempMCTot + 1e-6) << "%";
         }
         iout << "\n" << endi;
    }
