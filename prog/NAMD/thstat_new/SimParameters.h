@@ -565,6 +565,7 @@ public:
         int  adaptTempRestartFreq;             //  Frequency of writing restart output
         Bool adaptTempRestartAppend;           //  Appending instead of overwriting the restart file
         Bool adaptTempSepOn;                   //  Using a separate multiple-bin estimator for each bin
+        BigReal adaptTempSamplesMin;           //  Minimal number of samples in a bin to start a temperature transition
         Bool adaptTempRandom;                  //  Do we assign random temperatures when we step out of [Tmin,Tmax]?
         /* End Adaptive Temperature Sampling */
 

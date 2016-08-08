@@ -2216,7 +2216,7 @@ BigReal Controller::adaptTempGetPEAve(int i, BigReal def)
     BigReal potEnergyAverage;
 
     if ( simParams->adaptTempSepOn ) {
-      potEnergyAverage = adaptTempSepAcc[i].iiave(adaptTempInvW, varDenMin, def);
+      potEnergyAverage = adaptTempSepAcc[i].iiave(varDenMin, def);
     } else {
       int j;
       // Get Averaging Limits:
@@ -2244,11 +2244,10 @@ BigReal Controller::adaptTempGetPEAve(int i, BigReal def)
         }
       }
 
-      BigReal invwj, var;
+      BigReal var;
       for ( j = nMinus; j <= i; j++ ) {
-        invwj = adaptTempBetaMin + (j + 0.5) * adaptTempDBeta;
-        potEnergyAve0 += adaptTempPotEnergyAveNum[j] * invwj;
-        potEnergyDen0 += adaptTempPotEnergyAveDen[j] * invwj;
+        potEnergyAve0 += adaptTempPotEnergyAveNum[j];
+        potEnergyDen0 += adaptTempPotEnergyAveDen[j];
         if ( adaptTempPotEnergyAveDen[j] > varDenMin ) {
           var = adaptTempPotEnergyVar[j];
         } else {
@@ -2265,9 +2264,8 @@ BigReal Controller::adaptTempGetPEAve(int i, BigReal def)
 
       //A1 phi_s integral for beta_{i+1} < beta < beta_plus
       for ( j = i + 1; j < nPlus; j++ ) {
-        invwj = adaptTempBetaMin + (j + 0.5) * adaptTempDBeta;
-        potEnergyAve1 += adaptTempPotEnergyAveNum[j] * invwj;
-        potEnergyDen1 += adaptTempPotEnergyAveDen[j] * invwj;
+        potEnergyAve1 += adaptTempPotEnergyAveNum[j];
+        potEnergyDen1 += adaptTempPotEnergyAveDen[j];
         if ( adaptTempPotEnergyAveDen[j] > varDenMin ) {
           var = adaptTempPotEnergyVar[j];
         } else {
@@ -2457,10 +2455,11 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
     totalEnergy = potentialEnergy + kineticEnergy;
 
     if ( !simParams->adaptTempFixedAve ) {
+      BigReal invw = adaptTempBeta / adaptTempBetaMin;
       //calculate new bin average and variance using adaptive averaging
-      adaptTempPotEnergyAveNum[adaptTempBin] = adaptTempPotEnergyAveNum[adaptTempBin]*gammaAve + potentialEnergy;
-      adaptTempPotEnergyAveDen[adaptTempBin] = adaptTempPotEnergyAveDen[adaptTempBin]*gammaAve + 1;
-      adaptTempPotEnergyVarNum[adaptTempBin] = adaptTempPotEnergyVarNum[adaptTempBin]*gammaAve + potentialEnergy*potentialEnergy;
+      adaptTempPotEnergyAveNum[adaptTempBin] = adaptTempPotEnergyAveNum[adaptTempBin]*gammaAve + potentialEnergy * invw;
+      adaptTempPotEnergyAveDen[adaptTempBin] = adaptTempPotEnergyAveDen[adaptTempBin]*gammaAve + invw;
+      adaptTempPotEnergyVarNum[adaptTempBin] = adaptTempPotEnergyVarNum[adaptTempBin]*gammaAve + potentialEnergy*potentialEnergy * invw;
       
       potEnergyAverage = adaptTempPotEnergyAveNum[adaptTempBin]/adaptTempPotEnergyAveDen[adaptTempBin];
       potEnergyVariance = adaptTempPotEnergyVarNum[adaptTempBin]/adaptTempPotEnergyAveDen[adaptTempBin];
@@ -2472,11 +2471,11 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
       if ( simParams->adaptTempSepOn ) { // update separate accumulators
         for ( j = adaptTempBin; j >= 0; j-- ) { // search downward
           if ( adaptTempBinPlus[j] <= adaptTempBin ) break;
-          adaptTempSepAcc[j].add(adaptTempBin, potentialEnergy, adaptTempCg);
+          adaptTempSepAcc[j].add(adaptTempBin, potentialEnergy, invw, adaptTempCg);
         }
         for ( j = adaptTempBin + 1; j < adaptTempBins; j++ ) { // search upward
           if ( adaptTempBinMinus[j] > adaptTempBin ) break;
-          adaptTempSepAcc[j].add(adaptTempBin, potentialEnergy, adaptTempCg);
+          adaptTempSepAcc[j].add(adaptTempBin, potentialEnergy, invw, adaptTempCg);
         }
       }
     }
@@ -2488,7 +2487,11 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
     if ( ! ( step % simParams->adaptTempFreq ) ) {
       BigReal dT; // dT is the new temperature
 
-      if ( simParams->adaptTempMCMove ) {
+      if ( adaptTempPotEnergySamples[adaptTempBin] <= simParams->adaptTempSamplesMin ) {
+        // avoid making temperature transitions unless we have
+        // sufficient number of samples
+        dT = adaptTempT;
+      } else if ( simParams->adaptTempMCMove ) {
         dT = adaptTempMCMove(adaptTempT, potentialEnergy);
       } else {
         if ( simParams->adaptTempFixedAve ) {

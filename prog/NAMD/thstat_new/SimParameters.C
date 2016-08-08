@@ -1465,6 +1465,8 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
    opts.range("adaptTempRestartFreq",NOT_NEGATIVE);
    opts.optionalB("adaptTempRestartFile", "adaptTempRestartAppend", "Appending instead of overwriting the restart file", &adaptTempRestartAppend, FALSE);
    opts.optionalB("adaptTempMD", "adaptTempSep", "Using a separate multiple-bin estimator for each bin", &adaptTempSepOn, FALSE);
+   opts.optional("adaptTempMD", "adaptTempSamplesMin", "Minimal number of samples in a bin to start a temperature transition", &adaptTempSamplesMin, 100);
+   opts.range("adaptTempSamplesMin", NOT_NEGATIVE);
    opts.optionalB("adaptTempMD", "adaptTempRandom", "Randomly assign a temperature if we step out of range", &adaptTempRandom, FALSE);
 }
 

@@ -328,7 +328,7 @@ protected:
      }
 
      // add a data point from bin i to this accumulator
-     void add(int i, BigReal potEne, BigReal cg) {
+     void add(int i, BigReal potEne, BigReal invw, BigReal cg) {
        i -= bin0; // convert to the local index
        if ( i < 0 || i >= winSize ) {
          CkPrintf("Bad local index for bin0 %d: i %d, winSize %d\n", bin0, i + bin0, winSize);
@@ -338,17 +338,18 @@ protected:
        BigReal gamma = 1 - cg / total;
        if ( gamma < 1e-8 ) gamma = 1e-8;
        invGamma /= gamma;
-       count[i] += invGamma;
-       sumE[i]  += invGamma * potEne;
-       sumE2[i] += invGamma * potEne * potEne;
+       invw *= invGamma;
+       count[i] += invw;
+       sumE[i]  += invw * potEne;
+       sumE2[i] += invw * potEne * potEne;
        //CkPrintf("adding to bin %d with potEne %g\n", i, potEne);
      }
 
      // compute the average energy from the integral identity
-     BigReal iiave(BigReal *invw, BigReal varCntMin, BigReal def = 0) {
+     BigReal iiave(BigReal varCntMin, BigReal def = 0) {
        int j, mid = winSize / 2;
        BigReal ave0 = 0.0, ave1 = 0.0, cnt0 = 0.0, cnt1 = 0.0;
-       BigReal A0 = 0, A1 = 0, A2 = 0, cntMax = 0, defVar = 0, invwj, varj;
+       BigReal A0 = 0, A1 = 0, A2 = 0, cntMax = 0, defVar = 0, varj;
        trim();
        // compute the default variance from the most populated bin
        for ( j = 0; j < winSize; j++ ) {
@@ -359,9 +360,8 @@ protected:
        }
        // left side
        for ( j = 0; j <= mid; j++ ) {
-         invwj = invw[j + bin0];
-         ave0 += sumE[j] * invwj;
-         cnt0 += count[j] * invwj;
+         ave0 += sumE[j];
+         cnt0 += count[j];
          varj = (count[j] > varCntMin) ? var[j] : defVar;
          A0 += varj * (j + 0.5);
          //CkPrintf("+ %d %g %g %g\n", j, count[j], sumE[j], invw[j]);
@@ -374,9 +374,8 @@ protected:
        }
        // right side
        for ( j = mid + 1; j < winSize; j++ ) {
-         invwj = invw[j + bin0];
-         ave1 += sumE[j] * invwj;
-         cnt1 += count[j] * invwj;
+         ave1 += sumE[j];
+         cnt1 += count[j];
          varj = (count[j] > varCntMin) ? var[j] : defVar;
          A1 += varj * (j - winSize + 0.5);
          //CkPrintf("+ %d %g %g %g\n", j, count[j], sumE[j], invw[j]);
