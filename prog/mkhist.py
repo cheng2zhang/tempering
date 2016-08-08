@@ -104,10 +104,22 @@ class Hist:
     tot = math.fsum(self.arr)
     fac = 1.0 / (self.dx * tot)
     s = ""
-    for i in range(self.n):
+    # determine the boundaries
+    i0 = 0
+    while i0 < self.n:
+      if self.arr[i0] > 0: break
+      i0 += 1
+    i1 = self.n - 1
+    while i1 >= i0:
+      if self.arr[i1] > 0: break
+      i1 -= 1
+
+    i = i0
+    while i <= i1:
       dist = self.arr[i] * fac
       s += "%s\t%s\t%s\n" % (self.xmin + (i + 0.5) * self.dx,
           dist, self.arr[i])
+      i += 1
     open(fn, "w").write(s)
     print "saving histogram file %s, total %s" % (fn, tot)
 
