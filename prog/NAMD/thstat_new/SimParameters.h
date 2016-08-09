@@ -551,6 +551,7 @@ public:
         BigReal adaptTempAutoDt;               //  Auto jump size. Value determines upper bound, adaotTempDt determines lower bound 
         int adaptTempBins;                     //  Number of bins to store average energy values
         BigReal adaptTempWindowSize;           //  Window size as a fraction of the inverse temperature range
+        BigReal adaptTempWeightExp;            //  Exponent x as in the inverse-temperature density w(beta) ~ beta^(-x), 0: flat-beta, 1: flat-lnT, 2: flat-T distribution
         Bool adaptTempMCMove;                  //  Use Monte Carlo to update the temperature
         BigReal adaptTempMCSize;               //  Magnitude of Monte Carlo temperature moves a faction of the current temperture
         BigReal adaptTempDt;                   //  timestep for adaptTemp updates - only affects Temperature random walk
@@ -565,7 +566,7 @@ public:
         int  adaptTempRestartFreq;             //  Frequency of writing restart output
         Bool adaptTempRestartAppend;           //  Appending instead of overwriting the restart file
         Bool adaptTempSepOn;                   //  Using a separate multiple-bin estimator for each bin
-        BigReal adaptTempSamplesMin;           //  Minimal number of samples in a bin to start a temperature transition
+        BigReal adaptTempSamplesMin;           //  Minimal number of samples in a bin to start temperature transitions
         Bool adaptTempRandom;                  //  Do we assign random temperatures when we step out of [Tmin,Tmax]?
         /* End Adaptive Temperature Sampling */
 

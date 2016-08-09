@@ -10,8 +10,12 @@ This patch contains several modifications to NAMD 2.11:
   * Fixing the bin index overflow problem (due to Justin) in adaptTempUpdate() in Controller.C.
   * Properly overwriting (instead of appending) the restart file (due to Justin).
   * Computing the potential energy at the beginning adaptTempUpdate() (due to Justin).
+  * Smaller default value Langevin equation (due to Justin).
+  * Modifying the integral identity.
+  * Limiting temperature transition until a certain number of samples per bin.
   * Implementing the separate accumulator scheme.
-  * Implementing the Monte Carlo scheme for temperature change.
+  * Implementing the Monte Carlo scheme for temperature transitions.
+  * Fine-tuning of the overall temperature distribution.
   * Disabling the code for the ad hoc adaptTempRandom scheme, which lacks theoretically foundation.
   * Issuing a warning for using adaptive tempering with the original velocity rescaling, which does not rigorously sample the Boltzmann distribution.
   * Miscellaneous modifications.
@@ -68,18 +72,30 @@ But that is inaccurate because the MD integrator only approximately conserves th
 The code now recompute the potential energy at the beginning of adaptTempUpdate().
 We also attempt to fix a possible bug of how often the LJcorrection is computed.
 
-#### Implementing the separate accumulator scheme
+#### Smaller default value Langevin equation
 
-To make the adaptive averaging scheme work most efficiently,
-each bin needs a separator accumulator associated with the window.
-This feature is now implemented.  To use it, set
-```
-adaptTempSep    on
-```
-We usually use an `adaptTempCgamma` around 0.1 with such a scheme, during the beginning of simulation.
-Later on, one may choose to set `adaptTempCgamma` to 0.0, or fixing the weight with `adaptTempFixedAve`.
+The value recommended in the paper 0.0001 appears to too large in that it broadens
+the potential energy distribution (due to Justin).
+Therefore a smaller value 0.00001
 
-#### Implementing a Monte Carlo scheme for temperature transition
+#### Modifying the integral identity
+
+The integral identity used for computing the average energy can be modified
+to use the number of visits as a weighting factor.
+This modification hopefully improve the stability during the equilibration stage.
+
+#### Limiting temperature transition until a certain number of samples per bin
+
+In an initial stage, the temperature can readily drift to one end of
+the temperature spectrum (due to Justin).
+This is due to lack of equilibration and bad initial estimate of the average energy.
+To alleviate this problem, we can avoid temperature transition until the number of
+samples within the current bin exceeds a certain amount by setting the option `adaptTempSamplesMin`
+```
+adaptTempSamplesMin     1000
+```
+
+#### Implementing a Monte Carlo scheme for temperature transitions
 
 In addition to the Langevin equation, adaptive tempering can now be done through a Monte Carlo scheme.
 To use this feature, set
@@ -89,6 +105,32 @@ adaptTempMCSize    0.01
 ```
 The move size, specified by `adaptTempMCSize` is given as a fraction of the current temperature.
 The value should be adjusted such that the acceptance ratio ACC. RATIO printed out on the screen is roughly 50%.
+
+#### Implementing the separate accumulator scheme
+
+To make the adaptive averaging scheme work most efficiently,
+each bin needs a separator accumulator associated with the window.
+To use the feature, set
+```
+adaptTempSep    on
+```
+We usually use an `adaptTempCgamma` around 0.1 with such a scheme, during the beginning of simulation.
+Later on, one may choose to set `adaptTempCgamma` to 0.0, or fixing the weight with `adaptTempFixedAve`.
+When this feature is turned on, the data for the separate accumulators
+will be appended to the restart file.
+
+#### Fine-tuning of the overall temperature distribution
+
+The overall temperature distribution can now be tuned by the new parameter `adaptTempWeightExp`.
+In terms of the distribution of the inverse-temperature, beta, this parameter corresponds to x as in
+  w(beta) ~ 1/beta^x.
+Equivalently, the distribution of temperature T, is given by T^(x-2).
+Thus, to achieve a flat-T histogram, we need to set x = 2.
+To achieve a flat-beta histogram, we need to set x = 0.
+The default value is 1.0, which corresponds to a flat-ln(T) histogram. 
+```
+adaptTempWeightExp    1
+```
 
 #### Disabling the code for adaptTempRandom
 
@@ -110,7 +152,10 @@ Therefore, it should not be used with adaptive tempering for production runs.
   * Adding the option `adaptTempFixedAve` to the fix the average energies from the input restart file (due to Justin).
   * Allowing `adaptTempInFile` and `adaptTempBins` to be set simultaneously, the former overrides the latter.
   * Using the average energy computed from the integral identity as the average energy in the restart file (the second column).
+  * Adding the inverse weight to the last column of the restart file.
   * Throwing out an exception when reading from the restart file fails.
+  * Increasing the precision of the restart file.
+  * Reduce the default window size for the integral identity from 0.04 to 0.02.
 
 #### Integrating the Langevin-style velocity rescaling thermostat and Nose-Hoover thermostat
 

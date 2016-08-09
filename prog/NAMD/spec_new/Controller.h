@@ -259,149 +259,167 @@ protected:
    BigReal accelMDdVAverage;
 
 //JS for adaptive temperature sampling
-   void adaptTempMakeWin(void);
    void adaptTempInit(int step);
+   void adaptTempDone(int step);
+   BigReal adaptTempGetInvW(BigReal tp);
    BigReal adaptTempGetPEAve(int i, BigReal def = 0);
    BigReal adaptTempMCMove(BigReal tp, BigReal ep);
    Bool adaptTempUpdate(int step, int minimize = 0);
    void adaptTempWriteRestart(int step);
    int *adaptTempBinMinus;
    int *adaptTempBinPlus;
-   BigReal *adaptTempInvW;
    // separator accumulator
    struct AdaptTempSepAcc {
-     BigReal invGamma;
      int bin0; // first bin
      int winSize;
-     BigReal *count;
-     BigReal *sumE;
-     BigReal *sumE2;
-     BigReal *ave;
-     BigReal *var;
-     BigReal total;
+     double *sumw;
+     double *sumE;
+     double *sumE2;
+     double *ave;
+     double *var;
+     double *cnt;
+     double total;
+     double invGamma;
+
+     AdaptTempSepAcc(void) {
+       winSize = 0;
+     }
+
+     ~AdaptTempSepAcc(void) {
+       if ( winSize > 0 ) {
+         delete [] sumw;
+         delete [] sumE;
+         delete [] sumE2;
+         delete [] ave;
+         delete [] var;
+         delete [] cnt;
+       }
+     }
 
      // initialize the window
      void init(int minus, int plus) {
-       invGamma = 1;
        bin0 = minus;
        winSize = plus - minus;
        if ( winSize % 2 == 0 ) NAMD_die("Window size should be odd");
        total = 0;
-       count = new BigReal[winSize];
-       sumE  = new BigReal[winSize];
-       sumE2 = new BigReal[winSize];
-       ave   = new BigReal[winSize];
-       var   = new BigReal[winSize];
+       invGamma = 1;
+       sumw  = new double[winSize];
+       sumE  = new double[winSize];
+       sumE2 = new double[winSize];
+       ave   = new double[winSize];
+       var   = new double[winSize];
+       cnt   = new double[winSize];
        for ( int j = 0; j < winSize; j++ ) {
-         count[j] = 0;
+         sumw[j]  = 0;
          sumE[j]  = 0;
          sumE2[j] = 0;
          ave[j]   = 0;
          var[j]   = 0;
+         cnt[j]   = 0;
        }
      }
 
      // compute the average and variance of each bin
      void trim(void) {
-       int j;
        if ( invGamma > 1.0 ) { // renormalize the running weight
-         BigReal gam = 1.0/invGamma;
-         for ( j = 0; j < winSize; j++ ) {
-           count[j] *= gam;
+         double gam = 1.0/invGamma;
+         for ( int j = 0; j < winSize; j++ ) {
+           sumw[j]  *= gam;
            sumE[j]  *= gam;
            sumE2[j] *= gam;
          }
          invGamma = 1;
        }
        
-       for ( j = 0; j < winSize; j++ ) {
-         if ( count[j] > 0 ) {
-           ave[j] = sumE[j] / count[j];
-           var[j] = sumE2[j] / count[j] - ave[j] * ave[j];
+       for ( int j = 0; j < winSize; j++ ) {
+         if ( sumw[j] > 0 ) {
+           ave[j] = sumE[j] / sumw[j];
+           var[j] = sumE2[j] / sumw[j] - ave[j] * ave[j];
          } else {
            ave[j] = 0;
            var[j] = 0;
          }
-         //CkPrintf("j %d, %g %g %g %g %g\n", j, count[j], sumE[j], sumE2[j], ave[j], var[j]);
+         //CkPrintf("j %d, %g %g %g %g %g\n", j, sumw[j], sumE[j], sumE2[j], ave[j], var[j]);
        }
      }
 
      // add a data point from bin i to this accumulator
-     void add(int i, BigReal potEne, BigReal cg) {
+     void add(int i, BigReal potEne, BigReal invw, BigReal cg) {
        i -= bin0; // convert to the local index
        if ( i < 0 || i >= winSize ) {
          CkPrintf("Bad local index for bin0 %d: i %d, winSize %d\n", bin0, i + bin0, winSize);
          NAMD_die("Adaptive tempering: bad local index.");
        }
        total += 1;
-       BigReal gamma = 1 - cg / total;
+       double gamma = 1 - cg / total;
        if ( gamma < 1e-8 ) gamma = 1e-8;
        invGamma /= gamma;
-       count[i] += invGamma;
-       sumE[i]  += invGamma * potEne;
-       sumE2[i] += invGamma * potEne * potEne;
+       invw *= invGamma;
+       sumw[i]  += invw;
+       sumE[i]  += invw * potEne;
+       sumE2[i] += invw * potEne * potEne;
+       cnt[i]   += 1;
        //CkPrintf("adding to bin %d with potEne %g\n", i, potEne);
      }
 
      // compute the average energy from the integral identity
-     BigReal iiave(BigReal *invw, BigReal varCntMin, BigReal def = 0) {
+     BigReal iiave(BigReal varCntMin, BigReal def = 0) {
        int j, mid = winSize / 2;
-       BigReal ave0 = 0.0, ave1 = 0.0, cnt0 = 0.0, cnt1 = 0.0;
-       BigReal A0 = 0, A1 = 0, A2 = 0, cntMax = 0, defVar = 0, invwj, varj;
+       double ave0 = 0.0, ave1 = 0.0, den0 = 0.0, den1 = 0.0;
+       double A0 = 0, A1 = 0, A2 = 0, cntMax = 0, defVar = 0, varj;
        trim();
        // compute the default variance from the most populated bin
        for ( j = 0; j < winSize; j++ ) {
-         if ( count[j] > cntMax ) {
-           cntMax = count[j];
+         if ( sumw[j] > cntMax ) {
+           cntMax = sumw[j];
            defVar = var[j];
          }
        }
        // left side
        for ( j = 0; j <= mid; j++ ) {
-         invwj = invw[j + bin0];
-         ave0 += sumE[j] * invwj;
-         cnt0 += count[j] * invwj;
-         varj = (count[j] > varCntMin) ? var[j] : defVar;
+         ave0 += sumE[j];
+         den0 += sumw[j];
+         varj = (cnt[j] > varCntMin) ? var[j] : defVar;
          A0 += varj * (j + 0.5);
-         //CkPrintf("+ %d %g %g %g\n", j, count[j], sumE[j], invw[j]);
+         //CkPrintf("+ %d %g %g %g\n", j, sumw[j], sumE[j], invw[j]);
        }
-       if ( cnt0 > 0 ) {
-         ave0 /= cnt0;
-         A0 /= cnt0;
+       if ( den0 > 0 ) {
+         ave0 /= den0;
+         A0 /= den0;
          // middle bin correction
-         A2 = 0.5 * var[mid] * (mid + 1) / cnt0;
+         varj = (cnt[mid] > varCntMin) ? var[mid] : defVar;
+         A2 = 0.5 * varj * (mid + 1) / den0;
        }
        // right side
        for ( j = mid + 1; j < winSize; j++ ) {
-         invwj = invw[j + bin0];
-         ave1 += sumE[j] * invwj;
-         cnt1 += count[j] * invwj;
-         varj = (count[j] > varCntMin) ? var[j] : defVar;
+         ave1 += sumE[j];
+         den1 += sumw[j];
+         varj = (cnt[j] > varCntMin) ? var[j] : defVar;
          A1 += varj * (j - winSize + 0.5);
-         //CkPrintf("+ %d %g %g %g\n", j, count[j], sumE[j], invw[j]);
+         //CkPrintf("+ %d %g %g %g\n", j, sumw[j], sumE[j], invw[j]);
        }
-       if ( cnt1 > 0 ) {
-         ave1 /= cnt1;
-         A1 /= cnt1;
+       if ( den1 > 0 ) {
+         ave1 /= den1;
+         A1 /= den1;
        }
-       if ( cnt0 + cnt1 <= 0 ) return def;
+       if ( den0 + den1 <= 0 ) return def;
        // compute a+ and a-
-       BigReal aplus = (cnt0 + cnt1 > 0) ? (A0 - A2) / (A0 - A1) : 0;
+       double aplus = ( den0 + den1 > 0 ) ? (A0 - A2) / (A0 - A1) : 0;
        if ( aplus < 0 ) aplus = 0;
        if ( aplus > 1 ) aplus = 1;
-       BigReal aminus = 1 - aplus;
+       double aminus = 1 - aplus;
        //CkPrintf("A0 %g, A1 %g, A2 %g, a- %g, a+ %g, ave %g, %g, %g\n", A0, A1, A2, aminus, aplus, ave0, ave1, aminus * ave0 + aplus * ave1); getchar();
        return aminus * ave0 + aplus * ave1;
      }
    };
    AdaptTempSepAcc *adaptTempSepAcc;
-   int adaptTempMCTot, adaptTempMCAcc;
-   BigReal *adaptTempPotEnergyAveNum;
-   BigReal *adaptTempPotEnergyAveDen;
-   BigReal *adaptTempPotEnergyVarNum;
-   BigReal *adaptTempPotEnergyAve;
-   BigReal *adaptTempPotEnergyVar;
-   int     *adaptTempPotEnergySamples;
+   double  adaptTempMCTot, adaptTempMCAcc, adaptTempMCDAcc;
+   double  *adaptTempPotEnergyAveNum;
+   double  *adaptTempPotEnergyAveDen;
+   double  *adaptTempPotEnergyVarNum;
+   double  *adaptTempPotEnergyAve;
+   double  *adaptTempPotEnergyVar;
+   long    *adaptTempPotEnergySamples;
    BigReal *adaptTempBetaN;
    BigReal adaptTempT;
    BigReal adaptTempDTave;
