@@ -99,8 +99,6 @@ void CollectionMaster::disposeSpecPositions(CollectVectorInstance *c)
     }
     BigReal dist = endtoend.length();
     CkPrintf("step %d, end-to-end distance %g\n", seq, dist);
-    //CkPrintf("step %d, end-to-end distance %g: (%g, %g, %g)\n",
-    //    seq, dist, endtoend.x, endtoend.y, endtoend.z);
     c->free();
 }
  

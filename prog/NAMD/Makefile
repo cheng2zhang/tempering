@@ -30,9 +30,9 @@ thstat.patch::
 NAMD_thstat.zip::
 	$(RM) -f $@
 	$(MAKE) -B thstat.patch
-	zip -r $@ thstat* Nose*.pdf vrescal*.pdf *.html \
+	zip -r $@ thstat* *.html \
 	  README.thstat.md \
-	  doc/vsTmove.tex doc/vsTmove.pdf \
+	  doc/vsTmove.tex doc/*.pdf \
 	  doc/fig/*.gp doc/fig/*.eps doc/fig/*.pdf \
 	  test/Argon_NAMD_ST/*.prm \
 	  test/Argon_NAMD_ST/*.conf \
@@ -49,9 +49,9 @@ NAMD_thstat.zip::
 NAMD_spec.zip::
 	$(RM) -f $@
 	$(MAKE) -B spec.patch
-	zip -r $@ spec* Nose*.pdf vrescal*.pdf *.html \
+	zip -r $@ spec* *.html \
 	  README.thstat.md README.spec.md \
-	  doc/vsTmove.tex doc/vsTmove.pdf \
+	  doc/vsTmove.tex doc/*.pdf \
 	  doc/fig/*.gp doc/fig/*.eps doc/fig/*.pdf \
 	  test/Argon_NAMD_ST/*.prm \
 	  test/Argon_NAMD_ST/*.conf \
@@ -65,3 +65,7 @@ NAMD_spec.zip::
 	  ./mkhist.py \
 	  test/alanin/*.conf
 
+Bossman:
+	make NAMD_thstat.zip
+	make NAMD_spec.zip
+	rsync -avz NAMD_*.zip /Bossman/cz1/tempering/ 

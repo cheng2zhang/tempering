@@ -5,19 +5,19 @@
 
 This patch contains several modifications to NAMD 2.11:
 
-  * The correction of the velocity-scaling problem (due to Justin) after temperature transitions in adaptive tempering.
+  * Velocities rescaling after temperature transitions in adaptive tempering (due to Justin).
   * Fixing (hopefully) the one-step mismatch problem in Sequencer.C and Controller.C.
   * Fixing the bin index overflow problem (due to Justin) in adaptTempUpdate() in Controller.C.
   * Properly overwriting (instead of appending) the restart file (due to Justin).
   * Computing the potential energy at the beginning adaptTempUpdate() (due to Justin).
-  * Smaller default value Langevin equation (due to Justin).
-  * Modifying the integral identity.
-  * Limiting temperature transition until a certain number of samples per bin.
-  * Implementing the separate accumulator scheme.
+  * Smaller default value of time step of integrating the Langevin equation (due to Justin).
+  * Holding back temperature transitions until a certain number of samples per bin (due to Justin).
+  * Number-of-visits-weighted integral identity.
+  * Implementing the separate accumulator scheme for adaptive averaging.
   * Implementing the Monte Carlo scheme for temperature transitions.
-  * Fine-tuning of the overall temperature distribution.
-  * Disabling the code for the ad hoc adaptTempRandom scheme, which lacks theoretically foundation.
-  * Issuing a warning for using adaptive tempering with the original velocity rescaling, which does not rigorously sample the Boltzmann distribution.
+  * Fine tuning of the overall temperature distribution.
+  * Disabling the code for the ad hoc adaptTempRandom scheme.
+  * Issuing a warning for using adaptive tempering with the original velocity rescaling scheme.
   * Miscellaneous modifications.
   * Integrating the Langevin-style velocity-rescaling thermostat and Nose-Hoover thermostat.
   * Adaptively rescaling the velocity to approach an asymptotic microcanonical ensemble.
@@ -25,11 +25,11 @@ This patch contains several modifications to NAMD 2.11:
   * Logging the potential energy.
 
 
-#### Velocity-scaling after temperature transition
+#### Velocity rescaling after temperature transitions
 
 Since the temperature is a dynamic variable in adaptive tempering,
-the velocities must be scaled corresponding after a temperature transition.
-The original implementation lacks this step, and thus is incorrect.
+the velocities must be rescaled correspondingly after a temperature transition.
+Simulated tempering based on the potential energy does not work without this step.
 Please see details in doc/vsTmove.pdf, and ../test/Argon_NAMD_ST/cmp.png for an example.
 
 #### One-step mismatch in Controller.C and Sequencer.C
@@ -45,10 +45,11 @@ if the Sequencers receive the new temperature after the rebalanceLoad() call in 
 the program will crash.
 To fix the problem, we further ask all Sequencers to send a "Hi" message back to the Controller
 upon receiving the new adaptive temperature,
-and the Controller must wait for the Hi messages from all Sequencers before calling rebalanceLoad().
+and the Controller must collect the Hi messages from all Sequencers before calling rebalanceLoad().
 This quick fix appears to prevent the above mentioned problem,
 although the underlying reason is still unclear.
-The code of receiving and sending Hi messages are implemented in the CollectionMaster and CollectionMgr modules, respectively.
+The code of receiving and sending Hi messages are implemented
+in the CollectionMaster and CollectionMgr modules, respectively.
 Please see, e.g., CollectionMgr::submitHi() and CollectionMaster::enqueueHi().
 
 
@@ -61,43 +62,46 @@ But the user should still make sure that the thermostat temperature lying within
 
 #### Properly overwriting the the restart file
 
-Currently the restart file is appended instead of overwritten because of a programming mistake.
-This is fixed in the patch.  If the appending behavior is desired,
-the user can set the option `adaptTempRestartAppend`.
+The restart file was appended instead of overwritten.
+This behavior is modified in the patch.
+By default the restart file is overwritten.
+If appending is desired, the user can set the option `adaptTempRestartAppend`.
 
 #### Recomputing the potential energy in adaptTempUpdate()
 
-The old code deduce the potential energy from the conservation of the total energy.
-But that is inaccurate because the MD integrator only approximately conserves the total energy.
-The code now recompute the potential energy at the beginning of adaptTempUpdate().
-We also attempt to fix a possible bug of how often the LJcorrection is computed.
+Previously, the potential energy was deduced from the conservation of the total energy
+by subtracting the kinetic energy from the total energy.
+But that is inaccurate because the MD integrator only approximately
+conserves the total energy.
+The code now recomputes the potential energy at the beginning of adaptTempUpdate().
 
-#### Smaller default value Langevin equation
+#### Smaller default value of the time step of integrating the Langevin equation
 
-The value recommended in the paper 0.0001 appears to too large in that it broadens
-the potential energy distribution (due to Justin).
-Therefore a smaller value 0.00001
+The value recommended in the paper (JCP, 2010, 132, 244101) 0.0001 appears to too large
+in that it broadens the potential energy distribution (due to Justin).
+Therefore a smaller value 0.00001 is now used.
+Generally, the value should be smaller for larger systems.
 
-#### Modifying the integral identity
+#### Holding back temperature transitions until a certain number of samples per bin
+
+In an initial stage, the temperature often drifts to one end of the temperature spectrum.
+This is due to lack of equilibration and bad initial estimate of the average energy.
+To alleviate this problem, we can hold back temperature transitions until the number of
+samples within the current bin exceeds the number given by `adaptTempSamplesMin`
+```
+adaptTempSamplesMin     2000
+```
+
+#### Number-of-visits-weighted integral identity
 
 The integral identity used for computing the average energy can be modified
 to use the number of visits as a weighting factor.
 This modification hopefully improve the stability during the equilibration stage.
 
-#### Limiting temperature transition until a certain number of samples per bin
-
-In an initial stage, the temperature can readily drift to one end of
-the temperature spectrum (due to Justin).
-This is due to lack of equilibration and bad initial estimate of the average energy.
-To alleviate this problem, we can avoid temperature transition until the number of
-samples within the current bin exceeds a certain amount by setting the option `adaptTempSamplesMin`
-```
-adaptTempSamplesMin     1000
-```
-
 #### Implementing a Monte Carlo scheme for temperature transitions
 
-In addition to the Langevin equation, adaptive tempering can now be done through a Monte Carlo scheme.
+In addition to the Langevin equation approach,
+adaptive tempering can now be done through direct Monte Carlo.
 To use this feature, set
 ```
 adaptTempMCMove    on
@@ -105,6 +109,8 @@ adaptTempMCSize    0.01
 ```
 The move size, specified by `adaptTempMCSize` is given as a fraction of the current temperature.
 The value should be adjusted such that the acceptance ratio ACC. RATIO printed out on the screen is roughly 50%.
+With a proper adaptTempMCSize, the Monte Carlo scheme is recommended over
+the Langevin equation scheme for accuracy and efficiency.
 
 #### Implementing the separate accumulator scheme
 
@@ -124,7 +130,7 @@ will be appended to the restart file.
 The overall temperature distribution can now be tuned by the new parameter `adaptTempWeightExp`.
 In terms of the distribution of the inverse-temperature, beta, this parameter corresponds to x as in
   w(beta) ~ 1/beta^x.
-Equivalently, the distribution of temperature T, is given by T^(x-2).
+Equivalently, the distribution of temperature T, is given by T^(x - 2).
 Thus, to achieve a flat-T histogram, we need to set x = 2.
 To achieve a flat-beta histogram, we need to set x = 0.
 The default value is 1.0, which corresponds to a flat-ln(T) histogram. 
@@ -136,26 +142,28 @@ adaptTempWeightExp    1
 
 If the Langevin equation drives the temperature out of range,
 the scheme by adaptTempRandom will randomly pick a new temperature in the range.
-This is an ad hoc and theoretically-unfounded strategy.
-Our fix is to simply abandon the invalid temperature transition and keep the old adaptive temperature,
+This strategy is not exact.
+In the new version, an invalid temperature transition is abandoned and
+the old adaptive temperature is kept,
 just as one would do in a failed Monte Carlo move.
 
 #### Issuing a warning for using adaptive tempering with the original velocity rescaling
 
-The orginal velocity rescaling does not sample a canonical distribution.
-Therefore, it should not be used with adaptive tempering for production runs.
+The original velocity rescaling does not sample a canonical distribution.
+Therefore, it is not recommended for use with adaptive tempering for production runs.
 
 #### Miscellaneous modifications
 
   * Adding the inverse temperature as the first column of the restart file (due to Justin).
   * Adding the option `adaptTempWindowSize` to adjust the window size of integral identity (due to Justin).
   * Adding the option `adaptTempFixedAve` to the fix the average energies from the input restart file (due to Justin).
-  * Allowing `adaptTempInFile` and `adaptTempBins` to be set simultaneously, the former overrides the latter.
+  * Allowing `adaptTempInFile` and `adaptTempBins` to be set simultaneously in the configuration file, the former overrides the latter.
   * Using the average energy computed from the integral identity as the average energy in the restart file (the second column).
   * Adding the inverse weight to the last column of the restart file.
   * Throwing out an exception when reading from the restart file fails.
   * Increasing the precision of the restart file.
-  * Reduce the default window size for the integral identity from 0.04 to 0.02.
+  * Reducing the default window size for the integral identity from 0.04 to 0.02.
+  * Trying to change how often the LJcorrection is computed.
 
 #### Integrating the Langevin-style velocity rescaling thermostat and Nose-Hoover thermostat
 
@@ -163,7 +171,7 @@ Currently, the only rigorous thermostat for sampling a Boltzmann distribution is
 However, thermostats based on uniformly scaling the velocity are usually more efficient.
 Please see the demo, thermostat_ljdemo.html, for a comparison of the autocorrelation functions
 of the kinetic energy and velocity.
-We implement two examples of this type of global scaling thermostats.
+We implement two global thermostats based on velocity rescaling.
 
 * The velocity-rescaling thermostat [Bussi, Donadio, and Parrinello, JCP 126, 014101 (2007)].
 * The Nose-Hoover chain thermostat [Martyna, Klein, and Tuckerman, JCP 97, 2635 (1992)].
@@ -213,7 +221,7 @@ This allows the user to specify the masses of the chain variables explicitly.
 Caution.  Thermostats (including the Langevin dynamics and the old velocity rescaling) are exclusive,
 in each simulation, only one thermostat can be turned on.
 
-#### Adaptively rescale the velocity to approach an asymptotic microcanonical ensemble
+#### Adaptively rescaling the velocity to approach an asymptotic microcanonical ensemble
 
 To better control temperature in the microcanonical ensemble,
 we can use the native NAMD mechanism of velocity rescaling,
@@ -232,8 +240,8 @@ The file specified by `rescaleAdaptiveFile` is automatically reloaded.
 In initial runs please delete this file.
 
 By default, we use the exact method to compute dbeta/dE.
-But this can be too demanding on the precision.
-A workaround is to set `rescaleAdaptiveDedk` to a number greater than 1.0,
+But this can be too demanding on the precision,
+a workaround is to set `rescaleAdaptiveDedk` to a number greater than 1.0,
 which is roughly the change of the total energy divided by the
 change of the kinetic energy in response to a temperature change
 ```
@@ -243,7 +251,7 @@ rescaleAdaptiveDedk 1.5
 #### Monitoring the distribution of the (reduced) kinetic energy
 
 To monitor the distribution of the kinetic energy,
-we further supply the following options
+we supply the following options:
 ```
 keHist               on
 keHistBin            1.0

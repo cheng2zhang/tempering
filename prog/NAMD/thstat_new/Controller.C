@@ -2130,10 +2130,17 @@ void Controller::adaptTempInit(int step) {
             adaptTempSepAcc[i].init(adaptTempBinMinus[i], adaptTempBinPlus[i]);
       }
     }
+    // wrap adaptTempT within the range
+    BigReal beta = 1.0 / adaptTempT;
+    if ( beta <  adaptTempBetaMin )
+      beta = adaptTempBetaMin * 0.99 + adaptTempBetaMax * 0.01;
+    if ( beta >= adaptTempBetaMax )
+      beta = adaptTempBetaMin * 0.01 + adaptTempBetaMax * 0.99;
+    adaptTempT = 1.0 / beta;
     if (simParams->adaptTempAutoDt > 0.0) {
        adaptTempAutoDt = true;
-       adaptTempDtMin =  simParams->adaptTempAutoDt - 0.01;
-       adaptTempDtMax =  simParams->adaptTempAutoDt + 0.01;
+       adaptTempDtMin =  simParams->adaptTempAutoDt * 0.5;
+       adaptTempDtMax =  simParams->adaptTempAutoDt * 1.5;
     }
     adaptTempDTave = 0;
     adaptTempDTavenum = 0;
@@ -2190,7 +2197,7 @@ void Controller::adaptTempWriteRestart(int step) {
         for(int j = 0; j < adaptTempBins; ++j) {
           BigReal bet = adaptTempBetaMin + (j + 0.5) * adaptTempDBeta;
           // use printf for better precision control
-          sprintf(s, "%g %g %g %ld %22.14e %22.14e %22.14e %g\n",
+          sprintf(s, "%.12f\t%14.6f\t%14.6f\t%ld\t%22.14e\t%22.14e\t%22.14e\t%10.6f\n",
               adaptTempBetaN[j], adaptTempPotEnergyAve[j], adaptTempPotEnergyVar[j],
               adaptTempPotEnergySamples[j], adaptTempPotEnergyAveNum[j],
               adaptTempPotEnergyVarNum[j], adaptTempPotEnergyAveDen[j],
@@ -2208,7 +2215,7 @@ void Controller::adaptTempWriteRestart(int step) {
                 adaptTempBinMinus[i], adaptTempBinPlus[i], acc->total);
             adaptTempRestartFile << s;
             for ( int j = 0; j < acc->winSize; j++ ) {
-              sprintf(s, "%d %22.14e %22.14e %22.14e %.0f\n", j,
+              sprintf(s, "%d\t%22.14e\t%22.14e\t%22.14e\t%.0f\n", j,
                   acc->sumw[j], acc->ave[j], acc->var[j], acc->cnt[j]);
               adaptTempRestartFile << s;
             }
@@ -2403,14 +2410,14 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
         ( simParams->adaptTempLastStep > 0 && step > simParams->adaptTempLastStep )) return scaled;
     //Calculate Current inverse temperature and bin 
     BigReal adaptTempBeta = 1./adaptTempT;
-    adaptTempBin   = (int)floor((adaptTempBeta - adaptTempBetaMin)/adaptTempDBeta);
+    adaptTempBin = (int) ( (adaptTempBeta - adaptTempBetaMin) / adaptTempDBeta );
 
-    if (adaptTempBin < 0 || adaptTempBin > adaptTempBins)
+    if ( adaptTempBeta < adaptTempBetaMin || adaptTempBin >= adaptTempBins )
         iout << iWARN << " adaptTempBin out of range: adaptTempBin: " << adaptTempBin  
-                               << " adaptTempBeta: " << adaptTempBeta 
-                               << " adaptTempDBeta: " << adaptTempDBeta 
-                               << " betaMin:" << adaptTempBetaMin 
-                               << " betaMax: " << adaptTempBetaMax << "\n";
+                      << " adaptTempBeta: " << adaptTempBeta 
+                      << " adaptTempDBeta: " << adaptTempDBeta 
+                      << " betaMin:" << adaptTempBetaMin 
+                      << " betaMax: " << adaptTempBetaMax << "\n";
     if ( adaptTempBin < 0 ) {
       adaptTempBin = 0;
     } else if ( adaptTempBin >= adaptTempBins ) {
@@ -2524,20 +2531,18 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
                 adaptTempDTave /= adaptTempDTavenum;
                 Frac = 1./adaptTempBetaMin-1./adaptTempBetaMax;
                 Frac = adaptTempDTave/Frac;
-                //if average temperature jump is > 3% of temperature range,
-                //modify jump size to match 3%
+                //if average temperature jump is > simParams->adaptTempAutoDt of temperature range,
+                //modify jump size to match simParams->adaptTempAutoDt
                 iout << "ADAPTEMP: " << step << " FRAC " << Frac << "\n"; 
                 if (Frac > adaptTempDtMax || Frac < adaptTempDtMin) {
-                    Frac = adaptTempDtMax/Frac;
+                    Frac = simParams->adaptTempAutoDt / Frac;
                     iout << "ADAPTEMP: Updating adaptTempDt to ";
                     adaptTempDt *= Frac;
                     iout << adaptTempDt << "\n" << endi;
                 }
                 adaptTempDTave = 0;
                 adaptTempDTavenum = 0;
-
           }
-          
       }
       
       BigReal tScale = dT / adaptTempT;
@@ -2576,7 +2581,7 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
           if ( newsize < 0 ) newsize = 0;
           iout << " MC " << adaptTempMCTot
                << " ACC. RATIO " << std::setprecision(5) << 100.0 * acc << "%"
-               << " DAR" << dacc
+               << " DAR " << dacc
                << " SIZE " << simParams->adaptTempMCSize << " -> " << newsize;
         }
         iout << "\n" << endi;
