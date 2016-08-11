@@ -13,9 +13,11 @@ This patch contains several modifications to NAMD 2.11:
   * Smaller default value of time step of integrating the Langevin equation (due to Justin).
   * Holding back temperature transitions until a certain number of samples per bin (due to Justin).
   * Number-of-visits-weighted integral identity.
-  * Implementing the separate accumulator scheme for adaptive averaging.
+  * Implementing a multiple-step Langevin equation integration scheme.
   * Implementing the Monte Carlo scheme for temperature transitions.
+  * Implementing the separate accumulator scheme for adaptive averaging.
   * Fine tuning of the overall temperature distribution.
+  * Features and options for input restart file.
   * Disabling the code for the ad hoc adaptTempRandom scheme.
   * Issuing a warning for using adaptive tempering with the original velocity rescaling scheme.
   * Miscellaneous modifications.
@@ -98,6 +100,14 @@ The integral identity used for computing the average energy can be modified
 to use the number of visits as a weighting factor.
 This modification hopefully improve the stability during the equilibration stage.
 
+#### Implementing a multiple-step Langevin equation integration scheme
+
+The Langevin equation can now be integrated with multiple sub-steps to improve the accuracy.
+This feature can be turned on by setting `adaptTempDtSteps`
+```
+adaptTempDtSteps    10
+```
+
 #### Implementing a Monte Carlo scheme for temperature transitions
 
 In addition to the Langevin equation approach,
@@ -138,6 +148,25 @@ The default value is 1.0, which corresponds to a flat-ln(T) histogram.
 adaptTempWeightExp    1
 ```
 
+#### Feature and options for the restart file
+
+Several options are added to the output restart file.
+  * Adding the inverse temperature as the first column of the restart file (due to Justin).
+  * Using the average energy computed from the integral identity as the average energy in the restart file (the second column).
+  * Adding the inverse weight to the last column of the restart file.
+  * Increasing the precision of the restart file.
+
+Two options are added to use the input restart file. 
+The option `adaptTempFixedAve` is now added to fix the average energies (column) read from the input restart file (due to Justin).
+During the simulation, the number of visits and other data will still be accumulated,
+but the second column of the output restart file regarding the average energy will be fixed.
+
+Another option `adaptTempEmpty` is added to empty data after loading the input restart file.
+This feature can be used in conjugation with `adaptTempFixedAve` to see if
+the average energy from the input restart file is able to produce the desired temperature distribution.
+The product of columns four (histogram) and eight (inverse weight) should be roughly a constant after a long run.
+Besides the program now throws out an exception when there is a failure reading the input restart file.
+
 #### Disabling the code for adaptTempRandom
 
 If the Langevin equation drives the temperature out of range,
@@ -154,14 +183,8 @@ Therefore, it is not recommended for use with adaptive tempering for production 
 
 #### Miscellaneous modifications
 
-  * Adding the inverse temperature as the first column of the restart file (due to Justin).
   * Adding the option `adaptTempWindowSize` to adjust the window size of integral identity (due to Justin).
-  * Adding the option `adaptTempFixedAve` to the fix the average energies from the input restart file (due to Justin).
   * Allowing `adaptTempInFile` and `adaptTempBins` to be set simultaneously in the configuration file, the former overrides the latter.
-  * Using the average energy computed from the integral identity as the average energy in the restart file (the second column).
-  * Adding the inverse weight to the last column of the restart file.
-  * Throwing out an exception when reading from the restart file fails.
-  * Increasing the precision of the restart file.
   * Reducing the default window size for the integral identity from 0.04 to 0.02.
   * Trying to change how often the LJcorrection is computed.
 

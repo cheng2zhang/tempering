@@ -553,8 +553,10 @@ public:
         BigReal adaptTempWindowSize;           //  Window size as a fraction of the inverse temperature range
         BigReal adaptTempWeightExp;            //  Exponent x as in the inverse-temperature density w(beta) ~ beta^(-x), 0: flat-beta, 1: flat-lnT, 2: flat-T distribution
         Bool adaptTempMCMove;                  //  Use Monte Carlo to update the temperature
-        BigReal adaptTempMCSize;               //  Magnitude of Monte Carlo temperature moves a faction of the current temperture
-        BigReal adaptTempDt;                   //  timestep for adaptTemp updates - only affects Temperature random walk
+        BigReal adaptTempMCSize;               //  Size of Monte Carlo temperature moves a faction of the current temperture
+        BigReal adaptTempMCSizeInc;            //  Virtual size increment for MC temperature moves
+        BigReal adaptTempDt;                   //  Timestep for adaptTemp updates - only affects Temperature random walk
+        int adaptTempDtSteps;                  //  Number of sub-steps in a temperature update step
         BigReal adaptTempCgamma;               //  Cgamma variable for adaptive bin averaging Cgamma = 0 is normal Averaging. 1 > Cgamma >= 0
         Bool adaptTempLangevin;                //  Couple to Langevin Thermostat
         Bool adaptTempRescale;                 //  Couple to Vel. Rescaling

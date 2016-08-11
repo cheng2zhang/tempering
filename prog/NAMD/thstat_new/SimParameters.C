@@ -1447,10 +1447,13 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
    opts.range("adaptTempWindowSize", NOT_NEGATIVE);
    opts.optional("adaptTempMD", "adaptTempWeightExp", "Exponent x as in the inverse-temperature density, w(beta) ~ beta^(-x), 0: flat-beta, 1: flat-lnT, 2: flat-T distribution", &adaptTempWeightExp, 1.0);
    opts.optionalB("adaptTempMD", "adaptTempMCMove", "Use Monte Carlo to update the temperature", &adaptTempMCMove, FALSE);
-   opts.optional("adaptTempMCMove", "adaptTempMCSize", "Magnitude of Monte Carlo temperature moves as a fraction of the current temperature", &adaptTempMCSize, 0.01);
+   opts.optional("adaptTempMCMove", "adaptTempMCSize", "Size of Monte Carlo temperature moves as a fraction of the current temperature", &adaptTempMCSize, 0.01);
+   opts.optional("adaptTempMCMove", "adaptTempMCSizeInc", "Virtual size increment for MC temperature moves", &adaptTempMCSizeInc, 0.0005);
+   opts.range("adaptTempMCSizeInc", POSITIVE);
    opts.optional("adaptTempMD", "adaptTempDt", "Integration timestep for Temp. updates", &adaptTempDt, 0.00001);
    opts.units("adaptTempDt", N_FSEC);
    opts.range("adaptTempDt", NOT_NEGATIVE);
+   opts.optional("adaptTempMD", "adaptTempDtSteps", "Number of sub-steps in a temperature update step", &adaptTempDtSteps, 1);
    opts.optional("adaptTempMD", "adaptTempAutoDt", "Average temperature update in percent of temperature range", &adaptTempAutoDt, 0.0);
    opts.range("adaptTempAutoDt", NOT_NEGATIVE);
    opts.optional("adaptTempMD", "adaptTempCgamma", "Adaptive bin averaging constant", &adaptTempCgamma, 0.1);

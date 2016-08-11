@@ -296,6 +296,17 @@ protected:
        }
      }
 
+     void empty(void) {
+       for ( int j = 0; j < winSize; j++ ) {
+         sumw[j]  = 0;
+         sumE[j]  = 0;
+         sumE2[j] = 0;
+         ave[j]   = 0;
+         var[j]   = 0;
+         cnt[j]   = 0;
+       }
+     }
+
      // initialize the window
      void init(int minus, int plus) {
        bin0 = minus;
@@ -309,14 +320,6 @@ protected:
        ave   = new double[winSize];
        var   = new double[winSize];
        cnt   = new double[winSize];
-       for ( int j = 0; j < winSize; j++ ) {
-         sumw[j]  = 0;
-         sumE[j]  = 0;
-         sumE2[j] = 0;
-         ave[j]   = 0;
-         var[j]   = 0;
-         cnt[j]   = 0;
-       }
      }
 
      // compute the average and variance of each bin
@@ -413,7 +416,8 @@ protected:
      }
    };
    AdaptTempSepAcc *adaptTempSepAcc;
-   double  adaptTempMCTot, adaptTempMCAcc, adaptTempMCDAcc;
+   double  adaptTempMCTot, adaptTempMCAcc;
+   double  adaptTempMCDAcc, adaptTempMCFail; // accumulators for adjusting the MC size
    double  *adaptTempPotEnergyAveNum;
    double  *adaptTempPotEnergyAveDen;
    double  *adaptTempPotEnergyVarNum;
