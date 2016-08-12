@@ -1464,6 +1464,7 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
    opts.optionalB("adaptTempMD","adaptTempTNHC","Send adaptTemp temperature to Nose-Hoover chain thermostat",&adaptTempTNHC,TRUE);
    opts.optional("adaptTempMD", "adaptTempInFile", "File containing restart information for adaptTemp", adaptTempInFile);
    opts.optionalB("adaptTempInFile", "adaptTempFixedAve", "Fixing the average values from the input restart file", &adaptTempFixedAve, FALSE);
+   opts.optionalB("adaptTempInFile", "adaptTempEmptyData", "Emptying data (except the average energy) after reading the input restart file", &adaptTempEmptyData, FALSE);
    opts.optional("adaptTempMD", "adaptTempRestartFile", "File for writing adaptTemp restart information", adaptTempRestartFile);
    opts.require("adaptTempRestartFile","adaptTempRestartFreq", "Frequency of writing restart file", &adaptTempRestartFreq,0);
    opts.range("adaptTempRestartFreq",NOT_NEGATIVE);

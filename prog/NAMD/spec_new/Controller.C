@@ -2040,6 +2040,13 @@ void Controller::adaptTempInit(int step) {
             ss >> adaptTempPotEnergyAveDen[j];
             // ss >> readReal; // InvW
             ss.clear(); // clear eof
+            if ( simParams->adaptTempEmptyData ) {
+              adaptTempPotEnergyVar[j] = 0;
+              adaptTempPotEnergySamples[j] = 0;
+              adaptTempPotEnergyAveNum[j] = 0;
+              adaptTempPotEnergyVarNum[j] = 0;
+              adaptTempPotEnergyAveDen[j] = 0;
+            }
             //CkPrintf("%d %g %g %g %ld %g %g %g\nbuf %s", j, readReal, adaptTempPotEnergyAve[j],
             //    adaptTempPotEnergyVar[j], adaptTempPotEnergySamples[j],
             //    adaptTempPotEnergyAveNum[j], adaptTempPotEnergyVarNum[j], adaptTempPotEnergyAveDen[j], buf.c_str()); getchar();
@@ -2087,7 +2094,8 @@ void Controller::adaptTempInit(int step) {
                 acc->sumE[j] = acc->sumw[j] * acc->ave[j];
                 acc->sumE2[j] = acc->sumw[j] * (acc->var[j] + acc->ave[j] * acc->ave[j]);
               }
-              std::getline(adaptTempRead, buf);
+              std::getline(adaptTempRead, buf); // blank line
+              if ( simParams->adaptTempEmptyData ) acc->empty();
             }
             std::getline(adaptTempRead, buf);
             if ( strncmp(buf.c_str(), "SEP END", 7) != 0 ) {
@@ -2519,7 +2527,6 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
     // (beta_i,beta_{i+1}) using Eq 2 of JCP 132 244101
     if ( ! ( step % simParams->adaptTempFreq ) ) {
       BigReal dT; // dT is the new temperature
-
       if ( adaptTempPotEnergySamples[adaptTempBin] <= simParams->adaptTempSamplesMin ) {
         // avoid making temperature transitions without enough samples
         dT = adaptTempT;

@@ -2024,6 +2024,13 @@ void Controller::adaptTempInit(int step) {
             ss >> adaptTempPotEnergyAveDen[j];
             // ss >> readReal; // InvW
             ss.clear(); // clear eof
+            if ( simParams->adaptTempEmptyData ) {
+              adaptTempPotEnergyVar[j] = 0;
+              adaptTempPotEnergySamples[j] = 0;
+              adaptTempPotEnergyAveNum[j] = 0;
+              adaptTempPotEnergyVarNum[j] = 0;
+              adaptTempPotEnergyAveDen[j] = 0;
+            }
           }
           for ( int j = 0; j <= adaptTempBins; ++j ) {
             adaptTempBetaN[j] = adaptTempBetaMin + j * adaptTempDBeta;
@@ -2068,7 +2075,8 @@ void Controller::adaptTempInit(int step) {
                 acc->sumE[j] = acc->sumw[j] * acc->ave[j];
                 acc->sumE2[j] = acc->sumw[j] * (acc->var[j] + acc->ave[j] * acc->ave[j]);
               }
-              std::getline(adaptTempRead, buf);
+              std::getline(adaptTempRead, buf); // blank line
+              if ( simParams->adaptTempEmptyData ) acc->empty();
             }
             std::getline(adaptTempRead, buf);
             if ( strncmp(buf.c_str(), "SEP END", 7) != 0 ) {
