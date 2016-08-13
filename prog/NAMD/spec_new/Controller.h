@@ -320,6 +320,7 @@ protected:
        ave   = new double[winSize];
        var   = new double[winSize];
        cnt   = new double[winSize];
+       empty();
      }
 
      // compute the average and variance of each bin
@@ -416,6 +417,7 @@ protected:
      }
    };
    AdaptTempSepAcc *adaptTempSepAcc;
+   double  adaptTempMCSize;
    double  adaptTempMCTot, adaptTempMCAcc;
    double  adaptTempMCDAcc, adaptTempMCFail; // accumulators for adjusting the MC size
    double  *adaptTempPotEnergyAveNum;

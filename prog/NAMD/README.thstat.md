@@ -161,7 +161,7 @@ The option `adaptTempFixedAve` is now added to fix the average energies (column)
 During the simulation, the number of visits and other data will still be accumulated,
 but the second column of the output restart file regarding the average energy will be fixed.
 
-Another option `adaptTempEmpty` is added to empty data after loading the input restart file.
+Another option `adaptTempEmptyData` is added to empty data after loading the input restart file.
 This feature can be used in conjugation with `adaptTempFixedAve` to see if
 the average energy from the input restart file is able to produce the desired temperature distribution.
 The product of columns four (histogram) and eight (inverse weight) should be roughly a constant after a long run.

@@ -1990,10 +1990,9 @@ void Controller::adaptTempInit(int step) {
     adaptTempDtMin = 0;
     adaptTempDtMax = 0;
     adaptTempAutoDt = false;
-    adaptTempMCTot = 0;
-    adaptTempMCAcc = 0;
-    adaptTempMCDAcc = 0;
-    adaptTempMCFail = 0;
+    adaptTempMCSize = simParams->adaptTempMCSize;
+    adaptTempMCTot = adaptTempMCAcc = 0;
+    adaptTempMCDAcc = adaptTempMCFail = 0;
     if (simParams->adaptTempInFile[0] != '\0') {
       iout << iINFO << "READING ADAPTIVE TEMPERING RESTART FILE\n" << endi;
       std::ifstream adaptTempRead(simParams->adaptTempInFile);
@@ -2059,14 +2058,13 @@ void Controller::adaptTempInit(int step) {
           // read in data for separate accumulators
           if ( simParams->adaptTempSepOn ) {
             char info[256];
-            int attempts;
-            for ( attempts = 0; attempts < 10 && std::getline(adaptTempRead, buf); attempts++ ) {
-              if ( strncmp(buf.c_str(), "SEP BEGIN", 9) == 0 )
-                break;
-            }
-            if ( strncmp(buf.c_str(), "SEP BEGIN", 9) != 0 ) {
-              sprintf(info, "No beginning of separate accumulators, file %s, %d attempts\n%s",
-                  simParams->adaptTempInFile, attempts, buf.c_str());
+            try {
+              std::getline(adaptTempRead, buf);
+              if ( strncmp(buf.c_str(), "SEP BEGIN", 9) != 0 )
+                throw std::ios::failure("");
+            } catch ( const std::ios::failure& e ) {
+              sprintf(info, "No beginning for separator accumulators, file %s\n",
+                  simParams->adaptTempInFile);
               NAMD_die(info);
             }
             adaptTempSepAcc = new AdaptTempSepAcc[adaptTempBins];
@@ -2099,12 +2097,12 @@ void Controller::adaptTempInit(int step) {
             }
             std::getline(adaptTempRead, buf);
             if ( strncmp(buf.c_str(), "SEP END", 7) != 0 ) {
-              sprintf(info, "No ending for separator accumulators, file %s\n%s",
-                  simParams->adaptTempInFile, buf.c_str());
+              sprintf(info, "No ending for separator accumulators, file %s\n",
+                  simParams->adaptTempInFile);
               NAMD_die(info);
             }
           }
-        } catch ( std::ios::failure e ) {
+        } catch ( const std::ios::failure& e ) {
           NAMD_die("Failed to read the ADAPTIVE TEMPERING restart file.\n");
         }
         adaptTempRead.close();
@@ -2365,67 +2363,69 @@ BigReal Controller::adaptTempGetPEAve(int i, BigReal def)
 
 BigReal Controller::adaptTempMCMove(BigReal tp, BigReal ep)
 {
-    double lnbeta = log(1./tp), nlnbeta, beta, nbeta, r, delta, epave;
-    int i, ni, j;
+    double beta = 1./tp, nbeta, r, delta, epave, del;
+    int i, ni, j, acc = 0;
     adaptTempMCTot += 1;
     r = random->gaussian();
-    nlnbeta = lnbeta + simParams->adaptTempMCSize * r;
-    nbeta = exp(nlnbeta);
-    beta = 1.0 / tp;
-    i = (int) ( (beta - adaptTempBetaMin) / adaptTempDBeta );
+    nbeta = beta * exp(adaptTempMCSize * r); // evenly change ln(beta)
+    i  = (int) ( (beta  - adaptTempBetaMin) / adaptTempDBeta );
     ni = (int) ( (nbeta - adaptTempBetaMin) / adaptTempDBeta );
     //CkPrintf("delta %g, beta %g, %g, ep %g, i %d, %d\n", delta, beta, nbeta, ep, i, ni);
-    if ( nbeta < adaptTempBetaMin || ni >= adaptTempBins )
-      return tp; // discard an out-of-range move
-    // recompute the average values
-    if ( !simParams->adaptTempFixedAve ) {
-      for ( epave = 0, j = i; ; j += (i <= ni) ? 1 : -1 ) {
-        adaptTempPotEnergyAve[j] = epave = adaptTempGetPEAve(j, epave);
-        if ( j == ni ) break;
+    if ( nbeta >= adaptTempBetaMin && ni < adaptTempBins ) {
+      // recompute the average values from bin i to bin ni
+      if ( !simParams->adaptTempFixedAve ) {
+        for ( epave = 0, j = i; ; j += (i <= ni) ? 1 : -1 ) {
+          adaptTempPotEnergyAve[j] = epave = adaptTempGetPEAve(j, epave);
+          if ( j == ni ) break;
+        }
+      }
+      // compute the integral of E dbeta = Z(old) - Z(new)
+      if ( i < ni ) {
+        epave = adaptTempPotEnergyAve[i];
+        delta = epave * (adaptTempBetaN[i + 1] - beta);
+        for ( j = i + 1; j < ni; j++ ) {
+          epave = adaptTempPotEnergyAve[j];
+          delta += epave * adaptTempDBeta;
+        }
+        epave = adaptTempPotEnergyAve[ni];
+        delta += epave * (nbeta - adaptTempBetaN[ni]);
+      } else if ( i == ni ) {
+        epave = adaptTempPotEnergyAve[i];
+        delta = epave * (nbeta - beta);
+      } else { // i > ni
+        epave = adaptTempPotEnergyAve[i];
+        delta = epave * (adaptTempBetaN[i] - beta);
+        for ( j = i - 1; j > ni; j-- ) {
+          epave = adaptTempPotEnergyAve[j];
+          delta -= epave * adaptTempDBeta;
+        }
+        epave = adaptTempPotEnergyAve[ni];
+        delta += epave * (nbeta - adaptTempBetaN[ni + 1]);
+      }
+      delta = (delta - ep * (nbeta - beta)) / BOLTZMANN
+            + (simParams->adaptTempWeightExp - 1) * log(beta/nbeta);
+      //CkPrintf("delta %g cf %g, beta %g, %g, ep %g, %g, bin %d, %d\n", delta,
+      //    ((adaptTempPotEnergyAve[i]+adaptTempPotEnergyAve[ni])/2 - ep) * (nbeta - beta) / BOLTZMANN,
+      //    beta, nbeta, ep, epave, i, ni); // getchar();
+      acc = ( delta > 0 || random->uniform() < exp(delta) );
+      adaptTempMCAcc += acc;
+      if ( acc ) { // for d(acc. ratio)/d(ln beta)
+        if ( delta < 0 ) {
+          del = (ep - epave) * nbeta / BOLTZMANN + (simParams->adaptTempWeightExp - 1);
+          adaptTempMCDAcc += (nbeta > beta ? -del : del);
+        }
+        double mbeta = beta * exp((adaptTempMCSize + simParams->adaptTempMCSizeInc) * r);
+        if ( mbeta < adaptTempBetaMin || mbeta >= adaptTempBetaMax )
+          adaptTempMCFail += 1;
       }
     }
-    // compute the integral of E dbeta
-    // which is equal to Z(old) - Z(new)
-    if ( i < ni ) {
-      epave = adaptTempPotEnergyAve[i];
-      delta = epave * (adaptTempBetaN[i+1] - beta);
-      for ( j = i + 1; j < ni; j++ ) {
-        epave = adaptTempPotEnergyAve[j];
-        delta += epave * adaptTempDBeta;
-      }
-      epave = adaptTempPotEnergyAve[ni];
-      delta += epave * (nbeta - adaptTempBetaN[ni]);
-    } else if ( i == ni ) {
-      epave = adaptTempPotEnergyAve[i];
-      delta = epave * (nbeta - beta);
-    } else { // i > ni
-      epave = adaptTempPotEnergyAve[i];
-      delta = epave * (adaptTempBetaN[i] - beta);
-      for ( j = i - 1; j > ni; j-- ) {
-        epave = adaptTempPotEnergyAve[j];
-        delta -= epave * adaptTempDBeta;
-      }
-      epave = adaptTempPotEnergyAve[ni];
-      delta += epave * (nbeta - adaptTempBetaN[ni + 1]);
-    }
-    delta = (delta - ep * (nbeta - beta)) / BOLTZMANN
-          + (simParams->adaptTempWeightExp - 1) * log(beta/nbeta);
-    if ( simParams->adaptTempDebug ) {
-      CkPrintf("delta %g cf %g, beta %g, %g, ep %g, %g, bin %d, %d\n", delta,
-          ((adaptTempPotEnergyAve[i]+adaptTempPotEnergyAve[ni])/2 - ep) * (nbeta - beta) / BOLTZMANN,
-          beta, nbeta, ep, epave, i, ni); // getchar();
-    }
-    int acc = ( delta > 0 || random->uniform() < exp(delta) );
-    adaptTempMCAcc += acc;
-    if ( acc ) { // for d(acc. ratio)/d(ln beta)
-      if ( delta < 0 ) {
-        double del = (ep - epave) * nbeta / BOLTZMANN + (simParams->adaptTempWeightExp - 1);
-        adaptTempMCDAcc += (nbeta > beta ? -del : del);
-      }
-      double mbeta = exp(lnbeta + (simParams->adaptTempMCSize
-                                 + simParams->adaptTempMCSizeInc) * r);
-      if ( mbeta < adaptTempBetaMin || mbeta >= adaptTempBetaMax )
-        adaptTempMCFail += 1;
+    // adjust the MC move size automatically
+    if ( simParams->adaptTempMCAutoAR > 0 && adaptTempMCTot > 100 ) {
+      double dacc = adaptTempMCDAcc - adaptTempMCFail / simParams->adaptTempMCSizeInc;
+      del = ( simParams->adaptTempMCAutoAR - acc ) / dacc;
+      if ( del >  0.5 * adaptTempMCSize ) del =  0.5 * adaptTempMCSize;
+      if ( del < -0.5 * adaptTempMCSize ) del = -0.5 * adaptTempMCSize;
+      adaptTempMCSize += del;
     }
     return acc ? 1.0/nbeta : tp;
 }
@@ -2610,12 +2610,13 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
           BigReal dacc = adaptTempMCDAcc / adaptTempMCTot;
           dacc -= adaptTempMCFail / simParams->adaptTempMCSizeInc / adaptTempMCTot;
           if ( dacc > -0.01 ) dacc = -0.01;
-          BigReal newsize = simParams->adaptTempMCSize + (0.5 - acc) / dacc;
+          BigReal ar = simParams->adaptTempMCAutoAR;
+          if ( ar <= 0 ) ar = 0.5;
+          BigReal newsize = adaptTempMCSize + (ar - acc) / dacc;
           if ( newsize < 0 ) newsize = 0;
-          iout << " MC " << adaptTempMCTot
+          iout << " MC " << adaptTempMCTot << "(" << adaptTempMCFail << ")"
                << " ACC. RATIO " << std::setprecision(5) << 100.0 * acc << "%"
-               << " DAR " << dacc
-               << " SIZE " << simParams->adaptTempMCSize << " -> " << newsize;
+               << " DAR " << dacc << " SIZE " << adaptTempMCSize << " -> " << newsize;
         }
         iout << "\n" << endi;
    }

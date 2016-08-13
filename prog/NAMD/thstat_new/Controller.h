@@ -417,6 +417,7 @@ protected:
      }
    };
    AdaptTempSepAcc *adaptTempSepAcc;
+   double  adaptTempMCSize;
    double  adaptTempMCTot, adaptTempMCAcc;
    double  adaptTempMCDAcc, adaptTempMCFail; // accumulators for adjusting the MC size
    double  *adaptTempPotEnergyAveNum;

@@ -555,6 +555,7 @@ public:
         Bool adaptTempMCMove;                  //  Use Monte Carlo to update the temperature
         BigReal adaptTempMCSize;               //  Size of Monte Carlo temperature moves a faction of the current temperture
         BigReal adaptTempMCSizeInc;            //  Virtual size increment for MC temperature moves
+        BigReal adaptTempMCAutoAR;             //  Target acceptance ratio for automatic adjustment of the size of MC temperature moves
         BigReal adaptTempDt;                   //  Timestep for adaptTemp updates - only affects Temperature random walk
         int adaptTempDtSteps;                  //  Number of sub-steps in a temperature update step
         BigReal adaptTempCgamma;               //  Cgamma variable for adaptive bin averaging Cgamma = 0 is normal Averaging. 1 > Cgamma >= 0

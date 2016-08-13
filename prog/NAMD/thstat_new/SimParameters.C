@@ -1450,6 +1450,8 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
    opts.optional("adaptTempMCMove", "adaptTempMCSize", "Size of Monte Carlo temperature moves as a fraction of the current temperature", &adaptTempMCSize, 0.01);
    opts.optional("adaptTempMCMove", "adaptTempMCSizeInc", "Virtual size increment for MC temperature moves", &adaptTempMCSizeInc, 0.0005);
    opts.range("adaptTempMCSizeInc", POSITIVE);
+   opts.optional("adaptTempMCMove", "adaptTempMCAutoAR", "Target acceptance ratio for automatic adjustment of the size of MC temperature moves", &adaptTempMCAutoAR, 0.0);
+   opts.range("adaptTempMCAutoAR", POSITIVE);
    opts.optional("adaptTempMD", "adaptTempDt", "Integration timestep for Temp. updates", &adaptTempDt, 0.00001);
    opts.units("adaptTempDt", N_FSEC);
    opts.range("adaptTempDt", NOT_NEGATIVE);
