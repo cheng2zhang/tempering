@@ -2102,6 +2102,15 @@ void Controller::adaptTempInit(int step) {
               NAMD_die(info);
             }
           }
+          try { // to read MC data
+            std::getline(adaptTempRead, buf);
+            if ( strncmp(buf.c_str(), "MC ", 3) == 0 ) {
+              sscanf(buf.c_str(), "%lf%lf%lf%lf%lf", &adaptTempMCSize,
+                  &adaptTempMCTot, &adaptTempMCAcc, &adaptTempMCDAcc, &adaptTempMCFail);
+            }
+          } catch ( const std::ios::failure& e ) {
+            iout << "Failed to read MC data from " <<  simParams->adaptTempInFile << "\n" << endi;
+          }
         } catch ( const std::ios::failure& e ) {
           NAMD_die("Failed to read the ADAPTIVE TEMPERING restart file.\n");
         }
@@ -2253,6 +2262,9 @@ void Controller::adaptTempWriteRestart(int step) {
           }
           adaptTempRestartFile << "SEP END\n";
         }
+        sprintf(s, "MC %g %.0f %.0f %22.14e %.0f\n", adaptTempMCSize,
+            adaptTempMCTot, adaptTempMCAcc, adaptTempMCDAcc, adaptTempMCFail);
+        adaptTempRestartFile << s;
         adaptTempRestartFile.flush(); 
     }
 }    
@@ -2421,7 +2433,12 @@ BigReal Controller::adaptTempMCMove(BigReal tp, BigReal ep)
     }
     // adjust the MC move size automatically
     if ( simParams->adaptTempMCAutoAR > 0 && adaptTempMCTot > 100 ) {
-      double dacc = adaptTempMCDAcc - adaptTempMCFail / simParams->adaptTempMCSizeInc;
+      double dacc = adaptTempMCDAcc;
+      if ( adaptTempMCFail > 5 ) { // out-of-boundary rejections 
+        dacc -= adaptTempMCFail / simParams->adaptTempMCSizeInc;
+      } else { // approximation
+        dacc -= 2 * adaptTempMCAcc;
+      }
       del = ( simParams->adaptTempMCAutoAR - acc ) / dacc;
       if ( del >  0.5 * adaptTempMCSize ) del =  0.5 * adaptTempMCSize;
       if ( del < -0.5 * adaptTempMCSize ) del = -0.5 * adaptTempMCSize;

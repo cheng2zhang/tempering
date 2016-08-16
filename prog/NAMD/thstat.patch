@@ -251,7 +251,7 @@ diff -u -wdB thstat_old/common.C thstat_new/common.C
    while ( close(fd) ) {
 diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 --- thstat_old/Controller.C	2015-12-17 15:22:03.000000000 -0600
-+++ thstat_new/Controller.C	2016-08-12 20:25:18.558344236 -0500
++++ thstat_new/Controller.C	2016-08-12 20:36:08.125271854 -0500
 @@ -184,6 +184,10 @@
      random->split(0,PatchMap::Object()->numPatches()+1);
  
@@ -1260,7 +1260,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
              << "     nMinus:    " << nMinus << "\n"
              << "     nPlus:     " << nPlus << "\n"
              << "     A0:        " << A0 << "\n"
-@@ -1851,105 +2326,209 @@
+@@ -1851,105 +2326,208 @@
              << "     A2:        " << A2 << "\n"
              << "     a+:        " << aplus << "\n"
              << "     a-:        " << aminus << "\n"
@@ -1416,8 +1416,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 -                adaptTempDTave = 0;
 -                adaptTempDTavenum = 0;
 +    // adjust the MC move size automatically
-+    if ( simParams->adaptTempMCAutoAR > 0
-+      && adaptTempMCTot > 100 && adaptTempMCFail > 5 ) {
++    if ( simParams->adaptTempMCAutoAR > 0 && adaptTempMCTot > 100 ) {
 +      double dacc = adaptTempMCDAcc - adaptTempMCFail / simParams->adaptTempMCSizeInc;
 +      del = ( simParams->adaptTempMCAutoAR - acc ) / dacc;
 +      if ( del >  0.5 * adaptTempMCSize ) del =  0.5 * adaptTempMCSize;
@@ -1552,7 +1551,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
            //update temperature step size counter
            // FOR "TRUE" ADAPTIVE TEMPERING
            BigReal adaptTempTdiff = fabs(dT-adaptTempT);
-@@ -1963,11 +2542,11 @@
+@@ -1963,11 +2541,11 @@
                  adaptTempDTave /= adaptTempDTavenum;
                  Frac = 1./adaptTempBetaMin-1./adaptTempBetaMax;
                  Frac = adaptTempDTave/Frac;
@@ -1567,7 +1566,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
                      iout << "ADAPTEMP: Updating adaptTempDt to ";
                      adaptTempDt *= Frac;
                      iout << adaptTempDt << "\n" << endi;
-@@ -1974,24 +2553,53 @@
+@@ -1974,24 +2552,53 @@
                  }
                  adaptTempDTave = 0;
                  adaptTempDTavenum = 0;
@@ -1627,7 +1626,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
  }
  
  
-@@ -2277,6 +2885,15 @@
+@@ -2277,6 +2884,15 @@
        electEnergy = reduction->item(REDUCTION_ELECT_ENERGY);
        ljEnergy = reduction->item(REDUCTION_LJ_ENERGY);
  
@@ -1643,7 +1642,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
        // JLai
        groLJEnergy = reduction->item(REDUCTION_GRO_LJ_ENERGY);
        groGaussEnergy = reduction->item(REDUCTION_GRO_GAUSS_ENERGY);
-@@ -2310,16 +2927,6 @@
+@@ -2310,16 +2926,6 @@
  //fepe
      }
  
@@ -1660,7 +1659,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
      momentum.x = reduction->item(REDUCTION_MOMENTUM_X);
      momentum.y = reduction->item(REDUCTION_MOMENTUM_Y);
      momentum.z = reduction->item(REDUCTION_MOMENTUM_Z);
-@@ -3147,6 +3754,7 @@
+@@ -3147,6 +3753,7 @@
      ldbSteps = LdbCoordinator::Object()->getNumStepsToRun();
    }
    if ( ! --ldbSteps ) {

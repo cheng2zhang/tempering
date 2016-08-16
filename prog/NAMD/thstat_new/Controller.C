@@ -1977,6 +1977,7 @@ void Controller::adaptTempInit(int step) {
     adaptTempMCSize = simParams->adaptTempMCSize;
     adaptTempMCTot = adaptTempMCAcc = 0;
     adaptTempMCDAcc = adaptTempMCFail = 0;
+    adaptTempLangTot = adaptTempLangAcc = 0;
     if (simParams->adaptTempInFile[0] != '\0') {
       iout << iINFO << "READING ADAPTIVE TEMPERING RESTART FILE\n" << endi;
       std::ifstream adaptTempRead(simParams->adaptTempInFile);
@@ -2082,6 +2083,19 @@ void Controller::adaptTempInit(int step) {
                   simParams->adaptTempInFile);
               NAMD_die(info);
             }
+          }
+          try { // to read MC data
+            std::getline(adaptTempRead, buf);
+            const char *p = buf.c_str();
+            if ( strncmp(p, "MC ", 3) == 0 ) {
+              sscanf(p + 3, "%lf%lf%lf%lf%lf", &adaptTempMCSize,
+                  &adaptTempMCTot, &adaptTempMCAcc, &adaptTempMCDAcc, &adaptTempMCFail);
+            } else if ( strncmp(p, "LANGEVIN ", 9) == 0 ) {
+              sscanf(p + 9, "%lf%lf", &adaptTempLangTot, &adaptTempLangAcc);
+            }
+            //CkPrintf("%s\n%g %g %g\n",buf.c_str(), adaptTempMCSize, adaptTempMCTot, adaptTempMCAcc); getchar();
+          } catch ( const std::ios::failure& e ) {
+            iout << "Failed to read MC/Langevin data from " <<  simParams->adaptTempInFile << "\n" << endi;
           }
         } catch ( const std::ios::failure& e ) {
           NAMD_die("Failed to read the ADAPTIVE TEMPERING restart file.\n");
@@ -2230,6 +2244,13 @@ void Controller::adaptTempWriteRestart(int step) {
           }
           adaptTempRestartFile << "SEP END\n";
         }
+        if ( simParams->adaptTempMCMove ) {
+          sprintf(s, "MC %g %.0f %.0f %22.14e %.0f\n", adaptTempMCSize,
+              adaptTempMCTot, adaptTempMCAcc, adaptTempMCDAcc, adaptTempMCFail);
+        } else {
+          sprintf(s, "Langevin %.0f %.0f\n", adaptTempLangTot, adaptTempLangAcc);
+        }
+        adaptTempRestartFile << s;
         adaptTempRestartFile.flush(); 
     }
 }    
@@ -2338,10 +2359,49 @@ BigReal Controller::adaptTempGetPEAve(int i, BigReal def)
     return potEnergyAverage;
 }
 
+// return Integral { beta to nbeta } E(beta) d beta
+BigReal Controller::adaptTempGetIntE(BigReal beta, int i, BigReal nbeta, int ni,
+    double& epave)
+{
+  double delta;
+  int j;
+  // recompute the average values from bin i to bin ni
+  if ( !simParams->adaptTempFixedAve ) {
+    for ( epave = 0, j = i; ; j += (i <= ni) ? 1 : -1 ) {
+      adaptTempPotEnergyAve[j] = epave = adaptTempGetPEAve(j, epave);
+      if ( j == ni ) break;
+    }
+  }
+  // compute the integral of E dbeta = Z(old) - Z(new)
+  if ( i < ni ) {
+    epave = adaptTempPotEnergyAve[i];
+    delta = epave * (adaptTempBetaN[i + 1] - beta);
+    for ( j = i + 1; j < ni; j++ ) {
+      epave = adaptTempPotEnergyAve[j];
+      delta += epave * adaptTempDBeta;
+    }
+    epave = adaptTempPotEnergyAve[ni];
+    delta += epave * (nbeta - adaptTempBetaN[ni]);
+  } else if ( i == ni ) {
+    epave = adaptTempPotEnergyAve[i];
+    delta = epave * (nbeta - beta);
+  } else { // i > ni
+    epave = adaptTempPotEnergyAve[i];
+    delta = epave * (adaptTempBetaN[i] - beta);
+    for ( j = i - 1; j > ni; j-- ) {
+      epave = adaptTempPotEnergyAve[j];
+      delta -= epave * adaptTempDBeta;
+    }
+    epave = adaptTempPotEnergyAve[ni];
+    delta += epave * (nbeta - adaptTempBetaN[ni + 1]);
+  }
+  return delta;
+}
+
 BigReal Controller::adaptTempMCMove(BigReal tp, BigReal ep)
 {
     double beta = 1./tp, nbeta, r, delta, epave, del;
-    int i, ni, j, acc = 0;
+    int i, ni, acc = 0;
     adaptTempMCTot += 1;
     r = random->gaussian();
     nbeta = beta * exp(adaptTempMCSize * r); // evenly change ln(beta)
@@ -2349,36 +2409,7 @@ BigReal Controller::adaptTempMCMove(BigReal tp, BigReal ep)
     ni = (int) ( (nbeta - adaptTempBetaMin) / adaptTempDBeta );
     //CkPrintf("delta %g, beta %g, %g, ep %g, i %d, %d\n", delta, beta, nbeta, ep, i, ni);
     if ( nbeta >= adaptTempBetaMin && ni < adaptTempBins ) {
-      // recompute the average values from bin i to bin ni
-      if ( !simParams->adaptTempFixedAve ) {
-        for ( epave = 0, j = i; ; j += (i <= ni) ? 1 : -1 ) {
-          adaptTempPotEnergyAve[j] = epave = adaptTempGetPEAve(j, epave);
-          if ( j == ni ) break;
-        }
-      }
-      // compute the integral of E dbeta = Z(old) - Z(new)
-      if ( i < ni ) {
-        epave = adaptTempPotEnergyAve[i];
-        delta = epave * (adaptTempBetaN[i + 1] - beta);
-        for ( j = i + 1; j < ni; j++ ) {
-          epave = adaptTempPotEnergyAve[j];
-          delta += epave * adaptTempDBeta;
-        }
-        epave = adaptTempPotEnergyAve[ni];
-        delta += epave * (nbeta - adaptTempBetaN[ni]);
-      } else if ( i == ni ) {
-        epave = adaptTempPotEnergyAve[i];
-        delta = epave * (nbeta - beta);
-      } else { // i > ni
-        epave = adaptTempPotEnergyAve[i];
-        delta = epave * (adaptTempBetaN[i] - beta);
-        for ( j = i - 1; j > ni; j-- ) {
-          epave = adaptTempPotEnergyAve[j];
-          delta -= epave * adaptTempDBeta;
-        }
-        epave = adaptTempPotEnergyAve[ni];
-        delta += epave * (nbeta - adaptTempBetaN[ni + 1]);
-      }
+      delta = adaptTempGetIntE(beta, i, nbeta, ni, epave);
       delta = (delta - ep * (nbeta - beta)) / BOLTZMANN
             + (simParams->adaptTempWeightExp - 1) * log(beta/nbeta);
       //CkPrintf("delta %g cf %g, beta %g, %g, ep %g, %g, bin %d, %d\n", delta,
@@ -2398,13 +2429,49 @@ BigReal Controller::adaptTempMCMove(BigReal tp, BigReal ep)
     }
     // adjust the MC move size automatically
     if ( simParams->adaptTempMCAutoAR > 0 && adaptTempMCTot > 100 ) {
-      double dacc = adaptTempMCDAcc - adaptTempMCFail / simParams->adaptTempMCSizeInc;
+      double dacc = adaptTempMCDAcc;
+      if ( adaptTempMCFail > 5 ) { // out-of-boundary rejections 
+        dacc -= adaptTempMCFail / simParams->adaptTempMCSizeInc;
+      } else { // approximation
+        dacc -= 2 * adaptTempMCAcc;
+      }
       del = ( simParams->adaptTempMCAutoAR - acc ) / dacc;
       if ( del >  0.5 * adaptTempMCSize ) del =  0.5 * adaptTempMCSize;
       if ( del < -0.5 * adaptTempMCSize ) del = -0.5 * adaptTempMCSize;
       adaptTempMCSize += del;
     }
     return acc ? 1.0/nbeta : tp;
+}
+
+BigReal Controller::adaptTempLangevin(BigReal tp, BigReal ep)
+{
+  double beta = 1./tp;
+  int i = (int) ( (beta - adaptTempBetaMin) / adaptTempDBeta );
+  double epave = adaptTempGetPEAve(i, 0);
+  double r = random->gaussian();
+  double dt = simParams->adaptTempDt;
+  double a = sqrt(2. * dt);
+  double x = simParams->adaptTempWeightExp;
+  //double dtp = r * a * tp;
+  double dtp = ( (ep - epave) / BOLTZMANN + tp * x) * dt + r * a * tp;
+  double ntp = tp + dtp;
+  double nbeta = 1./ntp;
+  int ni = (int) ( (nbeta - adaptTempBetaMin) / adaptTempDBeta );
+  // use the Monte Carlo scheme to accept the new temperature
+  int acc = 0;
+  if ( nbeta >= adaptTempBetaMin && ni < adaptTempBins ) {
+    double nepave;
+    double delta = adaptTempGetIntE(beta, i, nbeta, ni, nepave);
+    //double nr = -dtp / (a * ntp);
+    double nr = (-dtp - ((ep - nepave)/BOLTZMANN + ntp * x) * dt) / (a * ntp);
+    delta = ((beta - nbeta) * ep + delta) / BOLTZMANN
+             + (x - 3) * log(beta/nbeta)  + (r*r - nr*nr)/2;
+    acc = ( delta > 0 || random->uniform() < exp(delta) );
+    //CkPrintf("acc %d, delta %g, beta %g, %g, ep %g, i %d, %d\n", acc, delta, beta, nbeta, ep, i, ni);
+  }
+  adaptTempLangTot += 1;
+  adaptTempLangAcc += acc;
+  return acc ? ntp : tp;
 }
 
 Bool Controller::adaptTempUpdate(int step, int minimize)
@@ -2511,16 +2578,7 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
       } else if ( simParams->adaptTempMCMove ) { // Monte Carlo temperature update
         dT = adaptTempMCMove(adaptTempT, potentialEnergy);
       } else { // Langevin equation temperature update
-        BigReal tp = adaptTempT, ntp, PEAve = 0;
-        BigReal dt = adaptTempDt / simParams->adaptTempDtSteps;
-        for ( int k = 0; k < simParams->adaptTempDtSteps; k++ ) { // multiple sub-steps
-          int i = (int) ((1./tp - adaptTempBetaMin) / adaptTempDBeta);
-          PEAve = simParams->adaptTempFixedAve ? adaptTempPotEnergyAve[i] : adaptTempGetPEAve(i, PEAve);
-          ntp = tp + ( (potentialEnergy - PEAve) / BOLTZMANN + tp * simParams->adaptTempWeightExp ) * dt
-                   + random->gaussian() * sqrt(2. * dt) * tp;
-          if ( ntp >= 1./adaptTempBetaMax && ntp < 1./adaptTempBetaMin ) tp = ntp;
-        }
-        dT = tp;
+        dT = adaptTempLangevin(adaptTempT, potentialEnergy);
      }
 
      // Check if dT in [adaptTempTmin,adaptTempTmax]. If not try simpler estimate of mean
@@ -2583,18 +2641,24 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
              << " ENERGY " << std::setprecision(10) << potentialEnergy   
              << " ENERGYAVG " << adaptTempPotEnergyAve[adaptTempBin]
              << " ENERGYVAR " << adaptTempPotEnergyVar[adaptTempBin];
-        if ( simParams->adaptTempMCMove && adaptTempMCTot > 0 ) {
-          BigReal acc = adaptTempMCAcc / adaptTempMCTot;
-          BigReal dacc = adaptTempMCDAcc / adaptTempMCTot;
-          dacc -= adaptTempMCFail / simParams->adaptTempMCSizeInc / adaptTempMCTot;
-          if ( dacc > -0.01 ) dacc = -0.01;
-          BigReal ar = simParams->adaptTempMCAutoAR;
-          if ( ar <= 0 ) ar = 0.5;
-          BigReal newsize = adaptTempMCSize + (ar - acc) / dacc;
-          if ( newsize < 0 ) newsize = 0;
-          iout << " MC " << adaptTempMCTot << "(" << adaptTempMCFail << ")"
-               << " ACC. RATIO " << std::setprecision(5) << 100.0 * acc << "%"
-               << " DAR " << dacc << " SIZE " << adaptTempMCSize << " -> " << newsize;
+        if ( simParams->adaptTempMCMove ) { // Monte Carlo
+          if ( adaptTempMCTot > 0 ) {
+            BigReal acc = adaptTempMCAcc / adaptTempMCTot;
+            BigReal dacc = adaptTempMCDAcc / adaptTempMCTot;
+            dacc -= adaptTempMCFail / simParams->adaptTempMCSizeInc / adaptTempMCTot;
+            if ( dacc > -0.01 ) dacc = -0.01;
+            BigReal ar = simParams->adaptTempMCAutoAR;
+            if ( ar <= 0 ) ar = 0.5;
+            BigReal newsize = adaptTempMCSize + (ar - acc) / dacc;
+            if ( newsize < 0 ) newsize = 0;
+            iout << " MC " << adaptTempMCTot << "(" << adaptTempMCFail << ")"
+                 << " ACC. RATIO " << std::setprecision(7) << 100.0 * acc << "%"
+                 << " DAR " << dacc << " SIZE " << adaptTempMCSize << " -> " << newsize;
+          }
+        } else { // Langevin equation
+          if ( adaptTempLangTot > 0 )
+            iout << " LANGEVIN " << adaptTempLangTot << " ACC. RATIO " << std::setprecision(7)
+                  << 100.0 * adaptTempLangAcc / adaptTempLangTot << "%";
         }
         iout << "\n" << endi;
    }

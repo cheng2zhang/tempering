@@ -336,7 +336,7 @@ diff -u -wdB spec_old/common.C spec_new/common.C
    while ( close(fd) ) {
 diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 --- spec_old/Controller.C	2015-12-17 15:22:03.000000000 -0600
-+++ spec_new/Controller.C	2016-08-12 20:25:44.100095742 -0500
++++ spec_new/Controller.C	2016-08-12 20:36:35.259442524 -0500
 @@ -184,6 +184,10 @@
      random->split(0,PatchMap::Object()->numPatches()+1);
  
@@ -1377,7 +1377,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
              << "     nMinus:    " << nMinus << "\n"
              << "     nPlus:     " << nPlus << "\n"
              << "     A0:        " << A0 << "\n"
-@@ -1851,105 +2349,208 @@
+@@ -1851,105 +2349,207 @@
              << "     A2:        " << A2 << "\n"
              << "     a+:        " << aplus << "\n"
              << "     a-:        " << aminus << "\n"
@@ -1464,13 +1464,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +        for ( j = i + 1; j < ni; j++ ) {
 +          epave = adaptTempPotEnergyAve[j];
 +          delta += epave * adaptTempDBeta;
-         } 
--        else if ( dT  < 1./adaptTempBetaMax ) {
--          if (!simParams->adaptTempRandom) {            
--            //iout << iWARN << "ADAPTEMP: " << step << " T= "<< dT 
--            //     << " K lower than adaptTempTmin."
--            //     << " Keeping temperature at " << adaptTempT<< "\n" << endi; 
--            dT = adaptTempT;
++        }
 +        epave = adaptTempPotEnergyAve[ni];
 +        delta += epave * (nbeta - adaptTempBetaN[ni]);
 +      } else if ( i == ni ) {
@@ -1482,6 +1476,15 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +        for ( j = i - 1; j > ni; j-- ) {
 +          epave = adaptTempPotEnergyAve[j];
 +          delta -= epave * adaptTempDBeta;
+         } 
+-        else if ( dT  < 1./adaptTempBetaMax ) {
+-          if (!simParams->adaptTempRandom) {            
+-            //iout << iWARN << "ADAPTEMP: " << step << " T= "<< dT 
+-            //     << " K lower than adaptTempTmin."
+-            //     << " Keeping temperature at " << adaptTempT<< "\n" << endi; 
+-            dT = adaptTempT;
++        epave = adaptTempPotEnergyAve[ni];
++        delta += epave * (nbeta - adaptTempBetaN[ni + 1]);
            }
 -          else {
 -            //iout << iWARN << "ADAPTEMP: " << step << " T= "<< dT 
@@ -1489,9 +1492,6 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 -            //     << " Assigning random temperature in range\n" << endi;
 -            dT = adaptTempBetaMin +  random->uniform()*(adaptTempBetaMax-adaptTempBetaMin);
 -            dT = 1./dT;
-+        epave = adaptTempPotEnergyAve[ni];
-+        delta += epave * (nbeta - adaptTempBetaN[ni + 1]);
-           }
 +      delta = (delta - ep * (nbeta - beta)) / BOLTZMANN
 +            + (simParams->adaptTempWeightExp - 1) * log(beta/nbeta);
 +      //CkPrintf("delta %g cf %g, beta %g, %g, ep %g, %g, bin %d, %d\n", delta,
@@ -1503,6 +1503,10 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +        if ( delta < 0 ) {
 +          del = (ep - epave) * nbeta / BOLTZMANN + (simParams->adaptTempWeightExp - 1);
 +          adaptTempMCDAcc += (nbeta > beta ? -del : del);
+           }
++        double mbeta = beta * exp((adaptTempMCSize + simParams->adaptTempMCSizeInc) * r);
++        if ( mbeta < adaptTempBetaMin || mbeta >= adaptTempBetaMax )
++          adaptTempMCFail += 1;
          }
 -        else if (adaptTempAutoDt) {
 -          //update temperature step size counter
@@ -1512,9 +1516,6 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 -            adaptTempDTave += adaptTempTdiff; 
 -            adaptTempDTavenum++;
 -//            iout << "ADAPTEMP: adapTempTdiff = " << adaptTempTdiff << "\n";
-+        double mbeta = beta * exp((adaptTempMCSize + simParams->adaptTempMCSizeInc) * r);
-+        if ( mbeta < adaptTempBetaMin || mbeta >= adaptTempBetaMax )
-+          adaptTempMCFail += 1;
            }
 -          if(adaptTempDTavenum == 100){
 -                BigReal Frac;
@@ -1529,20 +1530,18 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 -                    iout << "ADAPTEMP: Updating adaptTempDt to ";
 -                    adaptTempDt *= Frac;
 -                    iout << adaptTempDt << "\n" << endi;
-                 }
--                adaptTempDTave = 0;
--                adaptTempDTavenum = 0;
 +    // adjust the MC move size automatically
-+    if ( simParams->adaptTempMCAutoAR > 0
-+      && adaptTempMCTot > 100 && adaptTempMCFail > 5 ) {
++    if ( simParams->adaptTempMCAutoAR > 0 && adaptTempMCTot > 100 ) {
 +      double dacc = adaptTempMCDAcc - adaptTempMCFail / simParams->adaptTempMCSizeInc;
 +      del = ( simParams->adaptTempMCAutoAR - acc ) / dacc;
 +      if ( del >  0.5 * adaptTempMCSize ) del =  0.5 * adaptTempMCSize;
 +      if ( del < -0.5 * adaptTempMCSize ) del = -0.5 * adaptTempMCSize;
 +      adaptTempMCSize += del;
-           }
+                 }
+-                adaptTempDTave = 0;
+-                adaptTempDTavenum = 0;
 +    return acc ? 1.0/nbeta : tp;
-+}
+           }
 +
 +Bool Controller::adaptTempUpdate(int step, int minimize)
 +{
@@ -1668,7 +1667,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
            //update temperature step size counter
            // FOR "TRUE" ADAPTIVE TEMPERING
            BigReal adaptTempTdiff = fabs(dT-adaptTempT);
-@@ -1963,11 +2564,11 @@
+@@ -1963,11 +2563,11 @@
                  adaptTempDTave /= adaptTempDTavenum;
                  Frac = 1./adaptTempBetaMin-1./adaptTempBetaMax;
                  Frac = adaptTempDTave/Frac;
@@ -1683,7 +1682,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
                      iout << "ADAPTEMP: Updating adaptTempDt to ";
                      adaptTempDt *= Frac;
                      iout << adaptTempDt << "\n" << endi;
-@@ -1974,24 +2575,53 @@
+@@ -1974,24 +2574,53 @@
                  }
                  adaptTempDTave = 0;
                  adaptTempDTavenum = 0;
@@ -1743,7 +1742,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  }
  
  
-@@ -2277,6 +2907,15 @@
+@@ -2277,6 +2906,15 @@
        electEnergy = reduction->item(REDUCTION_ELECT_ENERGY);
        ljEnergy = reduction->item(REDUCTION_LJ_ENERGY);
  
@@ -1759,7 +1758,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
        // JLai
        groLJEnergy = reduction->item(REDUCTION_GRO_LJ_ENERGY);
        groGaussEnergy = reduction->item(REDUCTION_GRO_GAUSS_ENERGY);
-@@ -2310,16 +2949,6 @@
+@@ -2310,16 +2948,6 @@
  //fepe
      }
  
@@ -1776,7 +1775,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
      momentum.x = reduction->item(REDUCTION_MOMENTUM_X);
      momentum.y = reduction->item(REDUCTION_MOMENTUM_Y);
      momentum.z = reduction->item(REDUCTION_MOMENTUM_Z);
-@@ -3147,6 +3776,7 @@
+@@ -3147,6 +3775,7 @@
      ldbSteps = LdbCoordinator::Object()->getNumStepsToRun();
    }
    if ( ! --ldbSteps ) {

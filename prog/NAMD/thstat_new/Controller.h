@@ -263,7 +263,9 @@ protected:
    void adaptTempDone(int step);
    BigReal adaptTempGetInvW(BigReal tp);
    BigReal adaptTempGetPEAve(int i, BigReal def = 0);
+   BigReal adaptTempGetIntE(BigReal beta, int i, BigReal nbeta, int ni, double& epave);
    BigReal adaptTempMCMove(BigReal tp, BigReal ep);
+   BigReal adaptTempLangevin(BigReal tp, BigReal ep);
    Bool adaptTempUpdate(int step, int minimize = 0);
    void adaptTempWriteRestart(int step);
    int *adaptTempBinMinus;
@@ -420,6 +422,7 @@ protected:
    double  adaptTempMCSize;
    double  adaptTempMCTot, adaptTempMCAcc;
    double  adaptTempMCDAcc, adaptTempMCFail; // accumulators for adjusting the MC size
+   double  adaptTempLangTot, adaptTempLangAcc;
    double  *adaptTempPotEnergyAveNum;
    double  *adaptTempPotEnergyAveDen;
    double  *adaptTempPotEnergyVarNum;

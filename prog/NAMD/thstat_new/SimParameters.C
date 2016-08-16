@@ -1451,11 +1451,9 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
    opts.optional("adaptTempMCMove", "adaptTempMCSizeInc", "Virtual size increment for MC temperature moves", &adaptTempMCSizeInc, 0.0005);
    opts.range("adaptTempMCSizeInc", POSITIVE);
    opts.optional("adaptTempMCMove", "adaptTempMCAutoAR", "Target acceptance ratio for automatic adjustment of the size of MC temperature moves", &adaptTempMCAutoAR, 0.0);
-   opts.range("adaptTempMCAutoAR", POSITIVE);
+   opts.range("adaptTempMCAutoAR", NOT_NEGATIVE);
    opts.optional("adaptTempMD", "adaptTempDt", "Integration timestep for Temp. updates", &adaptTempDt, 0.00001);
-   opts.units("adaptTempDt", N_FSEC);
    opts.range("adaptTempDt", NOT_NEGATIVE);
-   opts.optional("adaptTempMD", "adaptTempDtSteps", "Number of sub-steps in a temperature update step", &adaptTempDtSteps, 1);
    opts.optional("adaptTempMD", "adaptTempAutoDt", "Average temperature update in percent of temperature range", &adaptTempAutoDt, 0.0);
    opts.range("adaptTempAutoDt", NOT_NEGATIVE);
    opts.optional("adaptTempMD", "adaptTempCgamma", "Adaptive bin averaging constant", &adaptTempCgamma, 0.1);

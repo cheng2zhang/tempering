@@ -557,7 +557,6 @@ public:
         BigReal adaptTempMCSizeInc;            //  Virtual size increment for MC temperature moves
         BigReal adaptTempMCAutoAR;             //  Target acceptance ratio for automatic adjustment of the size of MC temperature moves
         BigReal adaptTempDt;                   //  Timestep for adaptTemp updates - only affects Temperature random walk
-        int adaptTempDtSteps;                  //  Number of sub-steps in a temperature update step
         BigReal adaptTempCgamma;               //  Cgamma variable for adaptive bin averaging Cgamma = 0 is normal Averaging. 1 > Cgamma >= 0
         Bool adaptTempLangevin;                //  Couple to Langevin Thermostat
         Bool adaptTempRescale;                 //  Couple to Vel. Rescaling

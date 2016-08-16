@@ -187,6 +187,7 @@ Therefore, it is not recommended for use with adaptive tempering for production 
   * Allowing `adaptTempInFile` and `adaptTempBins` to be set simultaneously in the configuration file, the former overrides the latter.
   * Reducing the default window size for the integral identity from 0.04 to 0.02.
   * Trying to change how often the LJcorrection is computed.
+  * Langevin time step adaptTempDt is unitless (SimParameters.h).
 
 #### Integrating the Langevin-style velocity rescaling thermostat and Nose-Hoover thermostat
 
