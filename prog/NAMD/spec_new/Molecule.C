@@ -5007,6 +5007,16 @@ void Molecule::print_exclusions()
 }
 /*      END OF FUNCTION print_exclusions    */
 
+/* split the input string `s` into a vector of strings */
+std::vector<std::string> str_split(const string s, char delim) {
+  std::stringstream ss(s);
+  std::string item;
+  vector<std::string> arr;
+  while ( std::getline(ss, item, delim) )
+    arr.push_back(item);
+  return arr;
+}
+
 /************************************************************************/
 /*                  */
 /*      FUNCTION send_Molecule        */
@@ -5298,31 +5308,38 @@ void Molecule::send_Molecule(MOStream *msg){
 #endif
 
   if ( simParams->specAtomsOn ) {
-    ResizeArray<int> specIDs;
+    std::vector<int> specIDs;
 
     // here our sepcial atoms are the CA atoms
     // scan all atoms and search for atom names of "CA"
     // "CAY" and "CAT" are the atoms of the N-terminal
     // and C-terminal caps
-    const char *specAtomNames[3] = {"CAY", "CA", "CAT"};
-    for ( int round = 0; round < 3; round++ ) {
-      const char *targetAtom = specAtomNames[round];
+    std::vector<std::string> strGroups = str_split(simParams->specAtomsList, ':');
+    for ( int group = 0; group < strGroups.size(); group++ ) {
+      //CkPrintf("Group %d: %s\n", group, strGroups[group].c_str());
+      std::vector<std::string> targetAtoms = str_split(strGroups[group], ',');
       #ifdef MEM_OPT_VERSION
       for ( int i = 0; i < numAtoms; i++ ) {
         Index idx = atomNames[i].atomnameIdx;
-        if ( strcasecmp(atomNamePool[idx], targetAtom) == 0 ) {
-          specIDs.add(i);
+        for ( int j = 0; j < targetAtoms.size(); j++ ) {
+          if ( strcasecmp(atomNamePool[idx], targetAtoms[j].c_str()) == 0 ) {
+            specIDs.push_back(i);
+            break;
+          }
         }
       }
       #else
       for ( int i = 0; i < numAtoms; i++ ) {
-        if ( strcasecmp(atomNames[i].atomname, targetAtom) == 0 ) {
-          specIDs.add(i);
+        for ( int j = 0; j < targetAtoms.size(); j++ ) {
+          if ( strcasecmp(atomNames[i].atomname, targetAtoms[j].c_str()) == 0 ) {
+            specIDs.push_back(i);
+            break;
+          }
         }
       }
       #endif
     }
-    
+
     spcnt = specIDs.size();
     specids = new int[spcnt];
     // print out the special atoms
@@ -5330,7 +5347,7 @@ void Molecule::send_Molecule(MOStream *msg){
       specids[i] = specIDs[i];
       CkPrintf("Mol CA %d: %d\n", i+1, specIDs[i]);
     }
-    
+
     msg->put(spcnt);
     msg->put(spcnt, specids);
   }
