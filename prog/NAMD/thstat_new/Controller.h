@@ -423,6 +423,7 @@ protected:
    double  adaptTempMCTot, adaptTempMCAcc;
    double  adaptTempMCDAcc, adaptTempMCFail; // accumulators for adjusting the MC size
    double  adaptTempLangTot, adaptTempLangAcc;
+   double  adaptTempLangDAcc, adaptTempLangFail; // accumulators for adjusting Dt
    double  *adaptTempPotEnergyAveNum;
    double  *adaptTempPotEnergyAveDen;
    double  *adaptTempPotEnergyVarNum;
@@ -431,8 +432,6 @@ protected:
    long    *adaptTempPotEnergySamples;
    BigReal *adaptTempBetaN;
    BigReal adaptTempT;
-   BigReal adaptTempDTave;
-   BigReal adaptTempDTavenum;
    BigReal adaptTempBetaMin;
    BigReal adaptTempBetaMax;
    int     adaptTempBin;
@@ -440,9 +439,6 @@ protected:
    BigReal adaptTempDBeta;
    BigReal adaptTempCg;
    BigReal adaptTempDt;
-   Bool    adaptTempAutoDt;
-   BigReal adaptTempDtMin;
-   BigReal adaptTempDtMax;
    ofstream_namd adaptTempRestartFile;
   
 private:

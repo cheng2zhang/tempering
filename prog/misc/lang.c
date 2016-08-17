@@ -1,4 +1,7 @@
-/* test the effect of boundary conditions to the Langevin equation */
+/* test the effect of boundary conditions to the Langevin equation
+ * These corrections are no longer useful,
+ * a better approach is either to use a multiple-step scheme
+ * or using Monte Carlo to correct the large-step-size error */
 #include "../mtrand.h"
 
 double xc = 0.3;

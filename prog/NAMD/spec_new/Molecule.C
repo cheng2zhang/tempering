@@ -5314,7 +5314,7 @@ void Molecule::send_Molecule(MOStream *msg){
     // scan all atoms and search for atom names of "CA"
     // "CAY" and "CAT" are the atoms of the N-terminal
     // and C-terminal caps
-    std::vector<std::string> strGroups = str_split(simParams->specAtomsList, ':');
+    std::vector<std::string> strGroups = str_split(simParams->specAtomsList, '|');
     for ( int group = 0; group < strGroups.size(); group++ ) {
       //CkPrintf("Group %d: %s\n", group, strGroups[group].c_str());
       std::vector<std::string> targetAtoms = str_split(strGroups[group], ',');

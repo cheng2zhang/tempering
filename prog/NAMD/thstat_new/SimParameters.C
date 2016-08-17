@@ -1448,12 +1448,14 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
    opts.optional("adaptTempMD", "adaptTempWeightExp", "Exponent x as in the inverse-temperature density, w(beta) ~ beta^(-x), 0: flat-beta, 1: flat-lnT, 2: flat-T distribution", &adaptTempWeightExp, 1.0);
    opts.optionalB("adaptTempMD", "adaptTempMCMove", "Use Monte Carlo to update the temperature", &adaptTempMCMove, FALSE);
    opts.optional("adaptTempMCMove", "adaptTempMCSize", "Size of Monte Carlo temperature moves as a fraction of the current temperature", &adaptTempMCSize, 0.01);
-   opts.optional("adaptTempMCMove", "adaptTempMCSizeInc", "Virtual size increment for MC temperature moves", &adaptTempMCSizeInc, 0.0005);
-   opts.range("adaptTempMCSizeInc", POSITIVE);
    opts.optional("adaptTempMCMove", "adaptTempMCAutoAR", "Target acceptance ratio for automatic adjustment of the size of MC temperature moves", &adaptTempMCAutoAR, 0.0);
    opts.range("adaptTempMCAutoAR", NOT_NEGATIVE);
+   opts.optional("adaptTempMCMove", "adaptTempMCSizeInc", "Virtual size increment for MC temperature moves", &adaptTempMCSizeInc, 0.0005);
+   opts.range("adaptTempMCSizeInc", POSITIVE);
    opts.optional("adaptTempMD", "adaptTempDt", "Integration timestep for Temp. updates", &adaptTempDt, 0.00001);
    opts.range("adaptTempDt", NOT_NEGATIVE);
+   opts.optional("adaptTempDt", "adaptTempDtAutoAR", "Target acceptance ratio for automatic adjustment of the size of Langevin temperature moves", &adaptTempDtAutoAR, 0.0);
+   opts.range("adaptTempDtAutoAR", NOT_NEGATIVE);
    opts.optional("adaptTempMD", "adaptTempAutoDt", "Average temperature update in percent of temperature range", &adaptTempAutoDt, 0.0);
    opts.range("adaptTempAutoDt", NOT_NEGATIVE);
    opts.optional("adaptTempMD", "adaptTempCgamma", "Adaptive bin averaging constant", &adaptTempCgamma, 0.1);
@@ -3146,6 +3148,12 @@ void SimParameters::check_config(ParseOptions &opts, ConfigList *config, char *&
        adaptTempInFile[0] = '\0';
        adaptTempFixedAve = FALSE;
      }
+     if ( opts.defined("adaptTempAutoDt") )
+       iout << iWARN << "adaptTempAutoDt is deprecated.\n" << endi;
+     if ( adaptTempRandom )
+       iout << iWARN << "adaptTempRandom is deprecated.\n" << endi;
+     if ( opts.defined("adaptTempCgamma") && !adaptTempSepOn )
+       iout << iWARN << "adaptTempCgamma is better used with adaptTempSep.\n" << endi;
      //if (opts.defined("adaptTempInFile") && (opts.defined("adaptTempTmin") ||
      //                                        opts.defined("adaptTempTmax") ||
      //                                        adaptTempBins != 0)) 

@@ -263,7 +263,9 @@ protected:
    void adaptTempDone(int step);
    BigReal adaptTempGetInvW(BigReal tp);
    BigReal adaptTempGetPEAve(int i, BigReal def = 0);
+   BigReal adaptTempGetIntE(BigReal beta, int i, BigReal nbeta, int ni, double& epave);
    BigReal adaptTempMCMove(BigReal tp, BigReal ep);
+   BigReal adaptTempLangevin(BigReal tp, BigReal ep);
    Bool adaptTempUpdate(int step, int minimize = 0);
    void adaptTempWriteRestart(int step);
    int *adaptTempBinMinus;
@@ -420,6 +422,8 @@ protected:
    double  adaptTempMCSize;
    double  adaptTempMCTot, adaptTempMCAcc;
    double  adaptTempMCDAcc, adaptTempMCFail; // accumulators for adjusting the MC size
+   double  adaptTempLangTot, adaptTempLangAcc;
+   double  adaptTempLangDAcc, adaptTempLangFail; // accumulators for adjusting Dt
    double  *adaptTempPotEnergyAveNum;
    double  *adaptTempPotEnergyAveDen;
    double  *adaptTempPotEnergyVarNum;
@@ -428,8 +432,6 @@ protected:
    long    *adaptTempPotEnergySamples;
    BigReal *adaptTempBetaN;
    BigReal adaptTempT;
-   BigReal adaptTempDTave;
-   BigReal adaptTempDTavenum;
    BigReal adaptTempBetaMin;
    BigReal adaptTempBetaMax;
    int     adaptTempBin;
@@ -437,9 +439,6 @@ protected:
    BigReal adaptTempDBeta;
    BigReal adaptTempCg;
    BigReal adaptTempDt;
-   Bool    adaptTempAutoDt;
-   BigReal adaptTempDtMin;
-   BigReal adaptTempDtMax;
    ofstream_namd adaptTempRestartFile;
   
     // special atoms

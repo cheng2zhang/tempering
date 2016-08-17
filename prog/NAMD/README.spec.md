@@ -16,7 +16,7 @@ To compute the alpha-carbon end-to-end distance,
 set the following options
 ```
 specAtoms             on
-specAtomsList         CAY:CA:CAT
+specAtomsList         CAY|CA|CAT
 specAtomsType         end-to-end distance
 specAtomsFreq         4
 ```
@@ -32,7 +32,7 @@ specAtomsType         dihedral
 
 The format of `specAtomsList` is the following. For example
 ```
-specAtomsList         A1,A2,A3:B:C1,C2
+specAtomsList         A1,A2,A3|B|C1,C2
 ```
 This defines three groups.
 The first group has three types of atoms: A1, A2 and A3.
@@ -42,7 +42,7 @@ The third group has two types of atoms: C1 and C2.
 Atoms in the first group will be searched first and added to the list of special atoms.
 Then atoms in the second group will be searched, then atoms in the third group, ...
 
-For example, with "CAY:CA:CAT", the N-terminal cap "CAY" will be searched first,
+For example, with "CAY|CA|CAT", the N-terminal cap "CAY" will be searched first,
 regular alpha-carbon "CA" will be searched next,
 the C-terminal cap "CAT" will be searched last.
 
