@@ -30,7 +30,7 @@ diff -u -wdB spec_old/Broadcasts.h spec_new/Broadcasts.h
  #if USE_BARRIER
 diff -u -wdB spec_old/CollectionMaster.C spec_new/CollectionMaster.C
 --- spec_old/CollectionMaster.C	2012-01-28 16:04:27.000000000 -0600
-+++ spec_new/CollectionMaster.C	2016-08-16 15:45:45.999070385 -0500
++++ spec_new/CollectionMaster.C	2016-08-17 20:36:39.754783493 -0500
 @@ -43,6 +43,50 @@
  {
  }
@@ -75,7 +75,7 @@ diff -u -wdB spec_old/CollectionMaster.C spec_new/CollectionMaster.C
 + 
 +void CollectionMaster::disposeSpecPositions(CollectVectorInstance *c)
 +{
-+  Node::Object()->output->specAtoms(c->seq, c->data.size(), c->data.begin(), c->lattice);
++  Node::Object()->output->specAtoms(c->seq, c->data.size(), c->data.begin(), &c->lattice);
 +  c->free();
 +}
 + 
@@ -321,7 +321,7 @@ diff -u -wdB spec_old/common.C spec_new/common.C
    while ( close(fd) ) {
 diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 --- spec_old/Controller.C	2015-12-17 15:22:03.000000000 -0600
-+++ spec_new/Controller.C	2016-08-17 18:15:06.377093003 -0500
++++ spec_new/Controller.C	2016-08-17 20:45:14.852257220 -0500
 @@ -184,6 +184,10 @@
      random->split(0,PatchMap::Object()->numPatches()+1);
  
@@ -439,12 +439,14 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
          rebalanceLoad(step);
  
  #if  PME_BARRIER
-@@ -501,6 +550,12 @@
+@@ -501,6 +550,14 @@
  #endif
      }
      // signal(SIGINT, oldhandler);
 +    
 +    adaptTempDone(step);
++    if ( simParams->specAtomsOn )
++      Node::Object()->output->specAtoms(-1, 0, NULL, NULL);
 +    rescaleVelocitiesSave(step);
 +    if ( fsEnergyLog.is_open() ) fsEnergyLog.close();
 +    tNHCDone(step);
@@ -452,7 +454,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  }
  
  
-@@ -1016,6 +1071,12 @@
+@@ -1016,6 +1073,12 @@
    const int rescaleFreq = simParams->rescaleFreq;
    if ( rescaleFreq > 0 ) {
      rescaleVelocities_sumTemps += temperature;  ++rescaleVelocities_numTemps;
@@ -465,7 +467,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
      if ( rescaleVelocities_numTemps == rescaleFreq ) {
        BigReal avgTemp = rescaleVelocities_sumTemps / rescaleVelocities_numTemps;
        BigReal rescaleTemp = simParams->rescaleTemp;
-@@ -1024,6 +1085,35 @@
+@@ -1024,6 +1087,35 @@
          rescaleTemp = adaptTempT;
        }
        BigReal factor = sqrt(rescaleTemp/avgTemp);
@@ -501,7 +503,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
        broadcast->velocityRescaleFactor.publish(step,factor);
        //iout << "RESCALING VELOCITIES AT STEP " << step
        //     << " FROM AVERAGE TEMPERATURE OF " << avgTemp
-@@ -1033,6 +1123,56 @@
+@@ -1033,6 +1125,56 @@
    }
  }
  
@@ -558,7 +560,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  void Controller::correctMomentum(int step) {
  
      Vector momentum;
-@@ -1110,6 +1250,279 @@
+@@ -1110,6 +1252,279 @@
    }
  }
  
@@ -838,7 +840,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  static char *FORMAT(BigReal X)
  {
    static char tmp_string[25];
-@@ -1574,49 +1987,136 @@
+@@ -1574,49 +1989,136 @@
  void Controller::adaptTempInit(int step) {
      if (!simParams->adaptTempOn) return;
      iout << iINFO << "INITIALISING ADAPTIVE TEMPERING\n" << endi;
@@ -1007,7 +1009,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
          } 
          adaptTempRead.close();
        }
-@@ -1624,23 +2124,18 @@
+@@ -1624,23 +2126,18 @@
      } 
      else {
        adaptTempBins = simParams->adaptTempBins;
@@ -1039,7 +1041,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
        for(int j = 0; j < adaptTempBins; ++j){
            adaptTempPotEnergyAveNum[j] = 0.;
            adaptTempPotEnergyAveDen[j] = 0.;
-@@ -1648,16 +2143,38 @@
+@@ -1648,16 +2145,38 @@
            adaptTempPotEnergyVarNum[j] = 0.;
            adaptTempPotEnergyVar[j] = 0.;
            adaptTempPotEnergyAve[j] = 0.;
@@ -1084,7 +1086,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
      iout << iINFO << "ADAPTIVE TEMPERING: TEMPERATURE RANGE: [" << 1./adaptTempBetaMax << "," << 1./adaptTempBetaMin << "] KELVIN\n";
      iout << iINFO << "ADAPTIVE TEMPERING: NUMBER OF BINS TO STORE POT. ENERGY: " << adaptTempBins << "\n";
      iout << iINFO << "ADAPTIVE TEMPERING: ADAPTIVE BIN AVERAGING PARAMETER: " << adaptTempCg << "\n";
-@@ -1671,12 +2188,39 @@
+@@ -1671,12 +2190,39 @@
      }
  }
  
@@ -1127,7 +1129,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
          adaptTempRestartFile << adaptTempT<< " ";     // KELVIN
          adaptTempRestartFile << 1./adaptTempBetaMin << " ";  // KELVIN
          adaptTempRestartFile << 1./adaptTempBetaMax << " ";  // KELVIN
-@@ -1685,165 +2229,131 @@
+@@ -1685,165 +2231,131 @@
          adaptTempRestartFile << adaptTempDt ;
          adaptTempRestartFile << "\n" ;
          for(int j = 0; j < adaptTempBins; ++j) {
@@ -1217,11 +1219,11 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 -    adaptTempPotEnergyAveNum[adaptTempBin] = adaptTempPotEnergyAveNum[adaptTempBin]*gammaAve + potentialEnergy;
 -    adaptTempPotEnergyAveDen[adaptTempBin] = adaptTempPotEnergyAveDen[adaptTempBin]*gammaAve + 1;
 -    adaptTempPotEnergyVarNum[adaptTempBin] = adaptTempPotEnergyVarNum[adaptTempBin]*gammaAve + potentialEnergy*potentialEnergy;
-     
+-    
 -    potEnergyAverage = adaptTempPotEnergyAveNum[adaptTempBin]/adaptTempPotEnergyAveDen[adaptTempBin];
 -    potEnergyVariance = adaptTempPotEnergyVarNum[adaptTempBin]/adaptTempPotEnergyAveDen[adaptTempBin];
 -    potEnergyVariance -= potEnergyAverage*potEnergyAverage;
--
+ 
 -    adaptTempPotEnergyAve[adaptTempBin] = potEnergyAverage;
 -    adaptTempPotEnergyVar[adaptTempBin] = potEnergyVariance;
 -    
@@ -1388,7 +1390,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
              << "     nMinus:    " << nMinus << "\n"
              << "     nPlus:     " << nPlus << "\n"
              << "     A0:        " << A0 << "\n"
-@@ -1851,147 +2361,319 @@
+@@ -1851,147 +2363,319 @@
              << "     A2:        " << A2 << "\n"
              << "     a+:        " << aplus << "\n"
              << "     a-:        " << aminus << "\n"
@@ -1695,7 +1697,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +      if (simParams->LJcorrection && volume) {
 +        // Apply tail correction to energy
 +        ljEnergy += Node::Object()->molecule->tail_corr_ener / volume;
-           }
++      }
 +      groLJEnergy = reduction->item(REDUCTION_GRO_LJ_ENERGY);
 +      groGaussEnergy = reduction->item(REDUCTION_GRO_GAUSS_ENERGY);
 +      goNativeEnergy = reduction->item(REDUCTION_GO_NATIVE_ENERGY);
@@ -1716,7 +1718,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +    adaptTempPotEnergyAveNum[adaptTempBin] = adaptTempPotEnergyAveNum[adaptTempBin]*gammaAve + potentialEnergy * invw;
 +    adaptTempPotEnergyAveDen[adaptTempBin] = adaptTempPotEnergyAveDen[adaptTempBin]*gammaAve + invw;
 +    adaptTempPotEnergyVarNum[adaptTempBin] = adaptTempPotEnergyVarNum[adaptTempBin]*gammaAve + potentialEnergy*potentialEnergy * invw;
-           
++    
 +    potEnergyAverage = adaptTempPotEnergyAveNum[adaptTempBin]/adaptTempPotEnergyAveDen[adaptTempBin];
 +    potEnergyVariance = adaptTempPotEnergyVarNum[adaptTempBin]/adaptTempPotEnergyAveDen[adaptTempBin];
 +    potEnergyVariance -= potEnergyAverage*potEnergyAverage;
@@ -1734,8 +1736,8 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +        if ( adaptTempBinMinus[j] > adaptTempBin ) break;
 +        adaptTempSepAcc[j].add(adaptTempBin, potentialEnergy, invw, adaptTempCg);
 +      }
-       }
-       
+           }
+           
 +    // Weighted integral of <Delta E^2>_beta dbeta <= Eq 4 of JCP 132 244101
 +    // Integrals of Eqs 5 and 6 is done as piecewise assuming <Delta E^2>_beta
 +    // is constant for each bin. This is to estimate <E(beta)> where beta \in
@@ -1749,8 +1751,8 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +        dT = adaptTempMCMove(adaptTempT, potentialEnergy);
 +      } else { // Langevin equation temperature update
 +        dT = adaptTempLangevin(adaptTempT, potentialEnergy);
-+      }
-+
+       }
+       
 +      BigReal tScale = dT / adaptTempT;
 +      BigReal vScale = sqrt(tScale);
 +      // for velocity-rescaling-based thermostats,
@@ -1818,7 +1820,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  }
  
  
-@@ -2277,6 +2959,15 @@
+@@ -2277,6 +2961,15 @@
        electEnergy = reduction->item(REDUCTION_ELECT_ENERGY);
        ljEnergy = reduction->item(REDUCTION_LJ_ENERGY);
  
@@ -1834,7 +1836,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
        // JLai
        groLJEnergy = reduction->item(REDUCTION_GRO_LJ_ENERGY);
        groGaussEnergy = reduction->item(REDUCTION_GRO_GAUSS_ENERGY);
-@@ -2310,16 +3001,6 @@
+@@ -2310,16 +3003,6 @@
  //fepe
      }
  
@@ -1851,7 +1853,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
      momentum.x = reduction->item(REDUCTION_MOMENTUM_X);
      momentum.y = reduction->item(REDUCTION_MOMENTUM_Y);
      momentum.z = reduction->item(REDUCTION_MOMENTUM_Z);
-@@ -3147,6 +3828,7 @@
+@@ -3147,6 +3830,7 @@
      ldbSteps = LdbCoordinator::Object()->getNumStepsToRun();
    }
    if ( ! --ldbSteps ) {
@@ -2238,16 +2240,16 @@ diff -u -wdB spec_old/Molecule.h spec_new/Molecule.h
  
 diff -u -wdB spec_old/Output.C spec_new/Output.C
 --- spec_old/Output.C	2015-11-04 11:20:25.000000000 -0600
-+++ spec_new/Output.C	2016-08-16 15:48:18.967655294 -0500
-@@ -1332,6 +1332,48 @@
++++ spec_new/Output.C	2016-08-17 20:39:23.980946318 -0500
+@@ -1332,6 +1332,63 @@
  }
  /*      END OF FUNCTION scale_vels      */
  
-+static BigReal getdih(Vector& xi, Vector& xj, Vector& xk, Vector& xl, Lattice& lattice)
++static BigReal getdih(Vector& xi, Vector& xj, Vector& xk, Vector& xl, Lattice* lattice)
 +{
-+  Vector xij = lattice.delta(xi, xj);
-+  Vector xkj = lattice.delta(xk, xj);
-+  Vector xkl = lattice.delta(xk, xl);
++  Vector xij = lattice->delta(xi, xj);
++  Vector xkj = lattice->delta(xk, xj);
++  Vector xkl = lattice->delta(xk, xl);
 +  BigReal nxkj2 = xkj.length2();
 +  BigReal nxkj = sqrt(nxkj2);
 +  BigReal tol = nxkj2 * 1e-16;
@@ -2268,21 +2270,36 @@ diff -u -wdB spec_old/Output.C spec_new/Output.C
 +}
 +
 +// write the quantity computed from the special atoms
-+void Output::specAtoms(int step, int numAtoms, Vector* arr, Lattice& lattice)
++void Output::specAtoms(int step, int numAtoms, Vector* arr, Lattice* lattice)
 +{
-+  SimParameters *simParams = Node::Object()->simParameters; 
++  SimParameters *simParams = Node::Object()->simParameters;
++  char s[1024];
++  BigReal x;
++  static int once;
++  static FILE *fp = NULL;
++  if ( !once && simParams->specAtomsFile[0] != '\0' ) {
++    fp = fopen(simParams->specAtomsFile, "a");
++    fprintf(fp, "# step\t%s\n", simParams->specAtomsType);
++    once = 1;
++  }
++  if ( step < 0 && fp != NULL ) {
++    fclose(fp);
++    fp = NULL;
++  }
 +  if ( strncasecmp(simParams->specAtomsType, "end", 3) == 0 ) {
 +    // Compute the end-to-end distance from the positions
 +    Vector del(0, 0, 0), endtoend(0, 0, 0);
-+    for ( int k = 0; k < numAtoms - 1; k++ ) {
-+      endtoend += lattice.delta(arr[k+1], arr[k]); 
-+    }
-+    BigReal dist = endtoend.length();
-+    CkPrintf("step %d, end-to-end distance %g\n", step, dist);
++    for ( int k = 0; k < numAtoms - 1; k++ )
++      endtoend += lattice->delta(arr[k+1], arr[k]); 
++    x = endtoend.length();
 +  } else if ( strncasecmp(simParams->specAtomsType, "dih", 3) == 0 ) {
 +    // Compute the dihedral
-+    BigReal dih = getdih(arr[0], arr[1], arr[2], arr[3], lattice);
-+    CkPrintf("step %d, dihedral %g\n", step, dih);
++    x = getdih(arr[0], arr[1], arr[2], arr[3], lattice);
++  }
++  if ( fp == NULL ) {
++    CkPrintf("step %d, %s %g\n", step, simParams->specAtomsType, x);
++  } else {
++    fprintf(fp, "%d\t%g\n", step, x);
 +  }
 +}
  
@@ -2290,12 +2307,12 @@ diff -u -wdB spec_old/Output.C spec_new/Output.C
  //////Beginning of Functions related with velocity output//////
 diff -u -wdB spec_old/Output.h spec_new/Output.h
 --- spec_old/Output.h	2015-11-06 09:29:26.000000000 -0600
-+++ spec_new/Output.h	2016-08-16 15:46:05.282115176 -0500
++++ spec_new/Output.h	2016-08-17 20:35:52.342981250 -0500
 @@ -96,6 +96,7 @@
     void force(int, int, Vector *);		//  Produce appropriate force
  						//  output for the current 
  						//  timestep
-+  void specAtoms(int, int, Vector *, Lattice &);
++  void specAtoms(int, int, Vector *, Lattice *);
  
    void replicaDcdOff() { replicaDcdActive = 0; }
    void setReplicaDcdIndex(int index);
@@ -2550,7 +2567,7 @@ diff -u -wdB spec_old/Sequencer.h spec_new/Sequencer.h
        int checkpoint_berendsenPressure_count;
 diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
 --- spec_old/SimParameters.C	2015-12-08 09:41:37.000000000 -0600
-+++ spec_new/SimParameters.C	2016-08-17 20:03:08.002790836 -0500
++++ spec_new/SimParameters.C	2016-08-17 20:59:38.792945144 -0500
 @@ -187,6 +187,12 @@
    }
    SCRIPT_PARSE_FLOAT("reassignTemp",reassignTemp)
@@ -2641,12 +2658,10 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
  
     opts.optional("main", "reassignFreq", "Number of steps between "
      "velocity reassignment", &reassignFreq);
-@@ -1374,20 +1443,45 @@
+@@ -1374,20 +1443,46 @@
     opts.range("adaptTempTmax", POSITIVE);
     opts.optional("adaptTempMD", "adaptTempBins","Number of bins to store average energies", &adaptTempBins,0);
     opts.range("adaptTempBins", NOT_NEGATIVE);
--   opts.optional("adaptTempMD", "adaptTempDt", "Integration timestep for Temp. updates", &adaptTempDt, 0.0001);
--   opts.units("adaptTempDt", N_FSEC);
 +   opts.optional("adaptTempMD", "adaptTempWindowSize", "Window size as a fraction of the inverse temperature range", &adaptTempWindowSize, 0.02);
 +   opts.range("adaptTempWindowSize", NOT_NEGATIVE);
 +   opts.optional("adaptTempMD", "adaptTempWeightExp", "Exponent x as in the inverse-temperature density, w(beta) ~ beta^(-x), 0: flat-beta, 1: flat-lnT, 2: flat-T distribution", &adaptTempWeightExp, 1.0);
@@ -2656,7 +2671,8 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
 +   opts.range("adaptTempMCAutoAR", NOT_NEGATIVE);
 +   opts.optional("adaptTempMCMove", "adaptTempMCSizeInc", "Virtual size increment for MC temperature moves", &adaptTempMCSizeInc, 0.0005);
 +   opts.range("adaptTempMCSizeInc", POSITIVE);
-+   opts.optional("adaptTempMD", "adaptTempDt", "Integration timestep for Temp. updates", &adaptTempDt, 0.00001);
+    opts.optional("adaptTempMD", "adaptTempDt", "Integration timestep for Temp. updates", &adaptTempDt, 0.0001);
+-   opts.units("adaptTempDt", N_FSEC);
     opts.range("adaptTempDt", NOT_NEGATIVE);
 +   opts.optional("adaptTempDt", "adaptTempDtAutoAR", "Target acceptance ratio for automatic adjustment of the size of Langevin temperature moves", &adaptTempDtAutoAR, 0.0);
 +   opts.range("adaptTempDtAutoAR", NOT_NEGATIVE);
@@ -2682,6 +2698,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
 +
 +   // special atoms
 +   opts.optionalB("main", "specAtoms", "Turn on calculations on the special atoms", &specAtomsOn, FALSE);
++   opts.optional("specAtoms", "specAtomsFile", "Output file for special atoms", specAtomsFile);
 +   opts.optional("specAtoms", "specAtomsList", "List of special atom types, separated by ':' for atoms in different groups, or ',' for atoms in the same group", specAtomsList);
 +   opts.optional("specAtoms", "specAtomsType", "Quantity to be computed from the special atoms, can be 'end-to-end distance' or 'dihedral'", specAtomsType);
 +   opts.optional("specAtoms", "specAtomsFreq", "Frequency of outputing the quantity of the special atoms", &specAtomsFreq, 1);
@@ -2689,7 +2706,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
  }
  
  void SimParameters::config_parser_constraints(ParseOptions &opts) {
-@@ -2174,6 +2268,22 @@
+@@ -2174,6 +2269,22 @@
  
  }
  
@@ -2712,7 +2729,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
  #ifdef MEM_OPT_VERSION
  //This global var is defined in mainfunc.C
  extern char *gWorkDir;
-@@ -2989,9 +3099,15 @@
+@@ -2989,9 +3100,15 @@
     }
     // END LA
  
@@ -2730,7 +2747,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
     }
  
     if (globalOn && CkNumPes() > 1)
-@@ -3033,16 +3149,50 @@
+@@ -3033,16 +3150,51 @@
        maximumMove = 0.75 * pairlistDist/stepsPerCycle;
     }
     if (adaptTempOn) {
@@ -2778,6 +2795,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
 +     } else {
 +       NAMD_die("Unknown type of special atoms");
 +     }
++     if ( !opts.defined("specAtomsFile") ) specAtomsFile[0] = '\0';
 +     iout << iINFO << "SPEC ATOMS: [" << specAtomsList
 +                   << "], type [" << specAtomsType << "]\n";
 +     if ( !opts.defined("specAtomsFreq") && dcdFrequency > 0 ) {
@@ -2787,7 +2805,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
     }
     if (langevinOn) {
       if ( ! opts.defined("langevinDamping") ) langevinDamping = 0.0;
-@@ -3089,6 +3239,16 @@
+@@ -3089,6 +3241,16 @@
    }
     }
  
@@ -2804,7 +2822,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
     if (opts.defined("reassignFreq"))
     {
    if (!opts.defined("reassignTemp"))
-@@ -3188,6 +3348,8 @@
+@@ -3188,6 +3350,8 @@
       else if (reassignFreq > 0)	alchTemp = reassignTemp;
       else if (langevinOn) 	alchTemp = langevinTemp;
       else if (tCoupleOn) 	alchTemp = tCoupleTemp;
@@ -2813,7 +2831,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
       else NAMD_die("Alchemical FEP can be performed only in constant temperature simulations\n");
  
       if (reassignFreq > 0 && reassignIncr != 0)
-@@ -3820,6 +3982,16 @@
+@@ -3820,6 +3984,16 @@
    tCoupleTemp = 0.0;
     }
  
@@ -2830,7 +2848,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
     if (HydrogenBonds)
     {
       if (daCutoffDist > pairlistDist)
-@@ -4890,6 +5062,26 @@
+@@ -4890,6 +5064,26 @@
        iout << endi;
     }
  
@@ -2857,7 +2875,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
     if (minimizeOn)
     {
        iout << iINFO << "OLD STYLE MINIMIZATION ACTIVE\n";
-@@ -5088,6 +5280,7 @@
+@@ -5088,6 +5282,7 @@
       iout << iINFO << "ADAPTIVE TEMPERING ACTIVE:\n";
       iout << iINFO << "      OUTPUT FREQUENCY: " << adaptTempOutFreq << "\n";
       iout << iINFO << "      TEMPERATURE UPDATE FREQUENCY: " << adaptTempFreq << "\n";
@@ -2865,7 +2883,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
       if ( adaptTempLastStep > 0 )
          iout << iINFO << "      ADAPTIVE TEMPERING WILL BE DONE FROM STEP " << adaptTempFirstStep  << " TO " << adaptTempLastStep << "\n";
       else
-@@ -5096,12 +5289,21 @@
+@@ -5096,12 +5291,21 @@
          iout << iINFO << "      ADAPTIVE TEMPERING COUPLED TO LANGEVIN THERMOSTAT\n";
       if ( adaptTempRescale )
          iout << iINFO << "      ADAPTIVE TEMPERING COUPLED TO VELOCITY RESCALING\n";
@@ -2889,7 +2907,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
       iout << iINFO << "FMA ACTIVE\n";
 diff -u -wdB spec_old/SimParameters.h spec_new/SimParameters.h
 --- spec_old/SimParameters.h	2015-09-04 17:20:03.000000000 -0500
-+++ spec_new/SimParameters.h	2016-08-17 17:06:20.399038608 -0500
++++ spec_new/SimParameters.h	2016-08-17 20:18:41.901844070 -0500
 @@ -497,8 +497,35 @@
  					//  active
  	BigReal tCoupleTemp;		//  Temperature for temp coupling
@@ -2926,7 +2944,7 @@ diff -u -wdB spec_old/SimParameters.h spec_new/SimParameters.h
  
          Bool accelMDOn;                 //  Perform accelerated MD
          Bool accelMDdihe;               //  Apply boost to the dihedral potential
-@@ -523,16 +550,35 @@
+@@ -523,16 +550,36 @@
          BigReal adaptTempTmax;                 //  Upper temperature bound
          BigReal adaptTempAutoDt;               //  Auto jump size. Value determines upper bound, adaotTempDt determines lower bound 
          int adaptTempBins;                     //  Number of bins to store average energy values
@@ -2956,6 +2974,7 @@ diff -u -wdB spec_old/SimParameters.h spec_new/SimParameters.h
          /* End Adaptive Temperature Sampling */
  
 +        Bool specAtomsOn;                      //  Turn on calculation on the end-to-end distance
++        char specAtomsFile[128];               //  Output file for special atoms
 +        char specAtomsList[1024];              //  List of special atom types, separated by ':' for atoms of different groups, or by ',' for atoms in the same group
 +        char specAtomsType[128];               //  Quantity to be computed from the special atoms, can be 'end-to-end distance' or 'dihedral'
 +        int  specAtomsFreq;                    //  Frequency of outputing the quantity of the special atoms
@@ -2963,7 +2982,7 @@ diff -u -wdB spec_old/SimParameters.h spec_new/SimParameters.h
  	int reassignFreq;		//  Velocity reassignment frequency
  	BigReal reassignTemp;		//  Temperature to reassign to
  	BigReal reassignIncr;		//  Added to reassignTemp each time
-@@ -921,6 +967,7 @@
+@@ -921,6 +968,7 @@
          int issetinparseopts(const char* name);
  
         	void readExtendedSystem(const char *filename, Lattice *latptr=0);

@@ -44,14 +44,11 @@ The third group has two types of atoms: C1 and C2.
 Atoms in the first group will be searched first and added to the list of special atoms.
 Then atoms in the second group will be searched, then atoms in the third group, ...
 
-For example, with "CAY|CA|CAT", the N-terminal cap "CAY" will be searched first,
+For example, with "CAY|CA|CAT", and PDB file lists atoms as
+CAY, CA, CA, ..., CAT, CA
+the N-terminal cap "CAY" will be searched first,
 regular alpha-carbon "CA" will be searched next,
 the C-terminal cap "CAT" will be searched last.
-
-With "C1,C2,C3,C4", the atoms "C1", "C2", "C3" and "C4" are searched with equal priority
-as they are within the same group.
-
-
 
 The actual code in CollectionMaster.C and CollectionMgr.h.
 Particularly, the new routines

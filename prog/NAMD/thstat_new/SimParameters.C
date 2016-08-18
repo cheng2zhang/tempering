@@ -1452,7 +1452,7 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
    opts.range("adaptTempMCAutoAR", NOT_NEGATIVE);
    opts.optional("adaptTempMCMove", "adaptTempMCSizeInc", "Virtual size increment for MC temperature moves", &adaptTempMCSizeInc, 0.0005);
    opts.range("adaptTempMCSizeInc", POSITIVE);
-   opts.optional("adaptTempMD", "adaptTempDt", "Integration timestep for Temp. updates", &adaptTempDt, 0.00001);
+   opts.optional("adaptTempMD", "adaptTempDt", "Integration timestep for Temp. updates", &adaptTempDt, 0.0001);
    opts.range("adaptTempDt", NOT_NEGATIVE);
    opts.optional("adaptTempDt", "adaptTempDtAutoAR", "Target acceptance ratio for automatic adjustment of the size of Langevin temperature moves", &adaptTempDtAutoAR, 0.0);
    opts.range("adaptTempDtAutoAR", NOT_NEGATIVE);

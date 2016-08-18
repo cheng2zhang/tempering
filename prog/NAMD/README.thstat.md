@@ -10,11 +10,10 @@ This patch contains several modifications to NAMD 2.11:
   * Fixing the bin index overflow problem (due to Justin) in adaptTempUpdate() in Controller.C.
   * Properly overwriting (instead of appending) the restart file (due to Justin).
   * Computing the potential energy at the beginning adaptTempUpdate() (due to Justin).
-  * Smaller default value of time step of integrating the Langevin equation (due to Justin).
   * Holding back temperature transitions until a certain number of samples per bin (due to Justin).
   * Number-of-visits-weighted integral identity.
-  * Implementing a multiple-step Langevin equation integration scheme.
   * Implementing the Monte Carlo scheme for temperature transitions.
+  * Implementing an MC-corrected Langevin equation integration scheme.
   * Implementing the separate accumulator scheme for adaptive averaging.
   * Fine tuning of the overall temperature distribution.
   * Features and options for input restart file.
@@ -77,13 +76,6 @@ But that is inaccurate because the MD integrator only approximately
 conserves the total energy.
 The code now recomputes the potential energy at the beginning of adaptTempUpdate().
 
-#### Smaller default value of the time step of integrating the Langevin equation
-
-The value recommended in the paper (JCP, 2010, 132, 244101) 0.0001 appears to too large
-in that it broadens the potential energy distribution (due to Justin).
-Therefore a smaller value 0.00001 is now used.
-Generally, the value should be smaller for larger systems.
-
 #### Holding back temperature transitions until a certain number of samples per bin
 
 In an initial stage, the temperature often drifts to one end of the temperature spectrum.
@@ -100,14 +92,6 @@ The integral identity used for computing the average energy can be modified
 to use the number of visits as a weighting factor.
 This modification hopefully improve the stability during the equilibration stage.
 
-#### Implementing a multiple-step Langevin equation integration scheme
-
-The Langevin equation can now be integrated with multiple sub-steps to improve the accuracy.
-This feature can be turned on by setting `adaptTempDtSteps`
-```
-adaptTempDtSteps    10
-```
-
 #### Implementing a Monte Carlo scheme for temperature transitions
 
 In addition to the Langevin equation approach,
@@ -118,9 +102,33 @@ adaptTempMCMove    on
 adaptTempMCSize    0.01
 ```
 The move size, specified by `adaptTempMCSize` is given as a fraction of the current temperature.
-The value should be adjusted such that the acceptance ratio ACC. RATIO printed out on the screen is roughly 50%.
-With a proper adaptTempMCSize, the Monte Carlo scheme is recommended over
-the Langevin equation scheme for accuracy and efficiency.
+The value should be adjusted such that the acceptance ratio `ACC. RATIO` printed out on the screen is roughly 50%.
+To automate the process during equilibration, one can set the target acceptance ratio
+```
+adaptTempMCAutoAR   0.5
+```
+The adjustment occurs in every step, but with decreasing magnitude (~ 1/t).
+
+#### Implementing an MC-corrected Langevin equation integration scheme
+
+For the Langevin equation, the value recommended in the paper (JCP, 2010, 132, 244101)
+0.0001 appears to too large in that it broadens the potential energy distribution (due to Justin).
+The Langevin equation is now corrected by a Monte Carlo scheme
+so it is correct no matter the size of time step.
+However, the acceptance ratio of the correction step should be greater than 0.5.
+To automatically adjust the move size during equilibration,
+one can set the target acceptance ratio as
+```
+adaptTempDtAutoAR   0.5
+```
+The adjustment occurs in every step, but with decreasing magnitude (~ 1/t).
+
+The approximate equivalence relationship between `adaptTempDt` and `adaptTempMCSize` is
+```
+adaptTempDt ~ adaptTempMCSize^2 / 2
+```
+With the new correction scheme, the Langevin equation appears to work correctly,
+and it may be slightly better than the Monte Carlo scheme.
 
 #### Implementing the separate accumulator scheme
 
