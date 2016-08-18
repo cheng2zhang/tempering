@@ -27,6 +27,29 @@ thstat.patch::
 	git add thstat_*/*
 	diff -u -wdB thstat_old thstat_new > $@; [ $$? -eq 1 ]
 
+testfiles = test/alanin/*.conf \
+	    test/alanin/*.param \
+	    test/alanin/alanin.pdb \
+	    test/alanin/alanin.psf \
+	    test/argon/*.prm \
+	    test/argon/*.conf \
+	    test/argon/argon_300K.coor \
+	    test/argon/*.psf \
+	    test/argon/cmp.png \
+	    test/argon/ke.png \
+	    test/argon/Makefile \
+	    test/argon/*.gp \
+	    test/waterbox/*.conf \
+	    test/waterbox/*.inp \
+	    test/waterbox/waterbox.* \
+	    test/waterbox/Makefile \
+	    test/waterbox/*.gp \
+	    test/butane/*.conf \
+	    test/butane/*ethers* \
+	    test/butane/butane.* \
+	    test/butane/Makefile \
+	    test/butane/*.gp
+
 NAMD_thstat.zip::
 	$(RM) -f $@
 	$(MAKE) -B thstat.patch
@@ -34,17 +57,7 @@ NAMD_thstat.zip::
 	  README.thstat.md \
 	  doc/vsTmove.tex doc/*.pdf \
 	  doc/fig/*.gp doc/fig/*.eps doc/fig/*.pdf \
-	  test/Argon_NAMD_ST/*.prm \
-	  test/Argon_NAMD_ST/*.conf \
-	  test/Argon_NAMD_ST/argon_300K.coor \
-	  test/Argon_NAMD_ST/*.psf \
-	  test/Argon_NAMD_ST/cmp.png \
-	  test/Argon_NAMD_ST/ke.png \
-	  test/waterbox/*.conf \
-	  test/waterbox/*.inp \
-	  test/waterbox/waterbox.* \
-	  ./mkhist.py \
-	  test/alanin/*.conf
+	  $(testfiles) ./mkhist.py \
 
 NAMD_spec.zip::
 	$(RM) -f $@
@@ -53,17 +66,8 @@ NAMD_spec.zip::
 	  README.thstat.md README.spec.md \
 	  doc/vsTmove.tex doc/*.pdf \
 	  doc/fig/*.gp doc/fig/*.eps doc/fig/*.pdf \
-	  test/Argon_NAMD_ST/*.prm \
-	  test/Argon_NAMD_ST/*.conf \
-	  test/Argon_NAMD_ST/argon_300K.coor \
-	  test/Argon_NAMD_ST/*.psf \
-	  test/Argon_NAMD_ST/cmp.png \
-	  test/Argon_NAMD_ST/ke.png \
-	  test/waterbox/*.conf \
-	  test/waterbox/*.inp \
-	  test/waterbox/waterbox.* \
-	  ./mkhist.py \
-	  test/alanin/*.conf
+	  $(testfiles) \
+	  ./mkhist.py
 
 Bossman:
 	make NAMD_thstat.zip

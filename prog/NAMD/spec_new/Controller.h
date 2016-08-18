@@ -138,6 +138,7 @@ protected:
       BigReal drudeBondTemp; // temperature of Drude bonds
       BigReal drudeBondTempAvg;
 
+      BigReal potentialEnergy;
       BigReal kineticEnergy;
       BigReal kineticEnergyHalfstep;
       BigReal kineticEnergyCentered;

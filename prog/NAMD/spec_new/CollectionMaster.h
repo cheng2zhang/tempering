@@ -344,8 +344,43 @@ public:
         o = *c;
       return o;
     }
+  };
 
-    CollectHiSequence() { ; }
+  struct UserData {
+    int seq;
+    std::vector<BigReal> x;
+    UserData(int seq_, std::vector<BigReal>& x_) {
+      seq = seq_;
+      x = x_;
+    }
+  };
+
+  class UserDataSeq {
+    std::vector<UserData> arr;
+  public:
+    void add(int seq, std::vector<BigReal>& x) {
+      for ( int i = 0; i < arr.size(); i++ )
+        if ( arr[i].seq < 0 ) { // found a vacancy
+          arr[i].seq = seq;
+          arr[i].x = x;
+          return;
+        }
+      arr.push_back( UserData(seq, x) );
+    }
+    int find(int seq) {
+      int i;
+      for ( i = arr.size() - 1; i >= 0; i-- )
+        if ( arr[i].seq == seq ) break;
+      return i;
+    }
+    std::vector<BigReal> del(int seq) {
+      int i = find(seq);
+      if ( i >= 0 ) {
+        arr[i].seq = -1;
+        return arr[i].x;
+      }
+      return std::vector<BigReal>();
+    }
   };
 
 public:
@@ -354,8 +389,9 @@ public:
 
   int numSpec; // size of `specPositions', to be set in the Controller
   CollectVectorSequence specPositions; // to hold positions of special atoms
+  UserDataSeq specUserData;
   void receiveSpecPositions(CollectVectorMsg *msg);
-  void enqueueSpecPositions(int seq, Lattice &lattice);
+  void enqueueSpecPositions(int seq, Lattice &lattice, BigReal tp, BigReal ep);
   void disposeSpecPositions(CollectVectorInstance *c);
 
 private:

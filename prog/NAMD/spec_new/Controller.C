@@ -472,12 +472,7 @@ void Controller::integrate(int scriptTask) {
 	langevinPiston1(step);
         rescaleaccelMD(step);
 	enqueueCollections(step);  // after lattice scaling!
-        // request positions of the special atoms, the results
-        // may not be immediately available after the call
-        if ( simParams->specAtomsOn
-          && step % simParams->specAtomsFreq == 0 ) {
-          collection->enqueueSpecPositions(step, state->lattice);
-        }
+        // reduction->require(), compute potentialEnergy
 	receivePressure(step);
         if ( zeroMomentum && dofull && ! (step % slowFreq) )
 						correctMomentum(step);
@@ -487,6 +482,10 @@ void Controller::integrate(int scriptTask) {
         langRescaleVelocities(step, TRUE);
         tNHCRescaleVelocities(step, TRUE);
         Bool scaled = adaptTempUpdate(step);
+        // request positions of the special atoms, the results
+        // may not be immediately available after the call
+        if ( simParams->specAtomsOn && step % simParams->specAtomsFreq == 0 )
+          collection->enqueueSpecPositions(step, state->lattice, adaptTempT, potentialEnergy);
         keHistUpdate(step);
         printDynamicsEnergies(step);
         if ( fsEnergyLog.is_open() && step % simParams->energyLogFreq == 0 ) {
@@ -552,8 +551,8 @@ void Controller::integrate(int scriptTask) {
     // signal(SIGINT, oldhandler);
     
     adaptTempDone(step);
-    if ( simParams->specAtomsOn )
-      Node::Object()->output->specAtoms(-1, 0, NULL, NULL);
+    if ( simParams->specAtomsOn ) // close the log file for speical atoms
+      Node::Object()->output->specAtoms(-1, 0, NULL, NULL, 0, 0);
     rescaleVelocitiesSave(step);
     if ( fsEnergyLog.is_open() ) fsEnergyLog.close();
     tNHCDone(step);
@@ -2444,6 +2443,7 @@ BigReal Controller::adaptTempMCMove(BigReal tp, BigReal ep)
     // adjust the MC move size automatically
     if ( simParams->adaptTempMCAutoAR > 0 && adaptTempMCTot > 100 ) {
       double dacc = adaptTempMCDAcc;
+      if ( dacc > 0 ) dacc = 0;
       if ( adaptTempMCFail > 5 ) { // out-of-boundary rejections
         dacc -= adaptTempMCFail / simParams->adaptTempMCSizeInc;
       } else { // approximation
@@ -2544,7 +2544,6 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
     BigReal gammaAve = 1.-adaptTempCg/adaptTempPotEnergySamples[adaptTempBin];
     if ( gammaAve < 0 ) gammaAve = 0;
 
-    BigReal potentialEnergy;
     BigReal potEnergyAverage;
     BigReal potEnergyVariance;
 
@@ -2649,26 +2648,30 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
       if ( simParams->adaptTempMCMove ) { // Monte Carlo
         if ( adaptTempMCTot > 0 ) {
           BigReal acc = adaptTempMCAcc / adaptTempMCTot;
-          BigReal dacc = (adaptTempMCDAcc - adaptTempMCFail / simParams->adaptTempMCSizeInc) / adaptTempMCTot;
+          BigReal dacc = adaptTempMCDAcc / adaptTempMCTot;
+          if ( dacc > 0 ) dacc = 0;
+          dacc -= adaptTempMCFail / simParams->adaptTempMCSizeInc / adaptTempMCTot;
           BigReal ar = simParams->adaptTempMCAutoAR;
           if ( ar <= 0 ) ar = 0.5;
           BigReal newsize = adaptTempMCSize + (ar - acc) / dacc;
           if ( newsize < 0 ) newsize = 0;
-          sprintf(info, " MC %.0f(%.0f) ACC. RATIO %.3f DAR %g SIZE %g -> %g",
+          sprintf(info, " MC %.0f(%.0f) ACC. RATIO %.3f%% DAR %g SIZE %g -> %g",
               adaptTempMCTot, adaptTempMCFail, 100*acc, dacc, adaptTempMCSize, newsize);
           iout << info;
         }
       } else { // Langevin equation
         if ( adaptTempLangTot > 0 ) {
           BigReal acc = adaptTempLangAcc / adaptTempLangTot;
-          BigReal dacc = (adaptTempLangDAcc - adaptTempLangFail / simParams->adaptTempMCSizeInc) / adaptTempLangTot;
+          BigReal dacc = adaptTempLangDAcc / adaptTempLangTot;
+          if ( dacc > 0 ) dacc = 0;
+          dacc -= adaptTempLangFail / simParams->adaptTempMCSizeInc / adaptTempLangTot;
           BigReal oldsize = sqrt(2*adaptTempDt);
           BigReal ar = simParams->adaptTempDtAutoAR;
           if ( ar <= 0 ) ar = 0.5;
           BigReal newsize = oldsize + (ar - acc) / dacc;
           if ( newsize < 0 ) newsize = 0;
           BigReal newdt = newsize * newsize / 2;
-          sprintf(info, " LANGEVIN %.0f(%.0f) ACC. RATIO %.3f DAR %g SIZE %g -> %g, DT %g -> %g",
+          sprintf(info, " LANGEVIN %.0f(%.0f) ACC. RATIO %.3f%% DAR %g SIZE %g -> %g, DT %g -> %g",
               adaptTempLangTot, adaptTempLangFail, 100*acc, dacc, oldsize, newsize, adaptTempDt, newdt);
           iout << info;
         }
@@ -2940,7 +2943,6 @@ void Controller::printEnergies(int step, int minimize)
     BigReal crosstermEnergy;
     BigReal boundaryEnergy;
     BigReal miscEnergy;
-    BigReal potentialEnergy;
     BigReal flatEnergy;
     BigReal smoothEnergy;
 

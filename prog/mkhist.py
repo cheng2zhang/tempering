@@ -11,8 +11,8 @@ fnout = None
 dE = 0.5
 dT = 1
 T = 300
-colE = 2
-
+col = 2
+colT = -1
 
 
 def showhelp():
@@ -25,18 +25,19 @@ def showhelp():
   print "  --dT=:         set the temperature tolerance"
   print "  -o, --output=: set the output file"
   print "  -i, --input=:  set the input file"
-  print "  -c, --col=:    set the column for the energy"
+  print "  -c, --col=:    set the column for energy"
+  print "  --colT=:   set the column for temperature"
 
 
 
 def doargs():
-  global fnins, fnout, dE, dT, T, colE
+  global fnins, fnout, dE, dT, T, col, colT
 
   try:
     opts, args = getopt.gnu_getopt(sys.argv[1:],
         "hT:o:i:c:",
         ["dE=", "de=", "dT=", "dt=", "tp=", "input=", "output=",
-         "col="])
+         "col=", "colT="])
   except:
     print "Error parsing the command line"
     sys.exit(1)
@@ -56,7 +57,9 @@ def doargs():
     elif o in ("-o", "--output"):
       fnout = a
     elif o in ("-c", "--col"):
-      colE = int(a)
+      col = int(a)
+    elif o in ("--colT",):
+      colT = int(a)
 
   if len(fnins) == 0:
     fnins = glob.glob("e*.log")
@@ -129,12 +132,14 @@ def mkhist2(s, fnout):
   n = len(s) - 1 # drop the last frame
   hist = None
   for i in range(n):
-    x = s[i].split()
+    ln = s[i].strip()
+    if ln.startswith("#"): continue
+    x = ln.split()
     try:
-      ene = float(x[colE - 1])
+      ene = float(x[col - 1])
     except:
       break
-    if i == 0:
+    if not hist:
       hist = Hist(ene, ene, dE)
     hist.add(ene)
   if hist:
@@ -143,17 +148,20 @@ def mkhist2(s, fnout):
 
 
 def mkhist3(s, fnout):
+  global colT
   n = len(s) - 1 # drop the last frame
   hist = None
   for i in range(n):
-    x = s[i].split()
+    ln = s[i].strip()
+    if ln.startswith("#"): continue
+    x = ln.split()
     try:
-      tp = float(x[2])
+      tp = float(x[colT - 1])
     except:
       break
     if tp < T - dT or tp > T + dT:
       continue
-    ene = float(x[colE - 1])
+    ene = float(x[col - 1])
     if not hist:
       hist = Hist(ene, ene, dE)
     hist.add(ene)
@@ -163,14 +171,20 @@ def mkhist3(s, fnout):
 
 
 def mkhist(fnin):
-  global fnout
+  global fnout, colT
+
   s = open(fnin).readlines()
   fno = fnout
   if not fno:
     fno = os.path.splitext(fnin)[0] + ".his"
 
-  tp = len( s[0].split() )
-  if tp == 3 and colE == 2:
+  if col == 2: # determine file type
+    for ln in s:
+      if not ln.startswith("#"):
+        if len( ln.split() ) == 3: colT = 3
+        break
+
+  if colT > 0:
     mkhist3(s, fno)
   else:
     mkhist2(s, fno)

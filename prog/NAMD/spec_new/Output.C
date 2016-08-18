@@ -10,6 +10,7 @@
 
 #include "largefiles.h"  // must be first!
 
+#include <fstream>
 #include <string.h>
 #include <stdlib.h>
 
@@ -1357,22 +1358,20 @@ static BigReal getdih(Vector& xi, Vector& xj, Vector& xk, Vector& xl, Lattice* l
 }
 
 // write the quantity computed from the special atoms
-void Output::specAtoms(int step, int numAtoms, Vector* arr, Lattice* lattice)
+void Output::specAtoms(int step, int numAtoms, Vector* arr, Lattice* lattice,
+    BigReal tp, BigReal ep)
 {
   SimParameters *simParams = Node::Object()->simParameters;
   char s[1024];
   BigReal x;
   static int once;
-  static FILE *fp = NULL;
+  static std::ofstream fs;
   if ( !once && simParams->specAtomsFile[0] != '\0' ) {
-    fp = fopen(simParams->specAtomsFile, "a");
-    fprintf(fp, "# step\t%s\n", simParams->specAtomsType);
+    fs.open(simParams->specAtomsFile, std::ios::app);
+    fs << "# step\t" << simParams->specAtomsType << "\n";
     once = 1;
   }
-  if ( step < 0 && fp != NULL ) {
-    fclose(fp);
-    fp = NULL;
-  }
+  if ( step < 0 && fs.is_open() ) fs.close();
   if ( strncasecmp(simParams->specAtomsType, "end", 3) == 0 ) {
     // Compute the end-to-end distance from the positions
     Vector del(0, 0, 0), endtoend(0, 0, 0);
@@ -1383,10 +1382,12 @@ void Output::specAtoms(int step, int numAtoms, Vector* arr, Lattice* lattice)
     // Compute the dihedral
     x = getdih(arr[0], arr[1], arr[2], arr[3], lattice);
   }
-  if ( fp == NULL ) {
-    CkPrintf("step %d, %s %g\n", step, simParams->specAtomsType, x);
+  if ( fs.is_open() ) {
+    fs << step << "\t" << x;
+    if ( simParams->adaptTempOn ) fs << "\t" << tp << "\t" << ep;
+    fs << std::endl;
   } else {
-    fprintf(fp, "%d\t%g\n", step, x);
+    CkPrintf("step %d, %s %g\n", step, simParams->specAtomsType, x);
   }
 }
 

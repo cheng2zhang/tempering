@@ -96,7 +96,7 @@ public :
    void force(int, int, Vector *);		//  Produce appropriate force
 						//  output for the current 
 						//  timestep
-  void specAtoms(int, int, Vector *, Lattice *);
+  void specAtoms(int, int, Vector *, Lattice *, BigReal, BigReal);
 
   void replicaDcdOff() { replicaDcdActive = 0; }
   void setReplicaDcdIndex(int index);

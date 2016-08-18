@@ -73,17 +73,22 @@ void CollectionMaster::receiveSpecPositions(CollectVectorMsg *msg)
   while ( ( c = specPositions.removeReady() ) ) { disposeSpecPositions(c); }
 }
 
-void CollectionMaster::enqueueSpecPositions(int seq, Lattice &lattice)
+void CollectionMaster::enqueueSpecPositions(int seq, Lattice &lattice, BigReal tp, BigReal ep)
 {
-  specPositions.enqueue(seq,lattice);
-
+  specPositions.enqueue(seq, lattice);
+  std::vector<BigReal> data;
+  data.push_back(tp);
+  data.push_back(ep);
+  specUserData.add(seq, data);
   CollectVectorInstance *c;
   while ( ( c = specPositions.removeReady() ) ) { disposeSpecPositions(c); }
 }
  
 void CollectionMaster::disposeSpecPositions(CollectVectorInstance *c)
 {
-  Node::Object()->output->specAtoms(c->seq, c->data.size(), c->data.begin(), &c->lattice);
+  const std::vector<BigReal>& ud = specUserData.del(c->seq);
+  Node::Object()->output->specAtoms(c->seq, c->data.size(), c->data.begin(),
+      &c->lattice, ud[0], ud[1]);
   c->free();
 }
  

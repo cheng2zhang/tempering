@@ -1,27 +1,32 @@
 # NAMD files
 
+This file can be viewed online
+
+https://github.com/cheng2zhang/tempering/blob/master/prog/NAMD/README.thstat.md
 
 ### thstat
 
 This patch contains several modifications to NAMD 2.11:
 
+ + Modifications related to the adaptive tempering module
   * Velocities rescaling after temperature transitions in adaptive tempering (due to Justin).
   * Fixing (hopefully) the one-step mismatch problem in Sequencer.C and Controller.C.
-  * Fixing the bin index overflow problem (due to Justin) in adaptTempUpdate() in Controller.C.
-  * Properly overwriting (instead of appending) the restart file (due to Justin).
-  * Computing the potential energy at the beginning adaptTempUpdate() (due to Justin).
+  * Computing the potential energy at the beginning `adaptTempUpdate()` (due to Justin).
   * Holding back temperature transitions until a certain number of samples per bin (due to Justin).
   * Number-of-visits-weighted integral identity.
   * Implementing the Monte Carlo scheme for temperature transitions.
   * Implementing an MC-corrected Langevin equation integration scheme.
   * Implementing the separate accumulator scheme for adaptive averaging.
   * Fine tuning of the overall temperature distribution.
-  * Features and options for input restart file.
-  * Disabling the code for the ad hoc adaptTempRandom scheme.
-  * Issuing a warning for using adaptive tempering with the original velocity rescaling scheme.
+  * Features and options for the restart file.
+  * Disabling the code for `adaptTempRandom` and `adaptTempAutoDt`.
   * Miscellaneous modifications.
+
+ + New thermostats
   * Integrating the Langevin-style velocity-rescaling thermostat and Nose-Hoover thermostat.
   * Adaptively rescaling the velocity to approach an asymptotic microcanonical ensemble.
+
+ + Logging
   * Monitoring the distribution of the (reduced) kinetic energy.
   * Logging the potential energy.
 
@@ -53,20 +58,6 @@ The code of receiving and sending Hi messages are implemented
 in the CollectionMaster and CollectionMgr modules, respectively.
 Please see, e.g., CollectionMgr::submitHi() and CollectionMaster::enqueueHi().
 
-
-#### Possible index overflow and underflow
-
-In adaptTempUpdate(), the temperature index adaptTempBin (line 1997) may be out of range.
-We fix this by correcting the index to 0 or adaptTempBins - 1.
-This should work if the overflow or underflow is due to rounding error.
-But the user should still make sure that the thermostat temperature lying within the range at the beginning.
-
-#### Properly overwriting the the restart file
-
-The restart file was appended instead of overwritten.
-This behavior is modified in the patch.
-By default the restart file is overwritten.
-If appending is desired, the user can set the option `adaptTempRestartAppend`.
 
 #### Recomputing the potential energy in adaptTempUpdate()
 
@@ -102,12 +93,13 @@ adaptTempMCMove    on
 adaptTempMCSize    0.01
 ```
 The move size, specified by `adaptTempMCSize` is given as a fraction of the current temperature.
-The value should be adjusted such that the acceptance ratio `ACC. RATIO` printed out on the screen is roughly 50%.
-To automate the process during equilibration, one can set the target acceptance ratio
+The value should be adjusted such that the acceptance ratio, as `ACC. RATIO` printed out on the screen, is roughly 50%.
+To automate the adjusting process during equilibration, one can set the target acceptance ratio
 ```
 adaptTempMCAutoAR   0.5
 ```
-The adjustment occurs in every step, but with decreasing magnitude (~ 1/t).
+The adjustment occurs in every step, but with decreasing magnitude (~ 1/t) to approach a fixed asymptotic limit.
+However, for safety, the automatic adjusting feature should only be used in equilibration.
 
 #### Implementing an MC-corrected Langevin equation integration scheme
 
@@ -122,18 +114,20 @@ one can set the target acceptance ratio as
 adaptTempDtAutoAR   0.5
 ```
 The adjustment occurs in every step, but with decreasing magnitude (~ 1/t).
+However, for safety, the option should only be used in equilibration.
 
 The approximate equivalence relationship between `adaptTempDt` and `adaptTempMCSize` is
 ```
 adaptTempDt ~ adaptTempMCSize^2 / 2
 ```
-With the new correction scheme, the Langevin equation appears to work correctly,
-and it may be slightly better than the Monte Carlo scheme.
+With the new correction scheme, the Langevin equation may offer a slightly larger
+move size than the Monte Carlo scheme.
 
 #### Implementing the separate accumulator scheme
 
 To make the adaptive averaging scheme work most efficiently,
 each bin needs a separator accumulator associated with the window.
+In this way the parameter Cgamma applies to all bins within the window.
 To use the feature, set
 ```
 adaptTempSep    on
@@ -147,55 +141,63 @@ will be appended to the restart file.
 
 The overall temperature distribution can now be tuned by the new parameter `adaptTempWeightExp`.
 In terms of the distribution of the inverse-temperature, beta, this parameter corresponds to x as in
+
   w(beta) ~ 1/beta^x.
-Equivalently, the distribution of temperature T, is given by T^(x - 2).
+
+Equivalently, the distribution of temperature T, is proportional to T^(x - 2).
 Thus, to achieve a flat-T histogram, we need to set x = 2.
 To achieve a flat-beta histogram, we need to set x = 0.
-The default value is 1.0, which corresponds to a flat-ln(T) histogram. 
+The default value is 1.0, which corresponds to a flat-lnT histogram. 
 ```
 adaptTempWeightExp    1
 ```
 
 #### Feature and options for the restart file
 
+When writting the restart file, it is now overwritten instead of appended.
+If the appending behavior is needed, the user can set the option `adaptTempRestartAppend`.
+
 Several options are added to the output restart file.
   * Adding the inverse temperature as the first column of the restart file (due to Justin).
   * Using the average energy computed from the integral identity as the average energy in the restart file (the second column).
-  * Adding the inverse weight to the last column of the restart file.
+  * Adding the inverse weight to the last column of the restart file (column 8).
   * Increasing the precision of the restart file.
+The product of column 4 (histogram) and column 8 (inverse weight) should be roughly a constant after a long run.
 
 Two options are added to use the input restart file. 
-The option `adaptTempFixedAve` is now added to fix the average energies (column) read from the input restart file (due to Justin).
+The option `adaptTempFixedAve` can fix the average energies read from the input restart file (due to Justin).
 During the simulation, the number of visits and other data will still be accumulated,
 but the second column of the output restart file regarding the average energy will be fixed.
 
-Another option `adaptTempEmptyData` is added to empty data after loading the input restart file.
+The option `adaptTempEmptyData` can empty data after loading the input restart file.
 This feature can be used in conjugation with `adaptTempFixedAve` to see if
 the average energy from the input restart file is able to produce the desired temperature distribution.
-The product of columns four (histogram) and eight (inverse weight) should be roughly a constant after a long run.
-Besides the program now throws out an exception when there is a failure reading the input restart file.
 
-#### Disabling the code for adaptTempRandom
+The program now throws out an exception when there is a failure reading the input restart file.
 
+#### Disabling the code for `adaptTempRandom` and `adaptTempAutoDt`
+
+The option `adaptTempRandom` is deprecated.
 If the Langevin equation drives the temperature out of range,
-the scheme by adaptTempRandom will randomly pick a new temperature in the range.
+the scheme triggered by the option `adaptTempRandom` will randomly pick a new temperature in the range.
 This strategy is not exact.
 In the new version, an invalid temperature transition is abandoned and
 the old adaptive temperature is kept,
 just as one would do in a failed Monte Carlo move.
 
-#### Issuing a warning for using adaptive tempering with the original velocity rescaling
+The option `adaptTempAutoDt` is deprecated.
+A similar functionality is provided by `adaptTempDtAutoAR` as discussed above.
 
-The original velocity rescaling does not sample a canonical distribution.
-Therefore, it is not recommended for use with adaptive tempering for production runs.
+A warning message will be displayed if either option is used.
 
 #### Miscellaneous modifications
 
   * Adding the option `adaptTempWindowSize` to adjust the window size of integral identity (due to Justin).
   * Allowing `adaptTempInFile` and `adaptTempBins` to be set simultaneously in the configuration file, the former overrides the latter.
   * Reducing the default window size for the integral identity from 0.04 to 0.02.
-  * Trying to change how often the LJcorrection is computed.
-  * Langevin time step adaptTempDt is unitless (SimParameters.h).
+  * Trying to change how often the `LJcorrection` is computed.
+  * Langevin time step adaptTempDt is dimensionless (previously it assumes the unit of femto-second, SimParameters.h).
+  * Issuing a warning for using adaptive tempering with the original velocity rescaling scheme. The original velocity rescaling does not sample a canonical distribution, and should not be for use with adaptive tempering for production runs.  As a replacement, use the Langevin-style velocity rescaling thermostat instead.
 
 #### Integrating the Langevin-style velocity rescaling thermostat and Nose-Hoover thermostat
 
@@ -333,8 +335,9 @@ If the input log file is omitted, all `ene*.log` files under the current directo
 
 ## Apply patches
 
-http://www.thegeekstuff.com/2014/12/patch-command-examples/
-
+Patch files can be produced by using `diff` on the `thstat_old` and `thstat_new` directory.
+See the tutorial in http://www.thegeekstuff.com/2014/12/patch-command-examples/
+A convenient `make` command is provided:
 ```
 make thstat.patch
 ```
@@ -342,3 +345,5 @@ make thstat.patch
 To use the patch
 ```
 patch -b -p3 < thstat.patch
+```
+

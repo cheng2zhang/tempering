@@ -2419,6 +2419,7 @@ BigReal Controller::adaptTempMCMove(BigReal tp, BigReal ep)
     // adjust the MC move size automatically
     if ( simParams->adaptTempMCAutoAR > 0 && adaptTempMCTot > 100 ) {
       double dacc = adaptTempMCDAcc;
+      if ( dacc > 0 ) dacc = 0;
       if ( adaptTempMCFail > 5 ) { // out-of-boundary rejections
         dacc -= adaptTempMCFail / simParams->adaptTempMCSizeInc;
       } else { // approximation
@@ -2624,7 +2625,9 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
       if ( simParams->adaptTempMCMove ) { // Monte Carlo
         if ( adaptTempMCTot > 0 ) {
           BigReal acc = adaptTempMCAcc / adaptTempMCTot;
-          BigReal dacc = (adaptTempMCDAcc - adaptTempMCFail / simParams->adaptTempMCSizeInc) / adaptTempMCTot;
+          BigReal dacc = adaptTempMCDAcc / adaptTempMCTot;
+          if ( dacc > 0 ) dacc = 0;
+          dacc -= adaptTempMCFail / simParams->adaptTempMCSizeInc / adaptTempMCTot;
           BigReal ar = simParams->adaptTempMCAutoAR;
           if ( ar <= 0 ) ar = 0.5;
           BigReal newsize = adaptTempMCSize + (ar - acc) / dacc;
@@ -2636,7 +2639,9 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
       } else { // Langevin equation
         if ( adaptTempLangTot > 0 ) {
           BigReal acc = adaptTempLangAcc / adaptTempLangTot;
-          BigReal dacc = (adaptTempLangDAcc - adaptTempLangFail / simParams->adaptTempMCSizeInc) / adaptTempLangTot;
+          BigReal dacc = adaptTempLangDAcc / adaptTempLangTot;
+          if ( dacc > 0 ) dacc = 0;
+          dacc -= adaptTempLangFail / simParams->adaptTempMCSizeInc / adaptTempLangTot;
           BigReal oldsize = sqrt(2*adaptTempDt);
           BigReal ar = simParams->adaptTempDtAutoAR;
           if ( ar <= 0 ) ar = 0.5;

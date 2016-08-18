@@ -32,6 +32,9 @@ specAtomsList         C1,C2,C3,C4
 specAtomsType         dihedral
 ```
 
+The log file specified by `specAtomsFile` contains step and the quantity computed from special atoms.
+If adaptive tempering is turned on, the log file also contains the temperature and potential energy.
+
 The format of `specAtomsList` is the following. For example
 ```
 specAtomsList         A1,A2,A3|B|C1,C2
@@ -55,14 +58,3 @@ Particularly, the new routines
 `CollectionMaster::receiveSpecPositions()`, `CollectionMaster::enqueueSpecPositions()`,
 `CollectionMaster::disposeSpecPositions()`, and `CollectionMgr::submitSpecPositions()`.
 
-## Apply patches
-
-http://www.thegeekstuff.com/2014/12/patch-command-examples/
-
-```
-make spec.patch
-```
-
-To use the patch
-```
-patch -b -p3 < spec.patch
