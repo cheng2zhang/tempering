@@ -575,6 +575,7 @@ public:
         /* End Adaptive Temperature Sampling */
 
         Bool specAtomsOn;                      //  Turn on calculation on the end-to-end distance
+        char specAtomsFile[128];               //  Output file for special atoms
         char specAtomsList[1024];              //  List of special atom types, separated by ':' for atoms of different groups, or by ',' for atoms in the same group
         char specAtomsType[128];               //  Quantity to be computed from the special atoms, can be 'end-to-end distance' or 'dihedral'
         int  specAtomsFreq;                    //  Frequency of outputing the quantity of the special atoms

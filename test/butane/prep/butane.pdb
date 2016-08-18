@@ -1,0 +1,16 @@
+REMARK original generated coordinate pdb file
+ATOM      1  H11 BUTA    1       1.406  -0.850  -0.218  1.00  0.00      U    H
+ATOM      2  H12 BUTA    1       0.018  -1.791   0.468  1.00  0.00      U    H
+ATOM      3  H13 BUTA    1      -0.194  -0.856  -1.067  1.00  0.00      U    H
+ATOM      4  C1  BUTA    1       0.300  -0.851  -0.065  1.00  0.00      U    C
+ATOM      5  H21 BUTA    1       0.408   0.360   1.721  1.00  0.00      U    H
+ATOM      6  H22 BUTA    1       0.196   1.292   0.190  1.00  0.00      U    H
+ATOM      7  C2  BUTA    1      -0.118   0.359   0.729  1.00  0.00      U    C
+ATOM      8  H31 BUTA    1      -2.142   0.381  -0.037  1.00  0.00      U    H
+ATOM      9  H32 BUTA    1      -1.929  -0.539   1.501  1.00  0.00      U    H
+ATOM     10  C3  BUTA    1      -1.615   0.390   0.954  1.00  0.00      U    C
+ATOM     11  H41 BUTA    1      -1.740   2.541   1.203  1.00  0.00      U    H
+ATOM     12  H42 BUTA    1      -1.543   1.614   2.744  1.00  0.00      U    H
+ATOM     13  H43 BUTA    1      -3.139   1.614   1.886  1.00  0.00      U    H
+ATOM     14  C4  BUTA    1      -2.032   1.606   1.740  1.00  0.00      U    C
+END

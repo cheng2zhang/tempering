@@ -2139,7 +2139,7 @@ diff -u -wdB spec_old/fstream_namd.h spec_new/fstream_namd.h
    bool bad() const { return false; }
 diff -u -wdB spec_old/Molecule.C spec_new/Molecule.C
 --- spec_old/Molecule.C	2015-12-07 16:17:19.000000000 -0600
-+++ spec_new/Molecule.C	2016-08-17 16:37:04.606668699 -0500
++++ spec_new/Molecule.C	2016-08-17 18:22:59.522385186 -0500
 @@ -5007,6 +5007,16 @@
  }
  /*      END OF FUNCTION print_exclusions    */
@@ -2550,7 +2550,7 @@ diff -u -wdB spec_old/Sequencer.h spec_new/Sequencer.h
        int checkpoint_berendsenPressure_count;
 diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
 --- spec_old/SimParameters.C	2015-12-08 09:41:37.000000000 -0600
-+++ spec_new/SimParameters.C	2016-08-17 17:14:54.935282002 -0500
++++ spec_new/SimParameters.C	2016-08-17 20:03:08.002790836 -0500
 @@ -187,6 +187,12 @@
    }
    SCRIPT_PARSE_FLOAT("reassignTemp",reassignTemp)
@@ -2773,7 +2773,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
 +         strcpy(specAtomsList, "CAY:CA:CAT");
 +     } else if ( strncasecmp(specAtomsType, "dih", 3) == 0 ) {
 +       if ( !opts.defined("specAtomsList") ) { // for butane
-+         strcpy(specAtomsList, "CT3,CT2");
++         strcpy(specAtomsList, "C1,C2,C3,C4");
 +       }
 +     } else {
 +       NAMD_die("Unknown type of special atoms");

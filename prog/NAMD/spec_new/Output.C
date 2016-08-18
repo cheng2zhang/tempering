@@ -1332,11 +1332,11 @@ void Output::scale_vels(Vector *v, int n, Real fact)
 }
 /*      END OF FUNCTION scale_vels      */
 
-static BigReal getdih(Vector& xi, Vector& xj, Vector& xk, Vector& xl, Lattice& lattice)
+static BigReal getdih(Vector& xi, Vector& xj, Vector& xk, Vector& xl, Lattice* lattice)
 {
-  Vector xij = lattice.delta(xi, xj);
-  Vector xkj = lattice.delta(xk, xj);
-  Vector xkl = lattice.delta(xk, xl);
+  Vector xij = lattice->delta(xi, xj);
+  Vector xkj = lattice->delta(xk, xj);
+  Vector xkl = lattice->delta(xk, xl);
   BigReal nxkj2 = xkj.length2();
   BigReal nxkj = sqrt(nxkj2);
   BigReal tol = nxkj2 * 1e-16;
@@ -1357,21 +1357,36 @@ static BigReal getdih(Vector& xi, Vector& xj, Vector& xk, Vector& xl, Lattice& l
 }
 
 // write the quantity computed from the special atoms
-void Output::specAtoms(int step, int numAtoms, Vector* arr, Lattice& lattice)
+void Output::specAtoms(int step, int numAtoms, Vector* arr, Lattice* lattice)
 {
-  SimParameters *simParams = Node::Object()->simParameters; 
+  SimParameters *simParams = Node::Object()->simParameters;
+  char s[1024];
+  BigReal x;
+  static int once;
+  static FILE *fp = NULL;
+  if ( !once && simParams->specAtomsFile[0] != '\0' ) {
+    fp = fopen(simParams->specAtomsFile, "a");
+    fprintf(fp, "# step\t%s\n", simParams->specAtomsType);
+    once = 1;
+  }
+  if ( step < 0 && fp != NULL ) {
+    fclose(fp);
+    fp = NULL;
+  }
   if ( strncasecmp(simParams->specAtomsType, "end", 3) == 0 ) {
     // Compute the end-to-end distance from the positions
     Vector del(0, 0, 0), endtoend(0, 0, 0);
-    for ( int k = 0; k < numAtoms - 1; k++ ) {
-      endtoend += lattice.delta(arr[k+1], arr[k]); 
-    }
-    BigReal dist = endtoend.length();
-    CkPrintf("step %d, end-to-end distance %g\n", step, dist);
+    for ( int k = 0; k < numAtoms - 1; k++ )
+      endtoend += lattice->delta(arr[k+1], arr[k]); 
+    x = endtoend.length();
   } else if ( strncasecmp(simParams->specAtomsType, "dih", 3) == 0 ) {
     // Compute the dihedral
-    BigReal dih = getdih(arr[0], arr[1], arr[2], arr[3], lattice);
-    CkPrintf("step %d, dihedral %g\n", step, dih);
+    x = getdih(arr[0], arr[1], arr[2], arr[3], lattice);
+  }
+  if ( fp == NULL ) {
+    CkPrintf("step %d, %s %g\n", step, simParams->specAtomsType, x);
+  } else {
+    fprintf(fp, "%d\t%g\n", step, x);
   }
 }
 

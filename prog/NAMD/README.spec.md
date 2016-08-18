@@ -16,6 +16,7 @@ To compute the alpha-carbon end-to-end distance,
 set the following options
 ```
 specAtoms             on
+specAtomsFile         end2end.log
 specAtomsList         CAY|CA|CAT
 specAtomsType         end-to-end distance
 specAtomsFreq         4
@@ -26,7 +27,8 @@ To compute the dihedral of butane,
 set the following options
 ```
 specAtoms             on
-specAtomsList         CT3,CT2
+specAtomsFile         dih.log
+specAtomsList         C1,C2,C3,C4
 specAtomsType         dihedral
 ```
 
@@ -46,9 +48,8 @@ For example, with "CAY|CA|CAT", the N-terminal cap "CAY" will be searched first,
 regular alpha-carbon "CA" will be searched next,
 the C-terminal cap "CAT" will be searched last.
 
-With "CT3,CT2", the two atoms "CT3" and "CT2" are searched with equal priority
+With "C1,C2,C3,C4", the atoms "C1", "C2", "C3" and "C4" are searched with equal priority
 as they are within the same group.
-Thus the four atoms in butane, CT3, CT2, CT2, CT3 will be searched sequentially.
 
 
 

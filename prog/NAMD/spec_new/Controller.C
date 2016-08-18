@@ -552,6 +552,8 @@ void Controller::integrate(int scriptTask) {
     // signal(SIGINT, oldhandler);
     
     adaptTempDone(step);
+    if ( simParams->specAtomsOn )
+      Node::Object()->output->specAtoms(-1, 0, NULL, NULL);
     rescaleVelocitiesSave(step);
     if ( fsEnergyLog.is_open() ) fsEnergyLog.close();
     tNHCDone(step);

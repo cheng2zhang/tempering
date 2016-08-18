@@ -1478,6 +1478,7 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
 
    // special atoms
    opts.optionalB("main", "specAtoms", "Turn on calculations on the special atoms", &specAtomsOn, FALSE);
+   opts.optional("specAtoms", "specAtomsFile", "Output file for special atoms", specAtomsFile);
    opts.optional("specAtoms", "specAtomsList", "List of special atom types, separated by ':' for atoms in different groups, or ',' for atoms in the same group", specAtomsList);
    opts.optional("specAtoms", "specAtomsType", "Quantity to be computed from the special atoms, can be 'end-to-end distance' or 'dihedral'", specAtomsType);
    opts.optional("specAtoms", "specAtomsFreq", "Frequency of outputing the quantity of the special atoms", &specAtomsFreq, 1);
@@ -3182,11 +3183,12 @@ void SimParameters::check_config(ParseOptions &opts, ConfigList *config, char *&
          strcpy(specAtomsList, "CAY:CA:CAT");
      } else if ( strncasecmp(specAtomsType, "dih", 3) == 0 ) {
        if ( !opts.defined("specAtomsList") ) { // for butane
-         strcpy(specAtomsList, "CT3,CT2");
+         strcpy(specAtomsList, "C1,C2,C3,C4");
        }
      } else {
        NAMD_die("Unknown type of special atoms");
      }
+     if ( !opts.defined("specAtomsFile") ) specAtomsFile[0] = '\0';
      iout << iINFO << "SPEC ATOMS: [" << specAtomsList
                    << "], type [" << specAtomsType << "]\n";
      if ( !opts.defined("specAtomsFreq") && dcdFrequency > 0 ) {

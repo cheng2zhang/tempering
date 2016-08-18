@@ -1,0 +1,6 @@
+package require psfgen	 
+topology top_all35_ethers.rtf
+segment U {pdb butane0.pdb} 
+coordpdb butane0.pdb U	 
+writepdb butane.pdb 
+writepsf butane.psf 

@@ -83,7 +83,7 @@ void CollectionMaster::enqueueSpecPositions(int seq, Lattice &lattice)
  
 void CollectionMaster::disposeSpecPositions(CollectVectorInstance *c)
 {
-  Node::Object()->output->specAtoms(c->seq, c->data.size(), c->data.begin(), c->lattice);
+  Node::Object()->output->specAtoms(c->seq, c->data.size(), c->data.begin(), &c->lattice);
   c->free();
 }
  
