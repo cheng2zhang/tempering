@@ -30,8 +30,8 @@ diff -u -wdB spec_old/Broadcasts.h spec_new/Broadcasts.h
  #if USE_BARRIER
 diff -u -wdB spec_old/CollectionMaster.C spec_new/CollectionMaster.C
 --- spec_old/CollectionMaster.C	2012-01-28 16:04:27.000000000 -0600
-+++ spec_new/CollectionMaster.C	2016-08-17 20:36:39.754783493 -0500
-@@ -43,6 +43,50 @@
++++ spec_new/CollectionMaster.C	2016-08-19 14:33:14.852834035 -0500
+@@ -43,6 +43,56 @@
  {
  }
  
@@ -60,22 +60,28 @@ diff -u -wdB spec_old/CollectionMaster.C spec_new/CollectionMaster.C
 +{
 +  specPositions.submitData(msg, numSpec);
 +  delete msg;
-+  
++  // remove queued positions, c->seq is not necessarily msg->seq
 +  CollectVectorInstance *c;
 +  while ( ( c = specPositions.removeReady() ) ) { disposeSpecPositions(c); }
 +}
 +
-+void CollectionMaster::enqueueSpecPositions(int seq, Lattice &lattice)
++void CollectionMaster::enqueueSpecPositions(int seq, Lattice &lattice, BigReal tp, BigReal ep)
 +{
-+  specPositions.enqueue(seq,lattice);
-+
++  specPositions.enqueue(seq, lattice);
++  std::vector<BigReal> data;
++  data.push_back(tp);
++  data.push_back(ep);
++  specUserData.add(seq, data);
++  // remove queued positions, c->seq is not necessarily seq
 +  CollectVectorInstance *c;
 +  while ( ( c = specPositions.removeReady() ) ) { disposeSpecPositions(c); }
 +}
 + 
 +void CollectionMaster::disposeSpecPositions(CollectVectorInstance *c)
 +{
-+  Node::Object()->output->specAtoms(c->seq, c->data.size(), c->data.begin(), &c->lattice);
++  const std::vector<BigReal>& ud = specUserData.del(c->seq);
++  Node::Object()->output->specAtoms(c->seq, c->data.size(), c->data.begin(),
++      &c->lattice, ud[0], ud[1]);
 +  c->free();
 +}
 + 
@@ -96,8 +102,8 @@ diff -u -wdB spec_old/CollectionMaster.ci spec_new/CollectionMaster.ci
  
 diff -u -wdB spec_old/CollectionMaster.h spec_new/CollectionMaster.h
 --- spec_old/CollectionMaster.h	2015-11-04 11:20:25.000000000 -0600
-+++ spec_new/CollectionMaster.h	2016-07-05 15:14:42.840384820 -0500
-@@ -297,6 +297,67 @@
++++ spec_new/CollectionMaster.h	2016-08-18 18:37:49.024440102 -0500
+@@ -297,6 +297,103 @@
  
    };
  #endif
@@ -148,8 +154,43 @@ diff -u -wdB spec_old/CollectionMaster.h spec_new/CollectionMaster.h
 +        o = *c;
 +      return o;
 +    }
++  };
 +
-+    CollectHiSequence() { ; }
++  struct UserData {
++    int seq;
++    std::vector<BigReal> x;
++    UserData(int seq_, std::vector<BigReal>& x_) {
++      seq = seq_;
++      x = x_;
++    }
++  };
++
++  class UserDataSeq {
++    std::vector<UserData> arr;
++  public:
++    void add(int seq, std::vector<BigReal>& x) {
++      for ( int i = 0; i < arr.size(); i++ )
++        if ( arr[i].seq < 0 ) { // found a vacancy
++          arr[i].seq = seq;
++          arr[i].x = x;
++          return;
++        }
++      arr.push_back( UserData(seq, x) );
++    }
++    int find(int seq) {
++      int i;
++      for ( i = arr.size() - 1; i >= 0; i-- )
++        if ( arr[i].seq == seq ) break;
++      return i;
++    }
++    std::vector<BigReal> del(int seq) {
++      int i = find(seq);
++      if ( i >= 0 ) {
++        arr[i].seq = -1;
++        return arr[i].x;
++      }
++      return std::vector<BigReal>();
++    }
 +  };
 +
 +public:
@@ -158,14 +199,15 @@ diff -u -wdB spec_old/CollectionMaster.h spec_new/CollectionMaster.h
 +
 +  int numSpec; // size of `specPositions', to be set in the Controller
 +  CollectVectorSequence specPositions; // to hold positions of special atoms
++  UserDataSeq specUserData;
 +  void receiveSpecPositions(CollectVectorMsg *msg);
-+  void enqueueSpecPositions(int seq, Lattice &lattice);
++  void enqueueSpecPositions(int seq, Lattice &lattice, BigReal tp, BigReal ep);
 +  void disposeSpecPositions(CollectVectorInstance *c);
 +
  private:
  
    CollectVectorSequence positions;
-@@ -304,6 +365,8 @@
+@@ -304,6 +401,8 @@
    CollectVectorSequence forces;
    int posTimings, velTimings, forceTimings;
    FILE *dataStreamFile;
@@ -321,7 +363,7 @@ diff -u -wdB spec_old/common.C spec_new/common.C
    while ( close(fd) ) {
 diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 --- spec_old/Controller.C	2015-12-17 15:22:03.000000000 -0600
-+++ spec_new/Controller.C	2016-08-17 20:45:14.852257220 -0500
++++ spec_new/Controller.C	2016-08-19 15:05:24.658950909 -0500
 @@ -184,6 +184,10 @@
      random->split(0,PatchMap::Object()->numPatches()+1);
  
@@ -387,7 +429,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  
      // Handling SIGINT doesn't seem to be working on Lemieux, and it
      // sometimes causes the net-xxx versions of NAMD to segfault on exit, 
-@@ -437,19 +464,37 @@
+@@ -437,19 +464,35 @@
      //  (namd_sighandler_t)my_sigint_handler);
      for ( ++step ; step <= numberOfSteps; ++step )
      {
@@ -400,13 +442,8 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  	langevinPiston1(step);
          rescaleaccelMD(step);
  	enqueueCollections(step);  // after lattice scaling!
-+        // request positions of the special atoms, the results
-+        // may not be immediately available after the call
-+        if ( simParams->specAtomsOn
-+          && step % simParams->specAtomsFreq == 0 ) {
-+          collection->enqueueSpecPositions(step, state->lattice);
-+        }
- 	receivePressure(step);
+-	receivePressure(step);
++	receivePressure(step); // calling reduction->require()
          if ( zeroMomentum && dofull && ! (step % slowFreq) )
  						correctMomentum(step);
  	langevinPiston2(step);
@@ -415,10 +452,14 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +        langRescaleVelocities(step, TRUE);
 +        tNHCRescaleVelocities(step, TRUE);
 +        Bool scaled = adaptTempUpdate(step);
++        // request positions of the special atoms, the results
++        // may not be immediately available after the call
++        if ( simParams->specAtomsOn && step % simParams->specAtomsFreq == 0 )
++          collection->enqueueSpecPositions(step, state->lattice, adaptTempT, potentialEnergy);
 +        keHistUpdate(step);
          printDynamicsEnergies(step);
 +        if ( fsEnergyLog.is_open() && step % simParams->energyLogFreq == 0 ) {
-+          fsEnergyLog << step << " " << (totalEnergy - kineticEnergy);
++          fsEnergyLog << step << " " << potentialEnergy;
 +          if ( simParams->adaptTempOn )
 +            fsEnergyLog << " " << adaptTempT;
 +          fsEnergyLog << std::endl;
@@ -426,7 +467,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
          outputFepEnergy(step);
          outputTiEnergy(step);
          if(traceIsOn()){
-@@ -493,7 +538,11 @@
+@@ -493,7 +536,11 @@
  		}
  	}
  #endif
@@ -439,14 +480,12 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
          rebalanceLoad(step);
  
  #if  PME_BARRIER
-@@ -501,6 +550,14 @@
+@@ -501,6 +548,12 @@
  #endif
      }
      // signal(SIGINT, oldhandler);
 +    
 +    adaptTempDone(step);
-+    if ( simParams->specAtomsOn )
-+      Node::Object()->output->specAtoms(-1, 0, NULL, NULL);
 +    rescaleVelocitiesSave(step);
 +    if ( fsEnergyLog.is_open() ) fsEnergyLog.close();
 +    tNHCDone(step);
@@ -454,7 +493,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  }
  
  
-@@ -1016,6 +1073,12 @@
+@@ -1016,6 +1069,12 @@
    const int rescaleFreq = simParams->rescaleFreq;
    if ( rescaleFreq > 0 ) {
      rescaleVelocities_sumTemps += temperature;  ++rescaleVelocities_numTemps;
@@ -467,7 +506,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
      if ( rescaleVelocities_numTemps == rescaleFreq ) {
        BigReal avgTemp = rescaleVelocities_sumTemps / rescaleVelocities_numTemps;
        BigReal rescaleTemp = simParams->rescaleTemp;
-@@ -1024,6 +1087,35 @@
+@@ -1024,6 +1083,35 @@
          rescaleTemp = adaptTempT;
        }
        BigReal factor = sqrt(rescaleTemp/avgTemp);
@@ -503,7 +542,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
        broadcast->velocityRescaleFactor.publish(step,factor);
        //iout << "RESCALING VELOCITIES AT STEP " << step
        //     << " FROM AVERAGE TEMPERATURE OF " << avgTemp
-@@ -1033,6 +1125,56 @@
+@@ -1033,6 +1121,56 @@
    }
  }
  
@@ -560,7 +599,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  void Controller::correctMomentum(int step) {
  
      Vector momentum;
-@@ -1110,6 +1252,279 @@
+@@ -1110,6 +1248,279 @@
    }
  }
  
@@ -840,7 +879,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  static char *FORMAT(BigReal X)
  {
    static char tmp_string[25];
-@@ -1574,49 +1989,136 @@
+@@ -1574,49 +1985,136 @@
  void Controller::adaptTempInit(int step) {
      if (!simParams->adaptTempOn) return;
      iout << iINFO << "INITIALISING ADAPTIVE TEMPERING\n" << endi;
@@ -1009,7 +1048,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
          } 
          adaptTempRead.close();
        }
-@@ -1624,23 +2126,18 @@
+@@ -1624,23 +2122,18 @@
      } 
      else {
        adaptTempBins = simParams->adaptTempBins;
@@ -1041,7 +1080,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
        for(int j = 0; j < adaptTempBins; ++j){
            adaptTempPotEnergyAveNum[j] = 0.;
            adaptTempPotEnergyAveDen[j] = 0.;
-@@ -1648,16 +2145,38 @@
+@@ -1648,16 +2141,38 @@
            adaptTempPotEnergyVarNum[j] = 0.;
            adaptTempPotEnergyVar[j] = 0.;
            adaptTempPotEnergyAve[j] = 0.;
@@ -1086,7 +1125,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
      iout << iINFO << "ADAPTIVE TEMPERING: TEMPERATURE RANGE: [" << 1./adaptTempBetaMax << "," << 1./adaptTempBetaMin << "] KELVIN\n";
      iout << iINFO << "ADAPTIVE TEMPERING: NUMBER OF BINS TO STORE POT. ENERGY: " << adaptTempBins << "\n";
      iout << iINFO << "ADAPTIVE TEMPERING: ADAPTIVE BIN AVERAGING PARAMETER: " << adaptTempCg << "\n";
-@@ -1671,12 +2190,39 @@
+@@ -1671,12 +2186,39 @@
      }
  }
  
@@ -1129,7 +1168,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
          adaptTempRestartFile << adaptTempT<< " ";     // KELVIN
          adaptTempRestartFile << 1./adaptTempBetaMin << " ";  // KELVIN
          adaptTempRestartFile << 1./adaptTempBetaMax << " ";  // KELVIN
-@@ -1685,165 +2231,131 @@
+@@ -1685,165 +2227,131 @@
          adaptTempRestartFile << adaptTempDt ;
          adaptTempRestartFile << "\n" ;
          for(int j = 0; j < adaptTempBins; ++j) {
@@ -1214,7 +1253,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
      BigReal potEnergyAverage;
 -    BigReal potEnergyVariance;
 -    potentialEnergy = totalEnergy-kineticEnergy;
--
+ 
 -    //calculate new bin average and variance using adaptive averaging
 -    adaptTempPotEnergyAveNum[adaptTempBin] = adaptTempPotEnergyAveNum[adaptTempBin]*gammaAve + potentialEnergy;
 -    adaptTempPotEnergyAveDen[adaptTempBin] = adaptTempPotEnergyAveDen[adaptTempBin]*gammaAve + 1;
@@ -1223,7 +1262,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 -    potEnergyAverage = adaptTempPotEnergyAveNum[adaptTempBin]/adaptTempPotEnergyAveDen[adaptTempBin];
 -    potEnergyVariance = adaptTempPotEnergyVarNum[adaptTempBin]/adaptTempPotEnergyAveDen[adaptTempBin];
 -    potEnergyVariance -= potEnergyAverage*potEnergyAverage;
- 
+-
 -    adaptTempPotEnergyAve[adaptTempBin] = potEnergyAverage;
 -    adaptTempPotEnergyVar[adaptTempBin] = potEnergyVariance;
 -    
@@ -1309,10 +1348,10 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 -            A1 -= 0.5*betaj*adaptTempPotEnergyVar[nPlus];
            }
 -          A1 /= (betaPlus-betaNp1);
- 
+-
 -          //A2 phi_t integral for beta_i
 -          A2 = 0.5*adaptTempDBeta*potEnergyVariance;
--
+ 
 -          // Now calculate a+ and a-
 -          DeltaE2Ave = A0-A1;
 -          BigReal aplus = 0;
@@ -1390,7 +1429,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
              << "     nMinus:    " << nMinus << "\n"
              << "     nPlus:     " << nPlus << "\n"
              << "     A0:        " << A0 << "\n"
-@@ -1851,147 +2363,319 @@
+@@ -1851,147 +2359,323 @@
              << "     A2:        " << A2 << "\n"
              << "     a+:        " << aplus << "\n"
              << "     a-:        " << aminus << "\n"
@@ -1520,6 +1559,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +    // adjust the MC move size automatically
 +    if ( simParams->adaptTempMCAutoAR > 0 && adaptTempMCTot > 100 ) {
 +      double dacc = adaptTempMCDAcc;
++      if ( dacc > 0 ) dacc = 0;
 +      if ( adaptTempMCFail > 5 ) { // out-of-boundary rejections
 +        dacc -= adaptTempMCFail / simParams->adaptTempMCSizeInc;
 +      } else { // approximation
@@ -1677,11 +1717,10 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +    adaptTempPotEnergySamples[adaptTempBin] += 1;
 +    BigReal gammaAve = 1.-adaptTempCg/adaptTempPotEnergySamples[adaptTempBin];
 +    if ( gammaAve < 0 ) gammaAve = 0;
-+
-+    BigReal potentialEnergy;
+ 
 +    BigReal potEnergyAverage;
 +    BigReal potEnergyVariance;
- 
++
 +    // recompute the potential energy
 +    BigReal bondEnergy = reduction->item(REDUCTION_BOND_ENERGY);
 +    BigReal angleEnergy = reduction->item(REDUCTION_ANGLE_ENERGY);
@@ -1706,13 +1745,13 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +    }
 +    if ( step % slowFreq == 0 ) {
 +      electEnergySlow = reduction->item(REDUCTION_ELECT_ENERGY_SLOW);
-+    }
+           }
 +    potentialEnergy = bondEnergy + angleEnergy + dihedralEnergy
 +	+ improperEnergy + electEnergy + electEnergySlow + ljEnergy
 +	+ crosstermEnergy + boundaryEnergy + miscEnergy
 +        + goTotalEnergy + groLJEnergy + groGaussEnergy;
 +    totalEnergy = potentialEnergy + kineticEnergy;
-+
+           
 +    BigReal invw = adaptTempGetInvW(adaptTempT);
 +    //calculate new bin average and variance using adaptive averaging
 +    adaptTempPotEnergyAveNum[adaptTempBin] = adaptTempPotEnergyAveNum[adaptTempBin]*gammaAve + potentialEnergy * invw;
@@ -1736,8 +1775,8 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +        if ( adaptTempBinMinus[j] > adaptTempBin ) break;
 +        adaptTempSepAcc[j].add(adaptTempBin, potentialEnergy, invw, adaptTempCg);
 +      }
-           }
-           
++    }
++
 +    // Weighted integral of <Delta E^2>_beta dbeta <= Eq 4 of JCP 132 244101
 +    // Integrals of Eqs 5 and 6 is done as piecewise assuming <Delta E^2>_beta
 +    // is constant for each bin. This is to estimate <E(beta)> where beta \in
@@ -1789,26 +1828,30 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 +      if ( simParams->adaptTempMCMove ) { // Monte Carlo
 +        if ( adaptTempMCTot > 0 ) {
 +          BigReal acc = adaptTempMCAcc / adaptTempMCTot;
-+          BigReal dacc = (adaptTempMCDAcc - adaptTempMCFail / simParams->adaptTempMCSizeInc) / adaptTempMCTot;
++          BigReal dacc = adaptTempMCDAcc / adaptTempMCTot;
++          if ( dacc > 0 ) dacc = 0;
++          dacc -= adaptTempMCFail / simParams->adaptTempMCSizeInc / adaptTempMCTot;
 +          BigReal ar = simParams->adaptTempMCAutoAR;
 +          if ( ar <= 0 ) ar = 0.5;
 +          BigReal newsize = adaptTempMCSize + (ar - acc) / dacc;
 +          if ( newsize < 0 ) newsize = 0;
-+          sprintf(info, " MC %.0f(%.0f) ACC. RATIO %.3f DAR %g SIZE %g -> %g",
++          sprintf(info, " MC %.0f(%.0f) ACC. RATIO %.3f%% DAR %g SIZE %g -> %g",
 +              adaptTempMCTot, adaptTempMCFail, 100*acc, dacc, adaptTempMCSize, newsize);
 +          iout << info;
 +        }
 +      } else { // Langevin equation
 +        if ( adaptTempLangTot > 0 ) {
 +          BigReal acc = adaptTempLangAcc / adaptTempLangTot;
-+          BigReal dacc = (adaptTempLangDAcc - adaptTempLangFail / simParams->adaptTempMCSizeInc) / adaptTempLangTot;
++          BigReal dacc = adaptTempLangDAcc / adaptTempLangTot;
++          if ( dacc > 0 ) dacc = 0;
++          dacc -= adaptTempLangFail / simParams->adaptTempMCSizeInc / adaptTempLangTot;
 +          BigReal oldsize = sqrt(2*adaptTempDt);
 +          BigReal ar = simParams->adaptTempDtAutoAR;
 +          if ( ar <= 0 ) ar = 0.5;
 +          BigReal newsize = oldsize + (ar - acc) / dacc;
 +          if ( newsize < 0 ) newsize = 0;
 +          BigReal newdt = newsize * newsize / 2;
-+          sprintf(info, " LANGEVIN %.0f(%.0f) ACC. RATIO %.3f DAR %g SIZE %g -> %g, DT %g -> %g",
++          sprintf(info, " LANGEVIN %.0f(%.0f) ACC. RATIO %.3f%% DAR %g SIZE %g -> %g, DT %g -> %g",
 +              adaptTempLangTot, adaptTempLangFail, 100*acc, dacc, oldsize, newsize, adaptTempDt, newdt);
 +          iout << info;
 +        }
@@ -1820,7 +1863,15 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  }
  
  
-@@ -2277,6 +2961,15 @@
+@@ -2256,7 +2940,6 @@
+     BigReal crosstermEnergy;
+     BigReal boundaryEnergy;
+     BigReal miscEnergy;
+-    BigReal potentialEnergy;
+     BigReal flatEnergy;
+     BigReal smoothEnergy;
+ 
+@@ -2277,6 +2960,15 @@
        electEnergy = reduction->item(REDUCTION_ELECT_ENERGY);
        ljEnergy = reduction->item(REDUCTION_LJ_ENERGY);
  
@@ -1836,7 +1887,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
        // JLai
        groLJEnergy = reduction->item(REDUCTION_GRO_LJ_ENERGY);
        groGaussEnergy = reduction->item(REDUCTION_GRO_GAUSS_ENERGY);
-@@ -2310,16 +3003,6 @@
+@@ -2310,16 +3002,6 @@
  //fepe
      }
  
@@ -1853,7 +1904,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
      momentum.x = reduction->item(REDUCTION_MOMENTUM_X);
      momentum.y = reduction->item(REDUCTION_MOMENTUM_Y);
      momentum.z = reduction->item(REDUCTION_MOMENTUM_Z);
-@@ -3147,6 +3830,7 @@
+@@ -3147,6 +3829,7 @@
      ldbSteps = LdbCoordinator::Object()->getNumStepsToRun();
    }
    if ( ! --ldbSteps ) {
@@ -1863,8 +1914,16 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
      LdbCoordinator::Object()->rebalance(this);	
 diff -u -wdB spec_old/Controller.h spec_new/Controller.h
 --- spec_old/Controller.h	2015-10-12 10:48:41.000000000 -0500
-+++ spec_new/Controller.h	2016-08-17 17:18:44.773904727 -0500
-@@ -151,10 +151,38 @@
++++ spec_new/Controller.h	2016-08-18 18:44:37.155551375 -0500
+@@ -138,6 +138,7 @@
+       BigReal drudeBondTemp; // temperature of Drude bonds
+       BigReal drudeBondTempAvg;
+ 
++      BigReal potentialEnergy;
+       BigReal kineticEnergy;
+       BigReal kineticEnergyHalfstep;
+       BigReal kineticEnergyCentered;
+@@ -151,10 +152,38 @@
      void enqueueCollections(int);
      void correctMomentum(int step);
      void rescaleVelocities(int);
@@ -1903,7 +1962,7 @@ diff -u -wdB spec_old/Controller.h spec_new/Controller.h
      void berendsenPressure(int);
        // Tensor berendsenPressure_avg;
        // int berendsenPressure_count;
-@@ -232,18 +260,178 @@
+@@ -232,18 +261,178 @@
  
  //JS for adaptive temperature sampling
     void adaptTempInit(int step);
@@ -2091,7 +2150,7 @@ diff -u -wdB spec_old/Controller.h spec_new/Controller.h
     BigReal adaptTempBetaMin;
     BigReal adaptTempBetaMax;
     int     adaptTempBin;
-@@ -251,11 +439,11 @@
+@@ -251,11 +440,11 @@
     BigReal adaptTempDBeta;
     BigReal adaptTempCg;
     BigReal adaptTempDt;
@@ -2240,8 +2299,16 @@ diff -u -wdB spec_old/Molecule.h spec_new/Molecule.h
  
 diff -u -wdB spec_old/Output.C spec_new/Output.C
 --- spec_old/Output.C	2015-11-04 11:20:25.000000000 -0600
-+++ spec_new/Output.C	2016-08-17 20:39:23.980946318 -0500
-@@ -1332,6 +1332,63 @@
++++ spec_new/Output.C	2016-08-19 15:05:16.774996548 -0500
+@@ -10,6 +10,7 @@
+ 
+ #include "largefiles.h"  // must be first!
+ 
++#include <fstream>
+ #include <string.h>
+ #include <stdlib.h>
+ 
+@@ -1332,6 +1333,64 @@
  }
  /*      END OF FUNCTION scale_vels      */
  
@@ -2270,21 +2337,18 @@ diff -u -wdB spec_old/Output.C spec_new/Output.C
 +}
 +
 +// write the quantity computed from the special atoms
-+void Output::specAtoms(int step, int numAtoms, Vector* arr, Lattice* lattice)
++void Output::specAtoms(int step, int numAtoms, Vector* arr, Lattice* lattice,
++    BigReal tp, BigReal ep)
 +{
 +  SimParameters *simParams = Node::Object()->simParameters;
 +  char s[1024];
 +  BigReal x;
 +  static int once;
-+  static FILE *fp = NULL;
++  static std::ofstream fs;
 +  if ( !once && simParams->specAtomsFile[0] != '\0' ) {
-+    fp = fopen(simParams->specAtomsFile, "a");
-+    fprintf(fp, "# step\t%s\n", simParams->specAtomsType);
++    fs.open(simParams->specAtomsFile, std::ios::app);
++    fs << "# step\t" << simParams->specAtomsType << "\n";
 +    once = 1;
-+  }
-+  if ( step < 0 && fp != NULL ) {
-+    fclose(fp);
-+    fp = NULL;
 +  }
 +  if ( strncasecmp(simParams->specAtomsType, "end", 3) == 0 ) {
 +    // Compute the end-to-end distance from the positions
@@ -2296,10 +2360,14 @@ diff -u -wdB spec_old/Output.C spec_new/Output.C
 +    // Compute the dihedral
 +    x = getdih(arr[0], arr[1], arr[2], arr[3], lattice);
 +  }
-+  if ( fp == NULL ) {
++  if ( fs.is_open() ) { // write to file
++    fs << step << "\t" << x;
++    if ( simParams->adaptTempOn ) fs << "\t" << tp << "\t" << ep;
++    fs << std::endl;
++    if ( step + simParams->specAtomsFreq > simParams->N )
++      fs.close();
++  } else { // print to screen
 +    CkPrintf("step %d, %s %g\n", step, simParams->specAtomsType, x);
-+  } else {
-+    fprintf(fp, "%d\t%g\n", step, x);
 +  }
 +}
  
@@ -2307,12 +2375,12 @@ diff -u -wdB spec_old/Output.C spec_new/Output.C
  //////Beginning of Functions related with velocity output//////
 diff -u -wdB spec_old/Output.h spec_new/Output.h
 --- spec_old/Output.h	2015-11-06 09:29:26.000000000 -0600
-+++ spec_new/Output.h	2016-08-17 20:35:52.342981250 -0500
++++ spec_new/Output.h	2016-08-18 18:06:41.789565696 -0500
 @@ -96,6 +96,7 @@
     void force(int, int, Vector *);		//  Produce appropriate force
  						//  output for the current 
  						//  timestep
-+  void specAtoms(int, int, Vector *, Lattice *);
++  void specAtoms(int, int, Vector *, Lattice *, BigReal, BigReal);
  
    void replicaDcdOff() { replicaDcdActive = 0; }
    void setReplicaDcdIndex(int index);

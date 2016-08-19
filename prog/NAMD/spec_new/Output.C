@@ -1371,7 +1371,6 @@ void Output::specAtoms(int step, int numAtoms, Vector* arr, Lattice* lattice,
     fs << "# step\t" << simParams->specAtomsType << "\n";
     once = 1;
   }
-  if ( step < 0 && fs.is_open() ) fs.close();
   if ( strncasecmp(simParams->specAtomsType, "end", 3) == 0 ) {
     // Compute the end-to-end distance from the positions
     Vector del(0, 0, 0), endtoend(0, 0, 0);
@@ -1382,11 +1381,13 @@ void Output::specAtoms(int step, int numAtoms, Vector* arr, Lattice* lattice,
     // Compute the dihedral
     x = getdih(arr[0], arr[1], arr[2], arr[3], lattice);
   }
-  if ( fs.is_open() ) {
+  if ( fs.is_open() ) { // write to file
     fs << step << "\t" << x;
     if ( simParams->adaptTempOn ) fs << "\t" << tp << "\t" << ep;
     fs << std::endl;
-  } else {
+    if ( step + simParams->specAtomsFreq > simParams->N )
+      fs.close();
+  } else { // print to screen
     CkPrintf("step %d, %s %g\n", step, simParams->specAtomsType, x);
   }
 }

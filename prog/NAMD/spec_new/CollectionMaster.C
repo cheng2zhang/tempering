@@ -68,7 +68,7 @@ void CollectionMaster::receiveSpecPositions(CollectVectorMsg *msg)
 {
   specPositions.submitData(msg, numSpec);
   delete msg;
-  
+  // remove queued positions, c->seq is not necessarily msg->seq
   CollectVectorInstance *c;
   while ( ( c = specPositions.removeReady() ) ) { disposeSpecPositions(c); }
 }
@@ -80,6 +80,7 @@ void CollectionMaster::enqueueSpecPositions(int seq, Lattice &lattice, BigReal t
   data.push_back(tp);
   data.push_back(ep);
   specUserData.add(seq, data);
+  // remove queued positions, c->seq is not necessarily seq
   CollectVectorInstance *c;
   while ( ( c = specPositions.removeReady() ) ) { disposeSpecPositions(c); }
 }

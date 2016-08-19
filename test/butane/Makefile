@@ -1,5 +1,5 @@
 clean:
-	rm -f ene*.log dih*.log ke.dat *~ .*~ *.old *.dcd *restart* *.xst *.BAK
+	rm -f ene.log dih.log ke.dat *~ .*~ *.old *.dcd *restart* *.xst *.BAK
 
 ehist:
 	../mkhist.py --dE=5 --dT=0.5 ene*.log

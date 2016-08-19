@@ -462,7 +462,7 @@ void Controller::integrate(int scriptTask) {
 	langevinPiston1(step);
         rescaleaccelMD(step);
 	enqueueCollections(step);  // after lattice scaling!
-	receivePressure(step);
+	receivePressure(step); // calling reduction->require()
         if ( zeroMomentum && dofull && ! (step % slowFreq) )
 						correctMomentum(step);
 	langevinPiston2(step);
@@ -2632,7 +2632,7 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
           if ( ar <= 0 ) ar = 0.5;
           BigReal newsize = adaptTempMCSize + (ar - acc) / dacc;
           if ( newsize < 0 ) newsize = 0;
-          sprintf(info, " MC %.0f(%.0f) ACC. RATIO %.3f DAR %g SIZE %g -> %g",
+          sprintf(info, " MC %.0f(%.0f) ACC. RATIO %.3f%% DAR %g SIZE %g -> %g",
               adaptTempMCTot, adaptTempMCFail, 100*acc, dacc, adaptTempMCSize, newsize);
           iout << info;
         }
@@ -2648,7 +2648,7 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
           BigReal newsize = oldsize + (ar - acc) / dacc;
           if ( newsize < 0 ) newsize = 0;
           BigReal newdt = newsize * newsize / 2;
-          sprintf(info, " LANGEVIN %.0f(%.0f) ACC. RATIO %.3f DAR %g SIZE %g -> %g, DT %g -> %g",
+          sprintf(info, " LANGEVIN %.0f(%.0f) ACC. RATIO %.3f%% DAR %g SIZE %g -> %g, DT %g -> %g",
               adaptTempLangTot, adaptTempLangFail, 100*acc, dacc, oldsize, newsize, adaptTempDt, newdt);
           iout << info;
         }

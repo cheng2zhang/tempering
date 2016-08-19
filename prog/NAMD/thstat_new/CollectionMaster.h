@@ -344,8 +344,6 @@ public:
         o = *c;
       return o;
     }
-
-    CollectHiSequence() { ; }
   };
 
 public:

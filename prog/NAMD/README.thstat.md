@@ -86,7 +86,7 @@ This modification hopefully improve the stability during the equilibration stage
 #### Implementing a Monte Carlo scheme for temperature transitions
 
 In addition to the Langevin equation approach,
-adaptive tempering can now be done through direct Monte Carlo.
+adaptive tempering can now be done through direct Monte Carlo (MC).
 To use this feature, set
 ```
 adaptTempMCMove    on
@@ -100,6 +100,13 @@ adaptTempMCAutoAR   0.5
 ```
 The adjustment occurs in every step, but with decreasing magnitude (~ 1/t) to approach a fixed asymptotic limit.
 However, for safety, the automatic adjusting feature should only be used in equilibration.
+
+In order to compute how the acceptance ratio changes with the MC move size,
+the program needs to virtually increase the MC move size by a little amount specified by
+```
+adaptTempMCSizeInc  0.0005
+```
+This value is shared in the MC-corrected Langevin equation
 
 #### Implementing an MC-corrected Langevin equation integration scheme
 
@@ -333,9 +340,9 @@ and in the adaptive tempering case, collecting frame whose temperature is betwee
 If the input log file is omitted, all `ene*.log` files under the current directory will be processed.
 
 
-## Apply patches
+## Applying patches
 
-Patch files can be produced by using `diff` on the `thstat_old` and `thstat_new` directory.
+The patch file is produced by using `diff` on the `thstat_old` and `thstat_new` directory.
 See the tutorial in http://www.thegeekstuff.com/2014/12/patch-command-examples/
 A convenient `make` command is provided:
 ```

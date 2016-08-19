@@ -72,8 +72,8 @@ diff -u -wdB thstat_old/CollectionMaster.ci thstat_new/CollectionMaster.ci
  
 diff -u -wdB thstat_old/CollectionMaster.h thstat_new/CollectionMaster.h
 --- thstat_old/CollectionMaster.h	2015-11-04 11:20:25.000000000 -0600
-+++ thstat_new/CollectionMaster.h	2016-08-09 16:39:50.303991203 -0500
-@@ -297,6 +297,61 @@
++++ thstat_new/CollectionMaster.h	2016-08-19 15:31:07.844116809 -0500
+@@ -297,6 +297,59 @@
  
    };
  #endif
@@ -124,8 +124,6 @@ diff -u -wdB thstat_old/CollectionMaster.h thstat_new/CollectionMaster.h
 +        o = *c;
 +      return o;
 +    }
-+
-+    CollectHiSequence() { ; }
 +  };
 +
 +public:
@@ -135,7 +133,7 @@ diff -u -wdB thstat_old/CollectionMaster.h thstat_new/CollectionMaster.h
  private:
  
    CollectVectorSequence positions;
-@@ -304,6 +359,8 @@
+@@ -304,6 +357,8 @@
    CollectVectorSequence forces;
    int posTimings, velTimings, forceTimings;
    FILE *dataStreamFile;
@@ -251,7 +249,7 @@ diff -u -wdB thstat_old/common.C thstat_new/common.C
    while ( close(fd) ) {
 diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 --- thstat_old/Controller.C	2015-12-17 15:22:03.000000000 -0600
-+++ thstat_new/Controller.C	2016-08-17 18:15:18.008958538 -0500
++++ thstat_new/Controller.C	2016-08-19 15:36:50.452311416 -0500
 @@ -184,6 +184,10 @@
      random->split(0,PatchMap::Object()->numPatches()+1);
  
@@ -300,7 +298,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
  
      // Handling SIGINT doesn't seem to be working on Lemieux, and it
      // sometimes causes the net-xxx versions of NAMD to segfault on exit, 
-@@ -437,9 +454,10 @@
+@@ -437,19 +454,31 @@
      //  (namd_sighandler_t)my_sigint_handler);
      for ( ++step ; step <= numberOfSteps; ++step )
      {
@@ -312,7 +310,10 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
  	berendsenPressure(step);
  	langevinPiston1(step);
          rescaleaccelMD(step);
-@@ -449,7 +467,18 @@
+ 	enqueueCollections(step);  // after lattice scaling!
+-	receivePressure(step);
++	receivePressure(step); // calling reduction->require()
+         if ( zeroMomentum && dofull && ! (step % slowFreq) )
  						correctMomentum(step);
  	langevinPiston2(step);
          reassignVelocities(step);
@@ -1110,7 +1111,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
      BigReal potEnergyAverage;
 -    BigReal potEnergyVariance;
 -    potentialEnergy = totalEnergy-kineticEnergy;
- 
+-
 -    //calculate new bin average and variance using adaptive averaging
 -    adaptTempPotEnergyAveNum[adaptTempBin] = adaptTempPotEnergyAveNum[adaptTempBin]*gammaAve + potentialEnergy;
 -    adaptTempPotEnergyAveDen[adaptTempBin] = adaptTempPotEnergyAveDen[adaptTempBin]*gammaAve + 1;
@@ -1122,7 +1123,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 -
 -    adaptTempPotEnergyAve[adaptTempBin] = potEnergyAverage;
 -    adaptTempPotEnergyVar[adaptTempBin] = potEnergyVariance;
--    
+     
 -    // Weighted integral of <Delta E^2>_beta dbeta <= Eq 4 of JCP 132 244101
 -    // Integrals of Eqs 5 and 6 is done as piecewise assuming <Delta E^2>_beta
 -    // is constant for each bin. This is to estimate <E(beta)> where beta \in
@@ -1205,10 +1206,10 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 -            A1 -= 0.5*betaj*adaptTempPotEnergyVar[nPlus];
            }
 -          A1 /= (betaPlus-betaNp1);
- 
+-
 -          //A2 phi_t integral for beta_i
 -          A2 = 0.5*adaptTempDBeta*potEnergyVariance;
--
+ 
 -          // Now calculate a+ and a-
 -          DeltaE2Ave = A0-A1;
 -          BigReal aplus = 0;
@@ -1286,7 +1287,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
              << "     nMinus:    " << nMinus << "\n"
              << "     nPlus:     " << nPlus << "\n"
              << "     A0:        " << A0 << "\n"
-@@ -1851,147 +2338,319 @@
+@@ -1851,147 +2338,324 @@
              << "     A2:        " << A2 << "\n"
              << "     a+:        " << aplus << "\n"
              << "     a-:        " << aminus << "\n"
@@ -1416,6 +1417,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 +    // adjust the MC move size automatically
 +    if ( simParams->adaptTempMCAutoAR > 0 && adaptTempMCTot > 100 ) {
 +      double dacc = adaptTempMCDAcc;
++      if ( dacc > 0 ) dacc = 0;
 +      if ( adaptTempMCFail > 5 ) { // out-of-boundary rejections
 +        dacc -= adaptTempMCFail / simParams->adaptTempMCSizeInc;
 +      } else { // approximation
@@ -1577,7 +1579,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 +    BigReal potentialEnergy;
 +    BigReal potEnergyAverage;
 +    BigReal potEnergyVariance;
- 
++
 +    // recompute the potential energy
 +    BigReal bondEnergy = reduction->item(REDUCTION_BOND_ENERGY);
 +    BigReal angleEnergy = reduction->item(REDUCTION_ANGLE_ENERGY);
@@ -1602,7 +1604,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 +    }
 +    if ( step % slowFreq == 0 ) {
 +      electEnergySlow = reduction->item(REDUCTION_ELECT_ENERGY_SLOW);
-           }
++    }
 +    potentialEnergy = bondEnergy + angleEnergy + dihedralEnergy
 +	+ improperEnergy + electEnergy + electEnergySlow + ljEnergy
 +	+ crosstermEnergy + boundaryEnergy + miscEnergy
@@ -1622,7 +1624,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 +    if ( !simParams->adaptTempFixedAve )
 +      adaptTempPotEnergyAve[adaptTempBin] = potEnergyAverage;
 +    adaptTempPotEnergyVar[adaptTempBin] = potEnergyVariance;
-           
+ 
 +    if ( simParams->adaptTempSepOn ) { // update separate accumulators
 +      for ( j = adaptTempBin; j >= 0; j-- ) { // search downward
 +        if ( adaptTempBinPlus[j] <= adaptTempBin ) break;
@@ -1632,8 +1634,8 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 +        if ( adaptTempBinMinus[j] > adaptTempBin ) break;
 +        adaptTempSepAcc[j].add(adaptTempBin, potentialEnergy, invw, adaptTempCg);
 +      }
-+    }
-+
+           }
+           
 +    // Weighted integral of <Delta E^2>_beta dbeta <= Eq 4 of JCP 132 244101
 +    // Integrals of Eqs 5 and 6 is done as piecewise assuming <Delta E^2>_beta
 +    // is constant for each bin. This is to estimate <E(beta)> where beta \in
@@ -1685,26 +1687,30 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 +      if ( simParams->adaptTempMCMove ) { // Monte Carlo
 +        if ( adaptTempMCTot > 0 ) {
 +          BigReal acc = adaptTempMCAcc / adaptTempMCTot;
-+          BigReal dacc = (adaptTempMCDAcc - adaptTempMCFail / simParams->adaptTempMCSizeInc) / adaptTempMCTot;
++          BigReal dacc = adaptTempMCDAcc / adaptTempMCTot;
++          if ( dacc > 0 ) dacc = 0;
++          dacc -= adaptTempMCFail / simParams->adaptTempMCSizeInc / adaptTempMCTot;
 +          BigReal ar = simParams->adaptTempMCAutoAR;
 +          if ( ar <= 0 ) ar = 0.5;
 +          BigReal newsize = adaptTempMCSize + (ar - acc) / dacc;
 +          if ( newsize < 0 ) newsize = 0;
-+          sprintf(info, " MC %.0f(%.0f) ACC. RATIO %.3f DAR %g SIZE %g -> %g",
++          sprintf(info, " MC %.0f(%.0f) ACC. RATIO %.3f%% DAR %g SIZE %g -> %g",
 +              adaptTempMCTot, adaptTempMCFail, 100*acc, dacc, adaptTempMCSize, newsize);
 +          iout << info;
 +        }
 +      } else { // Langevin equation
 +        if ( adaptTempLangTot > 0 ) {
 +          BigReal acc = adaptTempLangAcc / adaptTempLangTot;
-+          BigReal dacc = (adaptTempLangDAcc - adaptTempLangFail / simParams->adaptTempMCSizeInc) / adaptTempLangTot;
++          BigReal dacc = adaptTempLangDAcc / adaptTempLangTot;
++          if ( dacc > 0 ) dacc = 0;
++          dacc -= adaptTempLangFail / simParams->adaptTempMCSizeInc / adaptTempLangTot;
 +          BigReal oldsize = sqrt(2*adaptTempDt);
 +          BigReal ar = simParams->adaptTempDtAutoAR;
 +          if ( ar <= 0 ) ar = 0.5;
 +          BigReal newsize = oldsize + (ar - acc) / dacc;
 +          if ( newsize < 0 ) newsize = 0;
 +          BigReal newdt = newsize * newsize / 2;
-+          sprintf(info, " LANGEVIN %.0f(%.0f) ACC. RATIO %.3f DAR %g SIZE %g -> %g, DT %g -> %g",
++          sprintf(info, " LANGEVIN %.0f(%.0f) ACC. RATIO %.3f%% DAR %g SIZE %g -> %g, DT %g -> %g",
 +              adaptTempLangTot, adaptTempLangFail, 100*acc, dacc, oldsize, newsize, adaptTempDt, newdt);
 +          iout << info;
 +        }
@@ -1716,7 +1722,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
  }
  
  
-@@ -2277,6 +2936,15 @@
+@@ -2277,6 +2941,15 @@
        electEnergy = reduction->item(REDUCTION_ELECT_ENERGY);
        ljEnergy = reduction->item(REDUCTION_LJ_ENERGY);
  
@@ -1732,7 +1738,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
        // JLai
        groLJEnergy = reduction->item(REDUCTION_GRO_LJ_ENERGY);
        groGaussEnergy = reduction->item(REDUCTION_GRO_GAUSS_ENERGY);
-@@ -2310,16 +2978,6 @@
+@@ -2310,16 +2983,6 @@
  //fepe
      }
  
@@ -1749,7 +1755,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
      momentum.x = reduction->item(REDUCTION_MOMENTUM_X);
      momentum.y = reduction->item(REDUCTION_MOMENTUM_Y);
      momentum.z = reduction->item(REDUCTION_MOMENTUM_Z);
-@@ -3147,6 +3805,7 @@
+@@ -3147,6 +3810,7 @@
      ldbSteps = LdbCoordinator::Object()->getNumStepsToRun();
    }
    if ( ! --ldbSteps ) {

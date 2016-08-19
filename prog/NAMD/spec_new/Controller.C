@@ -472,8 +472,7 @@ void Controller::integrate(int scriptTask) {
 	langevinPiston1(step);
         rescaleaccelMD(step);
 	enqueueCollections(step);  // after lattice scaling!
-        // reduction->require(), compute potentialEnergy
-	receivePressure(step);
+	receivePressure(step); // calling reduction->require()
         if ( zeroMomentum && dofull && ! (step % slowFreq) )
 						correctMomentum(step);
 	langevinPiston2(step);
@@ -489,7 +488,7 @@ void Controller::integrate(int scriptTask) {
         keHistUpdate(step);
         printDynamicsEnergies(step);
         if ( fsEnergyLog.is_open() && step % simParams->energyLogFreq == 0 ) {
-          fsEnergyLog << step << " " << (totalEnergy - kineticEnergy);
+          fsEnergyLog << step << " " << potentialEnergy;
           if ( simParams->adaptTempOn )
             fsEnergyLog << " " << adaptTempT;
           fsEnergyLog << std::endl;
@@ -551,8 +550,6 @@ void Controller::integrate(int scriptTask) {
     // signal(SIGINT, oldhandler);
     
     adaptTempDone(step);
-    if ( simParams->specAtomsOn ) // close the log file for speical atoms
-      Node::Object()->output->specAtoms(-1, 0, NULL, NULL, 0, 0);
     rescaleVelocitiesSave(step);
     if ( fsEnergyLog.is_open() ) fsEnergyLog.close();
     tNHCDone(step);

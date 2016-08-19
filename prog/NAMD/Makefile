@@ -7,7 +7,7 @@ dir_thstat = ~/lwork/NAMD_mods/NAMD_2.11_thstat/src
 all: minmod.patch spec.patch thstat.patch
 
 minmod.patch::
-	rm -f $@ minmod_*/*
+	rm -f $@ minmod_*/* minmod_*/.*~
 	ln -f `diff -wdBqr --exclude="*~" --exclude=".*" $(dir_orig) $(dir_minmod) | cut -f2 -d" "` minmod_old/
 	ln -f `diff -wdBqr --exclude="*~" --exclude=".*" $(dir_orig) $(dir_minmod) | cut -f4 -d" "` minmod_new/
 	git add minmod_*/*
@@ -73,3 +73,6 @@ Bossman:
 	make NAMD_thstat.zip
 	make NAMD_spec.zip
 	rsync -avz NAMD_*.zip /Bossman/cz1/tempering/ 
+
+clean:
+	rm -f NAMD_*.zip *~ .*~ */*~ */.*~
