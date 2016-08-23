@@ -1368,7 +1368,6 @@ void Output::specAtoms(int step, int numAtoms, Vector* arr, Lattice* lattice,
   static std::ofstream fs;
   if ( !once && simParams->specAtomsFile[0] != '\0' ) {
     fs.open(simParams->specAtomsFile, std::ios::app);
-    fs << "# step\t" << simParams->specAtomsType << "\n";
     once = 1;
   }
   if ( strncasecmp(simParams->specAtomsType, "end", 3) == 0 ) {

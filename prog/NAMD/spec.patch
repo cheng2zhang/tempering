@@ -2299,7 +2299,7 @@ diff -u -wdB spec_old/Molecule.h spec_new/Molecule.h
  
 diff -u -wdB spec_old/Output.C spec_new/Output.C
 --- spec_old/Output.C	2015-11-04 11:20:25.000000000 -0600
-+++ spec_new/Output.C	2016-08-19 15:05:16.774996548 -0500
++++ spec_new/Output.C	2016-08-22 12:16:48.721505582 -0500
 @@ -10,6 +10,7 @@
  
  #include "largefiles.h"  // must be first!
@@ -2308,7 +2308,7 @@ diff -u -wdB spec_old/Output.C spec_new/Output.C
  #include <string.h>
  #include <stdlib.h>
  
-@@ -1332,6 +1333,64 @@
+@@ -1332,6 +1333,63 @@
  }
  /*      END OF FUNCTION scale_vels      */
  
@@ -2347,7 +2347,6 @@ diff -u -wdB spec_old/Output.C spec_new/Output.C
 +  static std::ofstream fs;
 +  if ( !once && simParams->specAtomsFile[0] != '\0' ) {
 +    fs.open(simParams->specAtomsFile, std::ios::app);
-+    fs << "# step\t" << simParams->specAtomsType << "\n";
 +    once = 1;
 +  }
 +  if ( strncasecmp(simParams->specAtomsType, "end", 3) == 0 ) {

@@ -1,13 +1,17 @@
 # NAMD files
 
+This file can be viewed online
+
+https://github.com/cheng2zhang/tempering/blob/master/prog/NAMD/README.spec.md
 
 ### spec
 
 This patch contains all modifications to NAMD 2.11 included in `thstat`.
-It also includes an additional change.
+It also includes
 
  * Reporting a quantity of a set of special atoms
 
+ * Note on reconstructing distributions using WHAM
 
 #### Reporting a quantity of a set of special atoms
 
@@ -58,3 +62,37 @@ Particularly, the new routines
 `CollectionMaster::receiveSpecPositions()`, `CollectionMaster::enqueueSpecPositions()`,
 `CollectionMaster::disposeSpecPositions()`, and `CollectionMgr::submitSpecPositions()`.
 
+
+#### Note on reconstructing distributions using WHAM
+
+For a constant temperature simulation, we can reconstruct
+the distribution of the end-to-end distance or the dihedral angle
+by running mkhist.py.
+```
+./mkhist.py --dx=0.01745329252 dih0.log
+```
+Then the output histogram is `dih0.his`.
+The constant 0.01745329252 is equal to Pi/180, i.e., one degree.
+
+With adaptive tempering, we can reconstruct the distribution
+at a certain temperature using `mkhist.py`.
+Such a reconstruction can be done either by explicit filtering
+trajectory frames with the temperature within a certain range.
+For the dihedral, the command is
+```
+./mkhist.py --dx=0.01745329252 --dT=0.5 -T300 --colT=3 dih.log
+```
+Then the output histogram is `dih.his`.
+
+Alternatively, it can be done using WHAM (weighted histogram analysis method)
+which is more efficient in using data
+```
+./mkhist.py --dx=0.01745329252 --rst=narrow1.rst -T300 --colT=3 --colE=4 dih.log
+```
+The third column will be used for temperature, the fourth for the potential energy,
+the WHAM weights (average energy) will be read from the NAMD restart file `narrow1.rst`.
+
+For more information about the tool `mkhist.py`, please see the help message displayed from the command
+```
+./mkhist.py -h
+```

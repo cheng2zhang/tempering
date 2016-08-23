@@ -29,6 +29,7 @@ This patch contains several modifications to NAMD 2.11:
  + Logging
   * Monitoring the distribution of the (reduced) kinetic energy.
   * Logging the potential energy.
+  * Converting log files to distributions: `mkhist.py`.
 
 
 #### Velocity rescaling after temperature transitions
@@ -100,6 +101,7 @@ adaptTempMCAutoAR   0.5
 ```
 The adjustment occurs in every step, but with decreasing magnitude (~ 1/t) to approach a fixed asymptotic limit.
 However, for safety, the automatic adjusting feature should only be used in equilibration.
+The optimal value of the MC move size will be written to the restart file, and read from the next run.
 
 In order to compute how the acceptance ratio changes with the MC move size,
 the program needs to virtually increase the MC move size by a little amount specified by
@@ -122,6 +124,7 @@ adaptTempDtAutoAR   0.5
 ```
 The adjustment occurs in every step, but with decreasing magnitude (~ 1/t).
 However, for safety, the option should only be used in equilibration.
+The optimal value of the time step will be written to the restart file, and read from the next run.
 
 The approximate equivalence relationship between `adaptTempDt` and `adaptTempMCSize` is
 ```
@@ -326,19 +329,29 @@ energyLogFile      ene.log
 energyLogFreq      1
 ```
 By default the frequency of logging the potential energy is 1.
-
 For a regular simulation, the logging outputs the MD step and the potential energy.
 For a simulation using adaptive tempering, the logging also outputs the temperature as the last column.
 
+#### Converting log files to distributions: `mkhist.py`
+
 Once we have the log file, the histogram can be constructed using the Python script `mkhist.py`:
 ```
-./mkhist.py --dE=5 --dT=0.5 -T300 ene1.log
+./mkhist.py -d5 --dT=0.5 -T300 ene1.log
 ```
 The command will produce an output `ene1.his` accordingly,
 with the energy bin size being 5 kcal/mol,
 and in the adaptive tempering case, collecting frame whose temperature is between 299.5K to 300.5K.
+For adaptive tempering, we can alternatively use WHAM (weighted histogram analysis method)
+to better use data
+```
+./mkhist.py -d5 --rst=narrow1.rst -T300 ene1.log
+```
 If the input log file is omitted, all `ene*.log` files under the current directory will be processed.
 
+For more information about the tool `mkhist.py`, please see the help message displayed from the command
+```
+./mkhist.py -h
+```
 
 ## Applying patches
 
