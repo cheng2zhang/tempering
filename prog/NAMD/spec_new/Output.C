@@ -1351,7 +1351,7 @@ static BigReal getdih(Vector& xi, Vector& xj, Vector& xk, Vector& xl, Lattice* l
     cosphi = m.dot(n) / sqrt(m2 * n2);
     if ( cosphi > 1 ) cosphi = 1;
     else if ( cosphi < -1 ) cosphi = -1;
-  } 
+  }
   BigReal phi = acos(cosphi);
   if ( n.dot(xij) < 0 ) phi = -phi;
   return phi;

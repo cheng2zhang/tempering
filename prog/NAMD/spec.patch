@@ -2299,7 +2299,7 @@ diff -u -wdB spec_old/Molecule.h spec_new/Molecule.h
  
 diff -u -wdB spec_old/Output.C spec_new/Output.C
 --- spec_old/Output.C	2015-11-04 11:20:25.000000000 -0600
-+++ spec_new/Output.C	2016-08-22 12:16:48.721505582 -0500
++++ spec_new/Output.C	2016-08-24 13:11:23.586435892 -0500
 @@ -10,6 +10,7 @@
  
  #include "largefiles.h"  // must be first!
@@ -2330,7 +2330,7 @@ diff -u -wdB spec_old/Output.C spec_new/Output.C
 +    cosphi = m.dot(n) / sqrt(m2 * n2);
 +    if ( cosphi > 1 ) cosphi = 1;
 +    else if ( cosphi < -1 ) cosphi = -1;
-+  } 
++  }
 +  BigReal phi = acos(cosphi);
 +  if ( n.dot(xij) < 0 ) phi = -phi;
 +  return phi;
@@ -2634,7 +2634,7 @@ diff -u -wdB spec_old/Sequencer.h spec_new/Sequencer.h
        int checkpoint_berendsenPressure_count;
 diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
 --- spec_old/SimParameters.C	2015-12-08 09:41:37.000000000 -0600
-+++ spec_new/SimParameters.C	2016-08-17 20:59:38.792945144 -0500
++++ spec_new/SimParameters.C	2016-08-24 19:35:29.965010727 -0500
 @@ -187,6 +187,12 @@
    }
    SCRIPT_PARSE_FLOAT("reassignTemp",reassignTemp)
@@ -2729,6 +2729,8 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
     opts.range("adaptTempTmax", POSITIVE);
     opts.optional("adaptTempMD", "adaptTempBins","Number of bins to store average energies", &adaptTempBins,0);
     opts.range("adaptTempBins", NOT_NEGATIVE);
+-   opts.optional("adaptTempMD", "adaptTempDt", "Integration timestep for Temp. updates", &adaptTempDt, 0.0001);
+-   opts.units("adaptTempDt", N_FSEC);
 +   opts.optional("adaptTempMD", "adaptTempWindowSize", "Window size as a fraction of the inverse temperature range", &adaptTempWindowSize, 0.02);
 +   opts.range("adaptTempWindowSize", NOT_NEGATIVE);
 +   opts.optional("adaptTempMD", "adaptTempWeightExp", "Exponent x as in the inverse-temperature density, w(beta) ~ beta^(-x), 0: flat-beta, 1: flat-lnT, 2: flat-T distribution", &adaptTempWeightExp, 1.0);
@@ -2736,10 +2738,9 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
 +   opts.optional("adaptTempMCMove", "adaptTempMCSize", "Size of Monte Carlo temperature moves as a fraction of the current temperature", &adaptTempMCSize, 0.01);
 +   opts.optional("adaptTempMCMove", "adaptTempMCAutoAR", "Target acceptance ratio for automatic adjustment of the size of MC temperature moves", &adaptTempMCAutoAR, 0.0);
 +   opts.range("adaptTempMCAutoAR", NOT_NEGATIVE);
-+   opts.optional("adaptTempMCMove", "adaptTempMCSizeInc", "Virtual size increment for MC temperature moves", &adaptTempMCSizeInc, 0.0005);
++   opts.optional("adaptTempMD", "adaptTempMCSizeInc", "Virtual (equivalent) size increment for MC or Langevin temperature moves", &adaptTempMCSizeInc, 0.0005);
 +   opts.range("adaptTempMCSizeInc", POSITIVE);
-    opts.optional("adaptTempMD", "adaptTempDt", "Integration timestep for Temp. updates", &adaptTempDt, 0.0001);
--   opts.units("adaptTempDt", N_FSEC);
++   opts.optional("adaptTempMD", "adaptTempDt", "Integration timestep for Temp. updates", &adaptTempDt, 0.000);
     opts.range("adaptTempDt", NOT_NEGATIVE);
 +   opts.optional("adaptTempDt", "adaptTempDtAutoAR", "Target acceptance ratio for automatic adjustment of the size of Langevin temperature moves", &adaptTempDtAutoAR, 0.0);
 +   opts.range("adaptTempDtAutoAR", NOT_NEGATIVE);
@@ -2974,7 +2975,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
       iout << iINFO << "FMA ACTIVE\n";
 diff -u -wdB spec_old/SimParameters.h spec_new/SimParameters.h
 --- spec_old/SimParameters.h	2015-09-04 17:20:03.000000000 -0500
-+++ spec_new/SimParameters.h	2016-08-17 20:18:41.901844070 -0500
++++ spec_new/SimParameters.h	2016-08-24 19:37:08.160474869 -0500
 @@ -497,8 +497,35 @@
  					//  active
  	BigReal tCoupleTemp;		//  Temperature for temp coupling
@@ -3020,7 +3021,7 @@ diff -u -wdB spec_old/SimParameters.h spec_new/SimParameters.h
 +        BigReal adaptTempWeightExp;            //  Exponent x as in the inverse-temperature density w(beta) ~ beta^(-x), 0: flat-beta, 1: flat-lnT, 2: flat-T distribution
 +        Bool adaptTempMCMove;                  //  Use Monte Carlo to update the temperature
 +        BigReal adaptTempMCSize;               //  Size of Monte Carlo temperature moves a faction of the current temperture
-+        BigReal adaptTempMCSizeInc;            //  Virtual size increment for MC temperature moves
++        BigReal adaptTempMCSizeInc;            //  Virtual (equivalent) size increment for MC and Langevin temperature moves
 +        BigReal adaptTempMCAutoAR;             //  Target acceptance ratio for automatic adjustment of the size of MC temperature moves
 +        BigReal adaptTempDt;                   //  Timestep for adaptTemp updates - only affects Temperature random walk
 +        BigReal adaptTempDtAutoAR;             //  Target acceptance ratio for automatic adjustment of the size of Langevin temperature moves

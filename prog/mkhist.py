@@ -35,9 +35,10 @@ def showhelp():
   print "  -c, --col=:    set the column for the quantity"
   print "  --t0=:         set the first time step"
   print "  --colT=:       set the column for temperature"
-  print "  --colE=:       set the column for energy"
   print "  --rst=:        set the restart file for WHAM (weighted histogram analysis method)"
   print "  --tm=:         set the number of subdivisions for each temperature bin (for WHAM)"
+  print "  --colE=:       set the column for energy (for reweighting)"
+  print "  --dE=:         set the bin size for the energy grid (for reweighting)"
 
 
 
@@ -190,11 +191,11 @@ class WHAM:
     self.lnz0 = [0] * (ntp0 + 1)
     for i in range(ntp0):
       self.lnz0[i + 1] = self.lnz0[i] - self.eav0[i] * dbeta0
-    self.interp(ntp0, tpinterp)
+    self.interp(ntp0, tpinterp, xp)
     self.lnwarr = None
 
-  def interp(self, ntp0, m):
-    ''' interpolate '''
+  def interp(self, ntp0, m, xp):
+    ''' compute the partition function and weights of the finer grids '''
     self.ntp = ntp0 * m
     self.dbeta = (self.bmax - self.bmin) / self.ntp
     self.bmid = [0] * self.ntp
@@ -203,7 +204,7 @@ class WHAM:
     self.lnz = [0] * (self.ntp + 1)
     for i in range(self.ntp):
       self.bmid[i] = self.bmin + self.dbeta * (i + 0.5)
-      self.lnwb[i] = -log(self.bmid[i])
+      self.lnwb[i] = -xp * log(self.bmid[i])
       j = i % m
       k = i / m
       x = (j + 0.5) / m
@@ -230,7 +231,7 @@ class WHAM:
     return lnnum - lnden
 
   def getlnwarr(self, emin, emax, de):
-    ''' tabulate the logarithm of the weight '''
+    ''' tabulate the logarithm of weight for the energy grid '''
     self.de = de
     imin = int(emin / de) - 1
     imax = int(emax / de) + 1
@@ -247,15 +248,15 @@ class WHAM:
     #raw_input("%s %s %s" % (emin, emax, de))
 
   def getweight(self, ene):
-    ''' get the ensemble weight for energy ene '''
-    if not self.lnwarr:
+    ''' get the ensemble weight for the given energy '''
+    if not self.lnwarr: # initialize
       emin = ene - 100 * dE
       emax = ene + 100 * dE
       self.getlnwarr(emin, emax, dE)
-    elif ene < self.emin:
+    elif ene < self.emin: # extend to the left
       emin = ene - 100 * dE
       self.getlnwarr(emin, self.emax, dE)
-    elif ene > self.emax:
+    elif ene > self.emax: # extend to the right
       emax = ene + 100 * dE
       self.getlnwarr(self.emin, emax, dE)
 
@@ -273,6 +274,7 @@ def mkhist_simple(s, fnout):
   hist = None
   for i in range(n):
     ln = s[i].strip()
+    # skip a comment line
     if ln.startswith("#"): continue
     tok = ln.split()
     try:
@@ -294,7 +296,7 @@ def mkhist_reweight(s, fnout):
   global col, colT, colE, fnrst
   n = len(s) - 1 # drop the last frame
   hist = None
-  wham = WHAM(T, fnrst) # construct WHAM object
+  wham = WHAM(T, fnrst) # make a WHAM object
   for i in range(n):
     ln = s[i].strip()
     # skip a comment line
@@ -333,10 +335,10 @@ def mkhist(fnin):
     for ln in s:
       if ln.startswith("#"): continue
       num = len( ln.split() )
-      if num == 3:
+      if num == 3: # step energy temperature
         colT = 3
         colE = 2
-      elif num == 4:
+      elif num == 4: # step x temperature energy
         colT = 3
         colE = 4
       break
