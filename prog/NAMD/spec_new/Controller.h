@@ -372,7 +372,7 @@ protected:
      // compute the average energy from the integral identity
      BigReal iiave(BigReal varCntMin, BigReal def = 0) {
        int j, mid = winSize / 2;
-       double ave0 = 0.0, ave1 = 0.0, den0 = 0.0, den1 = 0.0;
+       double den0 = 0.0, den1 = 0.0, ene0 = 0.0, ene1 = 0.0;
        double A0 = 0, A1 = 0, A2 = 0, cntMax = 0, defVar = 0, varj;
        trim();
        // compute the default variance from the most populated bin
@@ -384,30 +384,30 @@ protected:
        }
        // left side
        for ( j = 0; j <= mid; j++ ) {
-         ave0 += sumE[j];
          den0 += sumw[j];
+         ene0 += sumE[j];
          varj = (cnt[j] > varCntMin) ? var[j] : defVar;
          A0 += varj * (j + 0.5);
          //CkPrintf("+ %d %g %g %g\n", j, sumw[j], sumE[j], invw[j]);
        }
-       if ( den0 > 0 ) {
-         ave0 /= den0;
-         A0 /= den0;
-         // middle bin correction
-         varj = (cnt[mid] > varCntMin) ? var[mid] : defVar;
-         A2 = 0.5 * varj * (mid + 1) / den0;
-       }
+       den0 /= mid + 1;
+       ene0 /= mid + 1;
+       A0 /= mid + 1;
+       // middle bin correction
+       varj = (cnt[mid] > varCntMin) ? var[mid] : defVar;
+       A2 = 0.5 * varj;
        // right side
        for ( j = mid + 1; j < winSize; j++ ) {
-         ave1 += sumE[j];
          den1 += sumw[j];
+         ene1 += sumE[j];
          varj = (cnt[j] > varCntMin) ? var[j] : defVar;
          A1 += varj * (j - winSize + 0.5);
          //CkPrintf("+ %d %g %g %g\n", j, sumw[j], sumE[j], invw[j]);
        }
-       if ( den1 > 0 ) {
-         ave1 /= den1;
-         A1 /= den1;
+       if ( mid > 0 ) {
+         den1 /= mid;
+         ene1 /= mid;
+         A1 /= mid;
        }
        if ( den0 + den1 <= 0 ) return def;
        // compute a+ and a-
@@ -415,8 +415,9 @@ protected:
        if ( aplus < 0 ) aplus = 0;
        if ( aplus > 1 ) aplus = 1;
        double aminus = 1 - aplus;
-       //CkPrintf("A0 %g, A1 %g, A2 %g, a- %g, a+ %g, ave %g, %g, %g\n", A0, A1, A2, aminus, aplus, ave0, ave1, aminus * ave0 + aplus * ave1); getchar();
-       return aminus * ave0 + aplus * ave1;
+       //CkPrintf("A0 %g, A1 %g, A2 %g, a- %g, a+ %g, ave %g, %g, %g\n", A0, A1, A2, aminus, aplus, sum0/(den0 + 1e-16), sum1/(den1 + 1e-16), (aminus * sum0 + aplus * sum1)/(aminus * den0 + aplus * den1)); getchar();
+       return ( aminus * ene0 + aplus * ene1 )
+            / ( aminus * den0 + aplus * den1 );
      }
    };
    AdaptTempSepAcc *adaptTempSepAcc;

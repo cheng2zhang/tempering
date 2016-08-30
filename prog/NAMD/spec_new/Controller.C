@@ -2280,14 +2280,12 @@ BigReal Controller::adaptTempGetPEAve(int i, BigReal def)
     if ( simParams->adaptTempSepOn ) {
       potEnergyAverage = adaptTempSepAcc[i].iiave(varCntMin, def);
     } else {
-      int j;
+      int j, w0, w1;
       // Get Averaging Limits:
       int nMinus = adaptTempBinMinus[i];
       int nPlus  = adaptTempBinPlus[i];
       // Variables for <E(beta)> estimate:
-      BigReal potEnergyAve0 = 0.0;
-      BigReal potEnergyAve1 = 0.0;
-      BigReal den0 = 0.0, den1 = 0.0;
+      BigReal den0 = 0.0, den1 = 0.0, ene0 = 0.0, ene1 = 0.0;
       // Integral terms
       BigReal A0 = 0; // Sum_{from beta_minus to beta_{i+1} }
                       //   (beta - beta_minus)/(beta_{i+1} - beta_minus) var(E)
@@ -2307,29 +2305,31 @@ BigReal Controller::adaptTempGetPEAve(int i, BigReal def)
 
       BigReal var;
       for ( j = nMinus; j <= i; j++ ) {
-        potEnergyAve0 += adaptTempPotEnergyAveNum[j];
         den0 += adaptTempPotEnergyAveDen[j];
+        ene0 += adaptTempPotEnergyAveNum[j];
         var = (adaptTempPotEnergySamples[j] > varCntMin) ? adaptTempPotEnergyVar[j] : defVar;
         A0 += var * (j - nMinus + 0.5);
       }
-      if ( den0 > 0 ) {
-        potEnergyAve0 /= den0;
-        A0 /= den0;
-        //A2 phi_t integral for beta_i
-        var = (adaptTempPotEnergySamples[i] > varCntMin) ? adaptTempPotEnergyVar[i] : defVar;
-        A2 = 0.5 * var * (i - nMinus + 1) / den0;
-      }
+      w0 = i + 1 - nMinus;
+      den0 /= w0;
+      ene0 /= w0;
+      A0 /= w0;
+      //A2 phi_t integral for beta_i
+      var = (adaptTempPotEnergySamples[i] > varCntMin) ? adaptTempPotEnergyVar[i] : defVar;
+      A2 = 0.5 * var;
 
       //A1 phi_s integral for beta_{i+1} < beta < beta_plus
       for ( j = i + 1; j < nPlus; j++ ) {
-        potEnergyAve1 += adaptTempPotEnergyAveNum[j];
         den1 += adaptTempPotEnergyAveDen[j];
+        ene1 += adaptTempPotEnergyAveNum[j];
         var = (adaptTempPotEnergySamples[j] > varCntMin) ? adaptTempPotEnergyVar[j] : defVar;
         A1 += var * (j - nPlus + 0.5);
       }
-      if ( den1 > 0 ) {
-        potEnergyAve1 /= den1;
-        A1 /= den1;
+      w1 = nPlus - i - 1;
+      if ( w1 > 0 ) {
+        den1 /= w1;
+        ene1 /= w1;
+        A1 /= w1;
       }
 
       if ( den0 + den1 <= 0 ) {
@@ -2340,7 +2340,8 @@ BigReal Controller::adaptTempGetPEAve(int i, BigReal def)
         if ( aplus < 0 ) aplus = 0;
         if ( aplus > 1 ) aplus = 1;
         BigReal aminus = 1 - aplus;
-        potEnergyAverage = aminus * potEnergyAve0 + aplus * potEnergyAve1;
+        potEnergyAverage = ( aminus * ene0 + aplus * ene1 )
+                         / ( aminus * den0 + aplus * den1 );
         if (simParams->adaptTempDebug) {
           iout << "ADAPTEMP DEBUG:"  << "\n"
                << "     adaptTempBin:    " << i << "\n"
@@ -2360,8 +2361,8 @@ BigReal Controller::adaptTempGetPEAve(int i, BigReal def)
                << "     a+:        " << aplus << "\n"
                << "     a-:        " << aminus << "\n"
                << "     aveEner:   " << potEnergyAverage << "\n"
-               << "     aveEne0:   " << potEnergyAve0 << "\n"
-               << "     aveEne1:   " << potEnergyAve1 << "\n"
+               << "     aveEne0:   " << ene0 / (den0 + 1e-16) << "\n"
+               << "     aveEne1:   " << ene1 / (den1 + 1e-16) << "\n"
                << "     den0:      " << den0 << "\n"
                << "     den1:      " << den1 << "\n"
                << endi;
@@ -2571,7 +2572,7 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
     }
     potentialEnergy = bondEnergy + angleEnergy + dihedralEnergy
 	+ improperEnergy + electEnergy + electEnergySlow + ljEnergy
-	+ crosstermEnergy + boundaryEnergy + miscEnergy
+        + crosstermEnergy + boundaryEnergy + miscEnergy
         + goTotalEnergy + groLJEnergy + groGaussEnergy;
     totalEnergy = potentialEnergy + kineticEnergy;
 

@@ -554,7 +554,7 @@ public:
         BigReal adaptTempWeightExp;            //  Exponent x as in the inverse-temperature density w(beta) ~ beta^(-x), 0: flat-beta, 1: flat-lnT, 2: flat-T distribution
         Bool adaptTempMCMove;                  //  Use Monte Carlo to update the temperature
         BigReal adaptTempMCSize;               //  Size of Monte Carlo temperature moves a faction of the current temperture
-        BigReal adaptTempMCSizeInc;            //  Virtual (equivalent) size increment for MC and Langevin temperature moves
+        BigReal adaptTempMCSizeInc;            //  Virtual (equivalent) size increment for MC or Langevin temperature moves
         BigReal adaptTempMCAutoAR;             //  Target acceptance ratio for automatic adjustment of the size of MC temperature moves
         BigReal adaptTempDt;                   //  Timestep for adaptTemp updates - only affects Temperature random walk
         BigReal adaptTempDtAutoAR;             //  Target acceptance ratio for automatic adjustment of the size of Langevin temperature moves

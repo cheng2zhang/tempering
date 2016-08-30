@@ -249,7 +249,7 @@ diff -u -wdB thstat_old/common.C thstat_new/common.C
    while ( close(fd) ) {
 diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 --- thstat_old/Controller.C	2015-12-17 15:22:03.000000000 -0600
-+++ thstat_new/Controller.C	2016-08-19 15:36:50.452311416 -0500
++++ thstat_new/Controller.C	2016-08-29 20:10:31.318066430 -0500
 @@ -184,6 +184,10 @@
      random->split(0,PatchMap::Object()->numPatches()+1);
  
@@ -1026,7 +1026,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
          adaptTempRestartFile << adaptTempT<< " ";     // KELVIN
          adaptTempRestartFile << 1./adaptTempBetaMin << " ";  // KELVIN
          adaptTempRestartFile << 1./adaptTempBetaMax << " ";  // KELVIN
-@@ -1685,165 +2206,131 @@
+@@ -1685,165 +2206,133 @@
          adaptTempRestartFile << adaptTempDt ;
          adaptTempRestartFile << "\n" ;
          for(int j = 0; j < adaptTempBins; ++j) {
@@ -1094,7 +1094,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 -    //Calculate Current inverse temperature and bin 
 -    BigReal adaptTempBeta = 1./adaptTempT;
 -    adaptTempBin   = (int)floor((adaptTempBeta - adaptTempBetaMin)/adaptTempDBeta);
--
+ 
 -    if (adaptTempBin < 0 || adaptTempBin > adaptTempBins)
 -        iout << iWARN << " adaptTempBin out of range: adaptTempBin: " << adaptTempBin  
 -                               << " adaptTempBeta: " << adaptTempBeta 
@@ -1103,7 +1103,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 -                               << " betaMax: " << adaptTempBetaMax << "\n";
 -    adaptTempPotEnergySamples[adaptTempBin] += 1;
 -    BigReal gammaAve = 1.-adaptTempCg/adaptTempPotEnergySamples[adaptTempBin];
- 
+-
 -    BigReal potentialEnergy;
 +BigReal Controller::adaptTempGetPEAve(int i, BigReal def)
 +{
@@ -1116,14 +1116,14 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 -    adaptTempPotEnergyAveNum[adaptTempBin] = adaptTempPotEnergyAveNum[adaptTempBin]*gammaAve + potentialEnergy;
 -    adaptTempPotEnergyAveDen[adaptTempBin] = adaptTempPotEnergyAveDen[adaptTempBin]*gammaAve + 1;
 -    adaptTempPotEnergyVarNum[adaptTempBin] = adaptTempPotEnergyVarNum[adaptTempBin]*gammaAve + potentialEnergy*potentialEnergy;
--    
+     
 -    potEnergyAverage = adaptTempPotEnergyAveNum[adaptTempBin]/adaptTempPotEnergyAveDen[adaptTempBin];
 -    potEnergyVariance = adaptTempPotEnergyVarNum[adaptTempBin]/adaptTempPotEnergyAveDen[adaptTempBin];
 -    potEnergyVariance -= potEnergyAverage*potEnergyAverage;
 -
 -    adaptTempPotEnergyAve[adaptTempBin] = potEnergyAverage;
 -    adaptTempPotEnergyVar[adaptTempBin] = potEnergyVariance;
-     
+-    
 -    // Weighted integral of <Delta E^2>_beta dbeta <= Eq 4 of JCP 132 244101
 -    // Integrals of Eqs 5 and 6 is done as piecewise assuming <Delta E^2>_beta
 -    // is constant for each bin. This is to estimate <E(beta)> where beta \in
@@ -1134,7 +1134,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 +    if ( simParams->adaptTempSepOn ) {
 +      potEnergyAverage = adaptTempSepAcc[i].iiave(varCntMin, def);
 +    } else {
-+      int j;
++      int j, w0, w1;
            // Get Averaging Limits:
 -          BigReal deltaBeta = 0.04*adaptTempBeta; //0.08 used in paper - make variable
 -          BigReal betaPlus;
@@ -1152,9 +1152,9 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 +      int nMinus = adaptTempBinMinus[i];
 +      int nPlus  = adaptTempBinPlus[i];
            // Variables for <E(beta)> estimate:
-           BigReal potEnergyAve0 = 0.0;
-           BigReal potEnergyAve1 = 0.0;
-+      BigReal den0 = 0.0, den1 = 0.0;
+-          BigReal potEnergyAve0 = 0.0;
+-          BigReal potEnergyAve1 = 0.0;
++      BigReal den0 = 0.0, den1 = 0.0, ene0 = 0.0, ene1 = 0.0;
            // Integral terms
 -          BigReal A0 = 0;
 -          BigReal A1 = 0;
@@ -1206,9 +1206,23 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 -            A1 -= 0.5*betaj*adaptTempPotEnergyVar[nPlus];
            }
 -          A1 /= (betaPlus-betaNp1);
--
--          //A2 phi_t integral for beta_i
++
++      BigReal var;
++      for ( j = nMinus; j <= i; j++ ) {
++        den0 += adaptTempPotEnergyAveDen[j];
++        ene0 += adaptTempPotEnergyAveNum[j];
++        var = (adaptTempPotEnergySamples[j] > varCntMin) ? adaptTempPotEnergyVar[j] : defVar;
++        A0 += var * (j - nMinus + 0.5);
++      }
++      w0 = i + 1 - nMinus;
++      den0 /= w0;
++      ene0 /= w0;
++      A0 /= w0;
+ 
+           //A2 phi_t integral for beta_i
 -          A2 = 0.5*adaptTempDBeta*potEnergyVariance;
++      var = (adaptTempPotEnergySamples[i] > varCntMin) ? adaptTempPotEnergyVar[i] : defVar;
++      A2 = 0.5 * var;
  
 -          // Now calculate a+ and a-
 -          DeltaE2Ave = A0-A1;
@@ -1218,22 +1232,10 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 -            aplus = (A0-A2)/(A0-A1);
 -            if (aplus < 0) {
 -                    aplus = 0;
-+      BigReal var;
-+      for ( j = nMinus; j <= i; j++ ) {
-+        potEnergyAve0 += adaptTempPotEnergyAveNum[j];
-+        den0 += adaptTempPotEnergyAveDen[j];
-+        var = (adaptTempPotEnergySamples[j] > varCntMin) ? adaptTempPotEnergyVar[j] : defVar;
-+        A0 += var * (j - nMinus + 0.5);
-             }
+-            }
 -            if (aplus > 1)  {
 -                    aplus = 1;
-+      if ( den0 > 0 ) {
-+        potEnergyAve0 /= den0;
-+        A0 /= den0;
-+        //A2 phi_t integral for beta_i
-+        var = (adaptTempPotEnergySamples[i] > varCntMin) ? adaptTempPotEnergyVar[i] : defVar;
-+        A2 = 0.5 * var * (i - nMinus + 1) / den0;
-             }
+-            }
 -            aminus = 1-aplus;
 -            potEnergyAve0 *= adaptTempDBeta;
 -            potEnergyAve0 += adaptTempPotEnergyAve[nMinus]*(adaptTempBetaN[nMinus+1]-betaMinus);
@@ -1241,20 +1243,21 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 -            potEnergyAve1 *= adaptTempDBeta;
 -            if ( nPlus < adaptTempBins ) {
 -                potEnergyAve1 += adaptTempPotEnergyAve[nPlus]*(betaPlus-adaptTempBetaN[nPlus]);
-+
 +      //A1 phi_s integral for beta_{i+1} < beta < beta_plus
 +      for ( j = i + 1; j < nPlus; j++ ) {
-+        potEnergyAve1 += adaptTempPotEnergyAveNum[j];
 +        den1 += adaptTempPotEnergyAveDen[j];
++        ene1 += adaptTempPotEnergyAveNum[j];
 +        var = (adaptTempPotEnergySamples[j] > varCntMin) ? adaptTempPotEnergyVar[j] : defVar;
 +        A1 += var * (j - nPlus + 0.5);
              }
 -            potEnergyAve1 /= (betaPlus-betaNp1);
 -            potEnergyAverage = aminus*potEnergyAve0;
 -            potEnergyAverage += aplus*potEnergyAve1;
-+      if ( den1 > 0 ) {
-+        potEnergyAve1 /= den1;
-+        A1 /= den1;
++      w1 = nPlus - i - 1;
++      if ( w1 > 0 ) {
++        den1 /= w1;
++        ene1 /= w1;
++        A1 /= w1;
            }
 +
 +      if ( den0 + den1 <= 0 ) {
@@ -1265,7 +1268,8 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 +        if ( aplus < 0 ) aplus = 0;
 +        if ( aplus > 1 ) aplus = 1;
 +        BigReal aminus = 1 - aplus;
-+        potEnergyAverage = aminus * potEnergyAve0 + aplus * potEnergyAve1;
++        potEnergyAverage = ( aminus * ene0 + aplus * ene1 )
++                         / ( aminus * den0 + aplus * den1 );
            if (simParams->adaptTempDebug) {
         iout << "ADAPTEMP DEBUG:"  << "\n"
 -            << "     adaptTempBin:    " << adaptTempBin << "\n"
@@ -1287,13 +1291,13 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
              << "     nMinus:    " << nMinus << "\n"
              << "     nPlus:     " << nPlus << "\n"
              << "     A0:        " << A0 << "\n"
-@@ -1851,147 +2338,324 @@
+@@ -1851,147 +2340,324 @@
              << "     A2:        " << A2 << "\n"
              << "     a+:        " << aplus << "\n"
              << "     a-:        " << aminus << "\n"
 +               << "     aveEner:   " << potEnergyAverage << "\n"
-+               << "     aveEne0:   " << potEnergyAve0 << "\n"
-+               << "     aveEne1:   " << potEnergyAve1 << "\n"
++               << "     aveEne0:   " << ene0 / (den0 + 1e-16) << "\n"
++               << "     aveEne1:   " << ene1 / (den1 + 1e-16) << "\n"
 +               << "     den0:      " << den0 << "\n"
 +               << "     den1:      " << den1 << "\n"
              << endi;
@@ -1607,7 +1611,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 +    }
 +    potentialEnergy = bondEnergy + angleEnergy + dihedralEnergy
 +	+ improperEnergy + electEnergy + electEnergySlow + ljEnergy
-+	+ crosstermEnergy + boundaryEnergy + miscEnergy
++        + crosstermEnergy + boundaryEnergy + miscEnergy
 +        + goTotalEnergy + groLJEnergy + groGaussEnergy;
 +    totalEnergy = potentialEnergy + kineticEnergy;
 +
@@ -1722,7 +1726,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
  }
  
  
-@@ -2277,6 +2941,15 @@
+@@ -2277,6 +2943,15 @@
        electEnergy = reduction->item(REDUCTION_ELECT_ENERGY);
        ljEnergy = reduction->item(REDUCTION_LJ_ENERGY);
  
@@ -1738,7 +1742,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
        // JLai
        groLJEnergy = reduction->item(REDUCTION_GRO_LJ_ENERGY);
        groGaussEnergy = reduction->item(REDUCTION_GRO_GAUSS_ENERGY);
-@@ -2310,16 +2983,6 @@
+@@ -2310,16 +2985,6 @@
  //fepe
      }
  
@@ -1755,7 +1759,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
      momentum.x = reduction->item(REDUCTION_MOMENTUM_X);
      momentum.y = reduction->item(REDUCTION_MOMENTUM_Y);
      momentum.z = reduction->item(REDUCTION_MOMENTUM_Z);
-@@ -3147,6 +3810,7 @@
+@@ -3147,6 +3812,7 @@
      ldbSteps = LdbCoordinator::Object()->getNumStepsToRun();
    }
    if ( ! --ldbSteps ) {
@@ -1765,7 +1769,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
      LdbCoordinator::Object()->rebalance(this);	
 diff -u -wdB thstat_old/Controller.h thstat_new/Controller.h
 --- thstat_old/Controller.h	2015-10-12 10:48:41.000000000 -0500
-+++ thstat_new/Controller.h	2016-08-17 16:57:26.529036873 -0500
++++ thstat_new/Controller.h	2016-08-29 20:11:20.808759633 -0500
 @@ -151,10 +151,38 @@
      void enqueueCollections(int);
      void correctMomentum(int step);
@@ -1805,7 +1809,7 @@ diff -u -wdB thstat_old/Controller.h thstat_new/Controller.h
      void berendsenPressure(int);
        // Tensor berendsenPressure_avg;
        // int berendsenPressure_count;
-@@ -232,18 +260,178 @@
+@@ -232,18 +260,179 @@
  
  //JS for adaptive temperature sampling
     void adaptTempInit(int step);
@@ -1927,7 +1931,7 @@ diff -u -wdB thstat_old/Controller.h thstat_new/Controller.h
 +     // compute the average energy from the integral identity
 +     BigReal iiave(BigReal varCntMin, BigReal def = 0) {
 +       int j, mid = winSize / 2;
-+       double ave0 = 0.0, ave1 = 0.0, den0 = 0.0, den1 = 0.0;
++       double den0 = 0.0, den1 = 0.0, ene0 = 0.0, ene1 = 0.0;
 +       double A0 = 0, A1 = 0, A2 = 0, cntMax = 0, defVar = 0, varj;
 +       trim();
 +       // compute the default variance from the most populated bin
@@ -1939,30 +1943,30 @@ diff -u -wdB thstat_old/Controller.h thstat_new/Controller.h
 +       }
 +       // left side
 +       for ( j = 0; j <= mid; j++ ) {
-+         ave0 += sumE[j];
 +         den0 += sumw[j];
++         ene0 += sumE[j];
 +         varj = (cnt[j] > varCntMin) ? var[j] : defVar;
 +         A0 += varj * (j + 0.5);
 +         //CkPrintf("+ %d %g %g %g\n", j, sumw[j], sumE[j], invw[j]);
 +       }
-+       if ( den0 > 0 ) {
-+         ave0 /= den0;
-+         A0 /= den0;
-+         // middle bin correction
-+         varj = (cnt[mid] > varCntMin) ? var[mid] : defVar;
-+         A2 = 0.5 * varj * (mid + 1) / den0;
-+       }
++       den0 /= mid + 1;
++       ene0 /= mid + 1;
++       A0 /= mid + 1;
++       // middle bin correction
++       varj = (cnt[mid] > varCntMin) ? var[mid] : defVar;
++       A2 = 0.5 * varj;
 +       // right side
 +       for ( j = mid + 1; j < winSize; j++ ) {
-+         ave1 += sumE[j];
 +         den1 += sumw[j];
++         ene1 += sumE[j];
 +         varj = (cnt[j] > varCntMin) ? var[j] : defVar;
 +         A1 += varj * (j - winSize + 0.5);
 +         //CkPrintf("+ %d %g %g %g\n", j, sumw[j], sumE[j], invw[j]);
 +       }
-+       if ( den1 > 0 ) {
-+         ave1 /= den1;
-+         A1 /= den1;
++       if ( mid > 0 ) {
++         den1 /= mid;
++         ene1 /= mid;
++         A1 /= mid;
 +       }
 +       if ( den0 + den1 <= 0 ) return def;
 +       // compute a+ and a-
@@ -1970,8 +1974,9 @@ diff -u -wdB thstat_old/Controller.h thstat_new/Controller.h
 +       if ( aplus < 0 ) aplus = 0;
 +       if ( aplus > 1 ) aplus = 1;
 +       double aminus = 1 - aplus;
-+       //CkPrintf("A0 %g, A1 %g, A2 %g, a- %g, a+ %g, ave %g, %g, %g\n", A0, A1, A2, aminus, aplus, ave0, ave1, aminus * ave0 + aplus * ave1); getchar();
-+       return aminus * ave0 + aplus * ave1;
++       //CkPrintf("A0 %g, A1 %g, A2 %g, a- %g, a+ %g, ave %g, %g, %g\n", A0, A1, A2, aminus, aplus, sum0/(den0 + 1e-16), sum1/(den1 + 1e-16), (aminus * sum0 + aplus * sum1)/(aminus * den0 + aplus * den1)); getchar();
++       return ( aminus * ene0 + aplus * ene1 )
++            / ( aminus * den0 + aplus * den1 );
 +     }
 +   };
 +   AdaptTempSepAcc *adaptTempSepAcc;
@@ -1993,7 +1998,7 @@ diff -u -wdB thstat_old/Controller.h thstat_new/Controller.h
     BigReal adaptTempBetaMin;
     BigReal adaptTempBetaMax;
     int     adaptTempBin;
-@@ -251,9 +439,6 @@
+@@ -251,9 +440,6 @@
     BigReal adaptTempDBeta;
     BigReal adaptTempCg;
     BigReal adaptTempDt;
@@ -2241,7 +2246,7 @@ diff -u -wdB thstat_old/Sequencer.h thstat_new/Sequencer.h
        int checkpoint_berendsenPressure_count;
 diff -u -wdB thstat_old/SimParameters.C thstat_new/SimParameters.C
 --- thstat_old/SimParameters.C	2015-12-08 09:41:37.000000000 -0600
-+++ thstat_new/SimParameters.C	2016-08-24 19:36:44.224601437 -0500
++++ thstat_new/SimParameters.C	2016-08-29 20:09:29.468685094 -0500
 @@ -187,6 +187,12 @@
    }
    SCRIPT_PARSE_FLOAT("reassignTemp",reassignTemp)
@@ -2343,7 +2348,7 @@ diff -u -wdB thstat_old/SimParameters.C thstat_new/SimParameters.C
 +   opts.optional("adaptTempMCMove", "adaptTempMCSize", "Size of Monte Carlo temperature moves as a fraction of the current temperature", &adaptTempMCSize, 0.01);
 +   opts.optional("adaptTempMCMove", "adaptTempMCAutoAR", "Target acceptance ratio for automatic adjustment of the size of MC temperature moves", &adaptTempMCAutoAR, 0.0);
 +   opts.range("adaptTempMCAutoAR", NOT_NEGATIVE);
-+   opts.optional("adaptTempMD", "adaptTempMCSizeInc", "Virtual (equivalent) size increment for MC and Langevin temperature moves", &adaptTempMCSizeInc, 0.0005);
++   opts.optional("adaptTempMD", "adaptTempMCSizeInc", "Virtual (equivalent) size increment for MC or Langevin temperature moves", &adaptTempMCSizeInc, 0.0005);
 +   opts.range("adaptTempMCSizeInc", POSITIVE);
     opts.optional("adaptTempMD", "adaptTempDt", "Integration timestep for Temp. updates", &adaptTempDt, 0.0001);
 -   opts.units("adaptTempDt", N_FSEC);
@@ -2539,7 +2544,7 @@ diff -u -wdB thstat_old/SimParameters.C thstat_new/SimParameters.C
       }
 diff -u -wdB thstat_old/SimParameters.h thstat_new/SimParameters.h
 --- thstat_old/SimParameters.h	2015-09-04 17:20:03.000000000 -0500
-+++ thstat_new/SimParameters.h	2016-08-24 19:36:34.409653337 -0500
++++ thstat_new/SimParameters.h	2016-08-29 20:09:22.673732144 -0500
 @@ -497,8 +497,35 @@
  					//  active
  	BigReal tCoupleTemp;		//  Temperature for temp coupling
@@ -2585,7 +2590,7 @@ diff -u -wdB thstat_old/SimParameters.h thstat_new/SimParameters.h
 +        BigReal adaptTempWeightExp;            //  Exponent x as in the inverse-temperature density w(beta) ~ beta^(-x), 0: flat-beta, 1: flat-lnT, 2: flat-T distribution
 +        Bool adaptTempMCMove;                  //  Use Monte Carlo to update the temperature
 +        BigReal adaptTempMCSize;               //  Size of Monte Carlo temperature moves a faction of the current temperture
-+        BigReal adaptTempMCSizeInc;            //  Virtual (equivalent) size increment for MC and Langevin temperature moves
++        BigReal adaptTempMCSizeInc;            //  Virtual (equivalent) size increment for MC or Langevin temperature moves
 +        BigReal adaptTempMCAutoAR;             //  Target acceptance ratio for automatic adjustment of the size of MC temperature moves
 +        BigReal adaptTempDt;                   //  Timestep for adaptTemp updates - only affects Temperature random walk
 +        BigReal adaptTempDtAutoAR;             //  Target acceptance ratio for automatic adjustment of the size of Langevin temperature moves
