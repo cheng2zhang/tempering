@@ -264,7 +264,7 @@ protected:
    void adaptTempDone(int step);
    BigReal adaptTempGetInvW(BigReal tp);
    BigReal adaptTempGetPEAve(int i, BigReal def = 0);
-   BigReal adaptTempGetIntE(BigReal beta, int i, BigReal nbeta, int ni, double& epave);
+   BigReal adaptTempGetIntE(BigReal beta, int i, BigReal nbeta, int ni);
    BigReal adaptTempMCMove(BigReal tp, BigReal ep);
    BigReal adaptTempLangevin(BigReal tp, BigReal ep);
    Bool adaptTempUpdate(int step, int minimize = 0);

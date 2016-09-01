@@ -2352,65 +2352,42 @@ BigReal Controller::adaptTempGetPEAve(int i, BigReal def)
     return potEnergyAverage;
 }
 
-// return Integral { beta to nbeta } E(beta) d beta
-BigReal Controller::adaptTempGetIntE(BigReal beta, int i, BigReal nbeta, int ni,
-    double& epave)
+// return Integral { beta to nbeta } E(beta) d beta = Z(beta) - Z(nbeta)
+BigReal Controller::adaptTempGetIntE(BigReal beta, int i, BigReal nbeta, int ni)
 {
-    double delta;
-    int j;
-    // recompute the average values from bin i to bin ni
-    if ( !simParams->adaptTempFixedAve ) {
-      for ( epave = 0, j = i; ; j += (i <= ni) ? 1 : -1 ) {
+    double delta = 0, epave = 0, beta_n;
+    int j, sgn = ( i <= ni ) ? 1 : -1;
+    for ( j = i; ; j += sgn ) {
+      if ( !simParams->adaptTempFixedAve ) // recompute the average energy
         adaptTempPotEnergyAve[j] = epave = adaptTempGetPEAve(j, epave);
-        if ( j == ni ) break;
-      }
+      beta_n = ( j == ni ) ? nbeta : adaptTempBetaN[j + (sgn > 0)];
+      delta += adaptTempPotEnergyAve[j] * (beta_n - beta);
+      beta = beta_n;
+      if ( j == ni ) break;
     }
-    // compute the integral of E dbeta = Z(old) - Z(new)
-    if ( i < ni ) {
-      epave = adaptTempPotEnergyAve[i];
-      delta = epave * (adaptTempBetaN[i + 1] - beta);
-      for ( j = i + 1; j < ni; j++ ) {
-        epave = adaptTempPotEnergyAve[j];
-        delta += epave * adaptTempDBeta;
-      }
-      epave = adaptTempPotEnergyAve[ni];
-      delta += epave * (nbeta - adaptTempBetaN[ni]);
-    } else if ( i == ni ) {
-      epave = adaptTempPotEnergyAve[i];
-      delta = epave * (nbeta - beta);
-    } else { // i > ni
-      epave = adaptTempPotEnergyAve[i];
-      delta = epave * (adaptTempBetaN[i] - beta);
-      for ( j = i - 1; j > ni; j-- ) {
-        epave = adaptTempPotEnergyAve[j];
-        delta -= epave * adaptTempDBeta;
-      }
-      epave = adaptTempPotEnergyAve[ni];
-      delta += epave * (nbeta - adaptTempBetaN[ni + 1]);
-    }
-    return delta/BOLTZMANN;
+    return delta / BOLTZMANN;
 }
 
 BigReal Controller::adaptTempMCMove(BigReal tp, BigReal ep)
 {
     double kB = BOLTZMANN, x = simParams->adaptTempWeightExp;
-    double beta = 1./tp, nbeta, r, delta, epave;
+    double beta = 1./tp, nbeta, r, delta, nepave;
     int i, ni, acc = 0;
     r = random->gaussian();
     nbeta = beta * exp(adaptTempMCSize * r); // evenly change ln(beta)
     i  = (int) ( (beta  - adaptTempBetaMin) / adaptTempDBeta );
     ni = (int) ( (nbeta - adaptTempBetaMin) / adaptTempDBeta );
-    //CkPrintf("delta %g, beta %g, %g, ep %g, i %d, %d\n", delta, beta, nbeta, ep, i, ni);
     if ( nbeta >= adaptTempBetaMin && ni < adaptTempBins ) {
-      delta = adaptTempGetIntE(beta, i, nbeta, ni, epave);
+      delta = adaptTempGetIntE(beta, i, nbeta, ni);
+      nepave = adaptTempPotEnergyAve[ni];
       delta = delta - ep * (nbeta - beta)/kB + (x - 1) * log(beta/nbeta);
       //CkPrintf("delta %g cf %g, beta %g, %g, ep %g, %g, bin %d, %d\n", delta,
       //    ((adaptTempPotEnergyAve[i]+adaptTempPotEnergyAve[ni])/2 - ep) * (nbeta - beta) / kB,
-      //    beta, nbeta, ep, epave, i, ni); // getchar();
+      //    beta, nbeta, ep, nepave, i, ni); // getchar();
       acc = ( delta > 0 || random->uniform() < exp(delta) );
       if ( acc ) { // for d(acc. ratio)/d(ln beta)
         if ( delta < 0 )
-          adaptTempMCDAcc += -r * ((ep - epave)*(nbeta/kB) + x - 1);
+          adaptTempMCDAcc += -r * ((ep - nepave)*(nbeta/kB) + x - 1);
         double mbeta = beta * exp((adaptTempMCSize + simParams->adaptTempMCSizeInc) * r);
         if ( mbeta < adaptTempBetaMin || mbeta >= adaptTempBetaMax )
           adaptTempMCFail += 1;
@@ -2451,8 +2428,8 @@ BigReal Controller::adaptTempLangevin(BigReal tp, BigReal ep)
     // use Monte Carlo to accept the new temperature
     int acc = 0;
     if ( nbeta >= adaptTempBetaMin && ni < adaptTempBins ) {
-      double nepave;
-      double delta = adaptTempGetIntE(beta, i, nbeta, ni, nepave);
+      double delta = adaptTempGetIntE(beta, i, nbeta, ni);
+      double nepave = adaptTempPotEnergyAve[ni];
       double nde = ep - nepave + x / nBeta;
       double nr = (-dtp/ntp - dt*nde*nBeta) / a;
       delta = (Beta - nBeta) * ep + delta
