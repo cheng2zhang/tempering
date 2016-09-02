@@ -373,6 +373,7 @@ protected:
        int j, mid = winSize / 2;
        double den0 = 0.0, den1 = 0.0, ene0 = 0.0, ene1 = 0.0;
        double A0 = 0, A1 = 0, A2 = 0, cntMax = 0, defVar = 0, varj;
+       if ( total <= 0 ) return def;
        trim();
        // compute the default variance from the most populated bin
        for ( j = 0; j < winSize; j++ ) {
@@ -381,6 +382,7 @@ protected:
            defVar = var[j];
          }
        }
+       if ( defVar <= 0 ) defVar = 1.0;
        // left side
        for ( j = 0; j <= mid; j++ ) {
          den0 += sumw[j];

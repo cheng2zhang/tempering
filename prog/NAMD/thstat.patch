@@ -249,7 +249,7 @@ diff -u -wdB thstat_old/common.C thstat_new/common.C
    while ( close(fd) ) {
 diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 --- thstat_old/Controller.C	2015-12-17 15:22:03.000000000 -0600
-+++ thstat_new/Controller.C	2016-09-01 14:20:13.092635716 -0500
++++ thstat_new/Controller.C	2016-09-01 20:39:23.373669098 -0500
 @@ -184,6 +184,10 @@
      random->split(0,PatchMap::Object()->numPatches()+1);
  
@@ -1026,7 +1026,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
          adaptTempRestartFile << adaptTempT<< " ";     // KELVIN
          adaptTempRestartFile << 1./adaptTempBetaMin << " ";  // KELVIN
          adaptTempRestartFile << 1./adaptTempBetaMax << " ";  // KELVIN
-@@ -1685,165 +2206,133 @@
+@@ -1685,165 +2206,134 @@
          adaptTempRestartFile << adaptTempDt ;
          adaptTempRestartFile << "\n" ;
          for(int j = 0; j < adaptTempBins; ++j) {
@@ -1206,6 +1206,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 -            A1 -= 0.5*betaj*adaptTempPotEnergyVar[nPlus];
            }
 -          A1 /= (betaPlus-betaNp1);
++      if ( defVar <= 0 ) defVar = 1.0;
 +
 +      BigReal var;
 +      for ( j = nMinus; j <= i; j++ ) {
@@ -1291,7 +1292,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
              << "     nMinus:    " << nMinus << "\n"
              << "     nPlus:     " << nPlus << "\n"
              << "     A0:        " << A0 << "\n"
-@@ -1851,147 +2340,301 @@
+@@ -1851,147 +2341,301 @@
              << "     A2:        " << A2 << "\n"
              << "     a+:        " << aplus << "\n"
              << "     a-:        " << aminus << "\n"
@@ -1703,7 +1704,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
  }
  
  
-@@ -2277,6 +2920,15 @@
+@@ -2277,6 +2921,15 @@
        electEnergy = reduction->item(REDUCTION_ELECT_ENERGY);
        ljEnergy = reduction->item(REDUCTION_LJ_ENERGY);
  
@@ -1719,7 +1720,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
        // JLai
        groLJEnergy = reduction->item(REDUCTION_GRO_LJ_ENERGY);
        groGaussEnergy = reduction->item(REDUCTION_GRO_GAUSS_ENERGY);
-@@ -2310,16 +2962,6 @@
+@@ -2310,16 +2963,6 @@
  //fepe
      }
  
@@ -1736,7 +1737,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
      momentum.x = reduction->item(REDUCTION_MOMENTUM_X);
      momentum.y = reduction->item(REDUCTION_MOMENTUM_Y);
      momentum.z = reduction->item(REDUCTION_MOMENTUM_Z);
-@@ -3147,6 +3789,7 @@
+@@ -3147,6 +3790,7 @@
      ldbSteps = LdbCoordinator::Object()->getNumStepsToRun();
    }
    if ( ! --ldbSteps ) {
@@ -1746,7 +1747,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
      LdbCoordinator::Object()->rebalance(this);	
 diff -u -wdB thstat_old/Controller.h thstat_new/Controller.h
 --- thstat_old/Controller.h	2015-10-12 10:48:41.000000000 -0500
-+++ thstat_new/Controller.h	2016-09-01 14:14:58.621669059 -0500
++++ thstat_new/Controller.h	2016-09-02 12:50:27.350117390 -0500
 @@ -151,10 +151,38 @@
      void enqueueCollections(int);
      void correctMomentum(int step);
@@ -1786,7 +1787,7 @@ diff -u -wdB thstat_old/Controller.h thstat_new/Controller.h
      void berendsenPressure(int);
        // Tensor berendsenPressure_avg;
        // int berendsenPressure_count;
-@@ -232,18 +260,179 @@
+@@ -232,18 +260,181 @@
  
  //JS for adaptive temperature sampling
     void adaptTempInit(int step);
@@ -1910,6 +1911,7 @@ diff -u -wdB thstat_old/Controller.h thstat_new/Controller.h
 +       int j, mid = winSize / 2;
 +       double den0 = 0.0, den1 = 0.0, ene0 = 0.0, ene1 = 0.0;
 +       double A0 = 0, A1 = 0, A2 = 0, cntMax = 0, defVar = 0, varj;
++       if ( total <= 0 ) return def;
 +       trim();
 +       // compute the default variance from the most populated bin
 +       for ( j = 0; j < winSize; j++ ) {
@@ -1918,6 +1920,7 @@ diff -u -wdB thstat_old/Controller.h thstat_new/Controller.h
 +           defVar = var[j];
 +         }
 +       }
++       if ( defVar <= 0 ) defVar = 1.0;
 +       // left side
 +       for ( j = 0; j <= mid; j++ ) {
 +         den0 += sumw[j];
@@ -1975,7 +1978,7 @@ diff -u -wdB thstat_old/Controller.h thstat_new/Controller.h
     BigReal adaptTempBetaMin;
     BigReal adaptTempBetaMax;
     int     adaptTempBin;
-@@ -251,9 +440,6 @@
+@@ -251,9 +442,6 @@
     BigReal adaptTempDBeta;
     BigReal adaptTempCg;
     BigReal adaptTempDt;

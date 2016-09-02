@@ -2302,6 +2302,7 @@ BigReal Controller::adaptTempGetPEAve(int i, BigReal def)
           defVar = adaptTempPotEnergyVar[j];
         }
       }
+      if ( defVar <= 0 ) defVar = 1.0;
 
       BigReal var;
       for ( j = nMinus; j <= i; j++ ) {

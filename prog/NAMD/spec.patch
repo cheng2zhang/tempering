@@ -363,7 +363,7 @@ diff -u -wdB spec_old/common.C spec_new/common.C
    while ( close(fd) ) {
 diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 --- spec_old/Controller.C	2015-12-17 15:22:03.000000000 -0600
-+++ spec_new/Controller.C	2016-09-01 14:17:49.813876814 -0500
++++ spec_new/Controller.C	2016-09-01 20:39:27.973674195 -0500
 @@ -184,6 +184,10 @@
      random->split(0,PatchMap::Object()->numPatches()+1);
  
@@ -1168,7 +1168,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
          adaptTempRestartFile << adaptTempT<< " ";     // KELVIN
          adaptTempRestartFile << 1./adaptTempBetaMin << " ";  // KELVIN
          adaptTempRestartFile << 1./adaptTempBetaMax << " ";  // KELVIN
-@@ -1685,165 +2227,132 @@
+@@ -1685,165 +2227,133 @@
          adaptTempRestartFile << adaptTempDt ;
          adaptTempRestartFile << "\n" ;
          for(int j = 0; j < adaptTempBins; ++j) {
@@ -1236,7 +1236,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 -    //Calculate Current inverse temperature and bin 
 -    BigReal adaptTempBeta = 1./adaptTempT;
 -    adaptTempBin   = (int)floor((adaptTempBeta - adaptTempBetaMin)/adaptTempDBeta);
--
+ 
 -    if (adaptTempBin < 0 || adaptTempBin > adaptTempBins)
 -        iout << iWARN << " adaptTempBin out of range: adaptTempBin: " << adaptTempBin  
 -                               << " adaptTempBeta: " << adaptTempBeta 
@@ -1245,7 +1245,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 -                               << " betaMax: " << adaptTempBetaMax << "\n";
 -    adaptTempPotEnergySamples[adaptTempBin] += 1;
 -    BigReal gammaAve = 1.-adaptTempCg/adaptTempPotEnergySamples[adaptTempBin];
- 
+-
 -    BigReal potentialEnergy;
 +BigReal Controller::adaptTempGetPEAve(int i, BigReal def)
 +{
@@ -1262,10 +1262,10 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 -    potEnergyAverage = adaptTempPotEnergyAveNum[adaptTempBin]/adaptTempPotEnergyAveDen[adaptTempBin];
 -    potEnergyVariance = adaptTempPotEnergyVarNum[adaptTempBin]/adaptTempPotEnergyAveDen[adaptTempBin];
 -    potEnergyVariance -= potEnergyAverage*potEnergyAverage;
--
+ 
 -    adaptTempPotEnergyAve[adaptTempBin] = potEnergyAverage;
 -    adaptTempPotEnergyVar[adaptTempBin] = potEnergyVariance;
-     
+-    
 -    // Weighted integral of <Delta E^2>_beta dbeta <= Eq 4 of JCP 132 244101
 -    // Integrals of Eqs 5 and 6 is done as piecewise assuming <Delta E^2>_beta
 -    // is constant for each bin. This is to estimate <E(beta)> where beta \in
@@ -1348,6 +1348,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 -            A1 -= 0.5*betaj*adaptTempPotEnergyVar[nPlus];
            }
 -          A1 /= (betaPlus-betaNp1);
++      if ( defVar <= 0 ) defVar = 1.0;
  
 +      BigReal var;
 +      for ( j = nMinus; j <= i; j++ ) {
@@ -1432,7 +1433,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
              << "     nMinus:    " << nMinus << "\n"
              << "     nPlus:     " << nPlus << "\n"
              << "     A0:        " << A0 << "\n"
-@@ -1851,147 +2360,300 @@
+@@ -1851,147 +2361,300 @@
              << "     A2:        " << A2 << "\n"
              << "     a+:        " << aplus << "\n"
              << "     a-:        " << aminus << "\n"
@@ -1843,7 +1844,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  }
  
  
-@@ -2256,7 +2918,6 @@
+@@ -2256,7 +2919,6 @@
      BigReal crosstermEnergy;
      BigReal boundaryEnergy;
      BigReal miscEnergy;
@@ -1851,7 +1852,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
      BigReal flatEnergy;
      BigReal smoothEnergy;
  
-@@ -2277,6 +2938,15 @@
+@@ -2277,6 +2939,15 @@
        electEnergy = reduction->item(REDUCTION_ELECT_ENERGY);
        ljEnergy = reduction->item(REDUCTION_LJ_ENERGY);
  
@@ -1867,7 +1868,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
        // JLai
        groLJEnergy = reduction->item(REDUCTION_GRO_LJ_ENERGY);
        groGaussEnergy = reduction->item(REDUCTION_GRO_GAUSS_ENERGY);
-@@ -2310,16 +2980,6 @@
+@@ -2310,16 +2981,6 @@
  //fepe
      }
  
@@ -1884,7 +1885,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
      momentum.x = reduction->item(REDUCTION_MOMENTUM_X);
      momentum.y = reduction->item(REDUCTION_MOMENTUM_Y);
      momentum.z = reduction->item(REDUCTION_MOMENTUM_Z);
-@@ -3147,6 +3807,7 @@
+@@ -3147,6 +3808,7 @@
      ldbSteps = LdbCoordinator::Object()->getNumStepsToRun();
    }
    if ( ! --ldbSteps ) {
@@ -1894,7 +1895,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
      LdbCoordinator::Object()->rebalance(this);	
 diff -u -wdB spec_old/Controller.h spec_new/Controller.h
 --- spec_old/Controller.h	2015-10-12 10:48:41.000000000 -0500
-+++ spec_new/Controller.h	2016-09-01 14:09:42.122407777 -0500
++++ spec_new/Controller.h	2016-09-02 12:48:45.075297721 -0500
 @@ -138,6 +138,7 @@
        BigReal drudeBondTemp; // temperature of Drude bonds
        BigReal drudeBondTempAvg;
@@ -1942,7 +1943,7 @@ diff -u -wdB spec_old/Controller.h spec_new/Controller.h
      void berendsenPressure(int);
        // Tensor berendsenPressure_avg;
        // int berendsenPressure_count;
-@@ -232,18 +261,179 @@
+@@ -232,18 +261,181 @@
  
  //JS for adaptive temperature sampling
     void adaptTempInit(int step);
@@ -2066,6 +2067,7 @@ diff -u -wdB spec_old/Controller.h spec_new/Controller.h
 +       int j, mid = winSize / 2;
 +       double den0 = 0.0, den1 = 0.0, ene0 = 0.0, ene1 = 0.0;
 +       double A0 = 0, A1 = 0, A2 = 0, cntMax = 0, defVar = 0, varj;
++       if ( total <= 0 ) return def;
 +       trim();
 +       // compute the default variance from the most populated bin
 +       for ( j = 0; j < winSize; j++ ) {
@@ -2074,6 +2076,7 @@ diff -u -wdB spec_old/Controller.h spec_new/Controller.h
 +           defVar = var[j];
 +         }
 +       }
++       if ( defVar <= 0 ) defVar = 1.0;
 +       // left side
 +       for ( j = 0; j <= mid; j++ ) {
 +         den0 += sumw[j];
@@ -2131,7 +2134,7 @@ diff -u -wdB spec_old/Controller.h spec_new/Controller.h
     BigReal adaptTempBetaMin;
     BigReal adaptTempBetaMax;
     int     adaptTempBin;
-@@ -251,11 +441,11 @@
+@@ -251,11 +443,11 @@
     BigReal adaptTempDBeta;
     BigReal adaptTempCg;
     BigReal adaptTempDt;
