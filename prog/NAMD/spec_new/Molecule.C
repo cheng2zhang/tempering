@@ -5007,16 +5007,6 @@ void Molecule::print_exclusions()
 }
 /*      END OF FUNCTION print_exclusions    */
 
-/* split the input string `s` into a vector of strings */
-std::vector<std::string> str_split(const string s, char delim) {
-  std::stringstream ss(s);
-  std::string item;
-  vector<std::string> arr;
-  while ( std::getline(ss, item, delim) )
-    arr.push_back(item);
-  return arr;
-}
-
 /************************************************************************/
 /*                  */
 /*      FUNCTION send_Molecule        */
@@ -5314,10 +5304,10 @@ void Molecule::send_Molecule(MOStream *msg){
     // scan all atoms and search for atom names of "CA"
     // "CAY" and "CAT" are the atoms of the N-terminal
     // and C-terminal caps
-    std::vector<std::string> strGroups = str_split(simParams->specAtomsList, '|');
+    std::vector<std::string> strGroups = NAMD_splitstr(simParams->specAtomsList, '|');
     for ( int group = 0; group < strGroups.size(); group++ ) {
       //CkPrintf("Group %d: %s\n", group, strGroups[group].c_str());
-      std::vector<std::string> targetAtoms = str_split(strGroups[group], ',');
+      std::vector<std::string> targetAtoms = NAMD_splitstr(strGroups[group], ',');
       #ifdef MEM_OPT_VERSION
       for ( int i = 0; i < numAtoms; i++ ) {
         Index idx = atomNames[i].atomnameIdx;

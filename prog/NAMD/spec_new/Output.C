@@ -1333,6 +1333,25 @@ void Output::scale_vels(Vector *v, int n, Real fact)
 }
 /*      END OF FUNCTION scale_vels      */
 
+// return the radius of gyration (assuming equal mass)
+static BigReal getrad(int n, Vector* arr, Lattice* lattice)
+{
+  Vector x(0, 0, 0), xc(0, 0, 0);
+  std::vector<Vector> xarr(n);
+  BigReal x2 = 0;
+  xarr[0] = x;
+  for ( int i = 1; i < n; i++ ) {
+    x += lattice->delta(arr[i], arr[i-1]);
+    xarr[i] = x;
+    xc += x;
+    x2 += x.length2();
+  }
+  xc /= n;
+  x2 = x2 / n - xc.length2();
+  return sqrt(x2);
+}
+
+// return the dihedral of four atoms
 static BigReal getdih(Vector& xi, Vector& xj, Vector& xk, Vector& xl, Lattice* lattice)
 {
   Vector xij = lattice->delta(xi, xj);
@@ -1363,31 +1382,50 @@ void Output::specAtoms(int step, int numAtoms, Vector* arr, Lattice* lattice,
 {
   SimParameters *simParams = Node::Object()->simParameters;
   char s[1024];
-  BigReal x;
+  int j;
+  static std::vector<std::string> specTypes;
+  static std::vector<BigReal> x;
   static int once;
   static std::ofstream fs;
-  if ( !once && simParams->specAtomsFile[0] != '\0' ) {
-    fs.open(simParams->specAtomsFile, std::ios::app);
+
+  if ( !once ) {
+    if ( simParams->specAtomsFile[0] != '\0' )
+      fs.open(simParams->specAtomsFile, std::ios::app);
+    specTypes = NAMD_splitstr(simParams->specAtomsType, ',');
+    for ( j = 0; j < specTypes.size(); j++ ) // strip spaces
+      specTypes[j] = NAMD_strip(specTypes[j].c_str());
+    x.resize( specTypes.size() );
     once = 1;
   }
-  if ( strncasecmp(simParams->specAtomsType, "end", 3) == 0 ) {
-    // Compute the end-to-end distance from the positions
-    Vector del(0, 0, 0), endtoend(0, 0, 0);
-    for ( int k = 0; k < numAtoms - 1; k++ )
-      endtoend += lattice->delta(arr[k+1], arr[k]); 
-    x = endtoend.length();
-  } else if ( strncasecmp(simParams->specAtomsType, "dih", 3) == 0 ) {
-    // Compute the dihedral
-    x = getdih(arr[0], arr[1], arr[2], arr[3], lattice);
+
+  for ( j = 0; j < specTypes.size(); j++ ) {
+    if ( strncasecmp(specTypes[j].c_str(), "end", 3) == 0 ) {
+      // Compute the end-to-end distance from the positions
+      Vector del(0, 0, 0), endtoend(0, 0, 0);
+      for ( int k = 0; k < numAtoms - 1; k++ )
+        endtoend += lattice->delta(arr[k+1], arr[k]); 
+      x[j] = endtoend.length();
+    } else if ( strncasecmp(specTypes[j].c_str(), "rad", 3) == 0 ) {
+      // Compute the radius of gyration distance from the positions
+      x[j] = getrad(numAtoms, arr, lattice);
+    } else if ( strncasecmp(specTypes[j].c_str(), "dih", 3) == 0 ) {
+      // Compute the dihedral
+      x[j] = getdih(arr[0], arr[1], arr[2], arr[3], lattice);
+    }
   }
+
   if ( fs.is_open() ) { // write to file
-    fs << step << "\t" << x;
+    fs << step;
+    for ( j = 0; j < x.size(); j++ ) fs << "\t" << x[j];
     if ( simParams->adaptTempOn ) fs << "\t" << tp << "\t" << ep;
     fs << std::endl;
     if ( step + simParams->specAtomsFreq > simParams->N )
       fs.close();
   } else { // print to screen
-    CkPrintf("step %d, %s %g\n", step, simParams->specAtomsType, x);
+    CkPrintf("step %d", step);
+    for ( j = 0; j < x.size(); j++ )
+      CkPrintf(", %s %g", simParams->specAtomsType[j], x[j]);
+    CkPrintf("\n");
   }
 }
 

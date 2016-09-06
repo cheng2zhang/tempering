@@ -9,7 +9,7 @@ https://github.com/cheng2zhang/tempering/blob/master/prog/NAMD/README.spec.md
 This patch contains all modifications to NAMD 2.11 included in `thstat`.
 It also includes
 
- * Reporting a quantity of a set of special atoms
+ * Reporting quantities of a set of special atoms
 
  * Note on reconstructing distributions using WHAM
 
@@ -22,7 +22,7 @@ set the following options
 specAtoms             on
 specAtomsFile         end2end.log
 specAtomsList         CAY|CA|CAT
-specAtomsType         end-to-end distance
+specAtomsType         end-to-end distance, radius of gyration
 specAtomsFreq         4
 ```
 By default `specAtomsFreq` is set to `dcdFrequency`.
