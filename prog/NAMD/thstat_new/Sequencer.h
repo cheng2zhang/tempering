@@ -76,6 +76,7 @@ protected:
     BigReal adaptTempT;         // adaptive tempering temperature
     Bool adaptTempUpdate(int); // adaptive tempering temperature update
 
+    void rescaleForTotalEnergy();
     void rescaleVelocities(int);
     void rescaleaccelMD(int, int, int); // for accelMD
     int rescaleVelocities_numTemps;

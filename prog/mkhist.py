@@ -19,6 +19,7 @@ colE = -1
 fnrst = ""
 t0 = 0
 tpinterp = 10
+drop1 = False
 
 
 
@@ -32,24 +33,26 @@ def showhelp():
   print "  --dT=:         set the temperature tolerance"
   print "  -o, --output=: set the output file"
   print "  -i, --input=:  set the input file"
-  print "  -c, --col=:    set the column for the quantity"
+  print "  -c, --col=:    set the column for the quantity, can also be --col=dif"
   print "  --t0=:         set the first time step"
   print "  --colT=:       set the column for temperature"
   print "  --rst=:        set the restart file for WHAM (weighted histogram analysis method)"
   print "  --tm=:         set the number of subdivisions for each temperature bin (for WHAM)"
   print "  --colE=:       set the column for energy (for reweighting)"
   print "  --dE=:         set the bin size for the energy grid (for reweighting)"
+  print "  -1, --drop1    drop the last frame"
+  exit(1)
 
 
 
 def doargs():
-  global fnins, fnout, dx, dE, dT, T, col, colT, colE, fnrst, t0, tpinterp
+  global fnins, fnout, dx, dE, dT, T, col, colT, colE, fnrst, t0, tpinterp, drop1
 
   try:
     opts, args = getopt.gnu_getopt(sys.argv[1:],
-        "hd:T:o:i:c:",
+        "hd:T:o:i:c:1",
         ["dx=", "dE=", "de=", "dT=", "dt=", "tp=", "input=", "output=",
-         "col=", "colT=", "colE=", "rst=", "t0=", "tm=" ])
+         "col=", "colT=", "colE=", "rst=", "t0=", "tm=", "drop=" ])
   except:
     print "Error parsing the command line"
     sys.exit(1)
@@ -71,7 +74,7 @@ def doargs():
     elif o in ("-o", "--output"):
       fnout = a
     elif o in ("-c", "--col"):
-      col = int(a)
+      col = a # keep the string form
     elif o in ("--colT",):
       colT = int(a)
     elif o in ("--colE",):
@@ -79,9 +82,11 @@ def doargs():
     elif o in ("--rst",):
       fnrst = a
     elif o in ("--t0",):
-      t0 = int(a)
+      t0 = float(a)
     elif o in ("--tm",):
       tm = int(a)
+    elif o in ("-1", "--drop1",):
+      drop1 = True
 
   if len(fnins) == 0:
     fnins = glob.glob("e*.log")
@@ -100,6 +105,9 @@ class Hist:
     self.xmin = round(xmin1 / dx) * dx
     self.xmax = self.xmin + self.n * self.dx
     self.arr = [0] * self.n
+    self.sum1 = 1e-300
+    self.sumx = 0
+    self.sumx2 = 0
 
   def add(self, newx, w = 1.0):
     if newx < self.xmin:
@@ -126,10 +134,12 @@ class Hist:
       raw_input()
     self.arr[i] += w
 
+    self.sum1 += w
+    self.sumx += w * newx
+    self.sumx2 += w * newx * newx
+
   def save(self, fn):
-    tot = fsum(self.arr)
-    fac = 1.0 / (self.dx * tot)
-    s = ""
+    fac = 1.0 / (self.dx * self.sum1)
     # determine the boundaries
     i0 = 0
     while i0 < self.n:
@@ -141,13 +151,22 @@ class Hist:
       i1 -= 1
 
     i = i0
+    s = ""
+    sumx = 0
+    sumx2 = 0
     while i <= i1:
       dist = self.arr[i] * fac
-      s += "%s\t%s\t%s\n" % (self.xmin + (i + 0.5) * self.dx,
-          dist, self.arr[i])
+      x = self.xmin + (i + 0.5) * self.dx
+      sumx += x * self.arr[i]
+      sumx2 += x * x * self.arr[i]
+      s += "%s\t%s\t%s\n" % (x, dist, self.arr[i])
       i += 1
-    open(fn, "w").write(s)
-    print "saving histogram file %s, total %s" % (fn, tot)
+    avx = self.sumx / self.sum1
+    varx = self.sumx2 / self.sum1 - avx * avx
+    print "saving histogram file %s, total %s, ave %s, var %s, std %s" % (
+        fn, self.sum1, avx, varx, sqrt(varx) )
+    if fn.lower() not in ("null", "none"):
+      open(fn, "w").write(s)
 
 
 
@@ -270,23 +289,30 @@ class WHAM:
 
 
 def mkhist_simple(s, fnout):
-  n = len(s) - 1 # drop the last frame
+  global col
+  n = len(s)
+  if drop1: n -= 1 # drop the last frame
   hist = None
   for i in range(n):
     ln = s[i].strip()
     # skip a comment line
-    if ln.startswith("#"): continue
+    if ln == "" or ln.startswith("#"): continue
     tok = ln.split()
     try:
       tm = float(tok[0])
-      x = float(tok[col - 1])
-    except:
+      if type(col) == str and col.startswith("dif"):
+        x = float(tok[2]) - float(tok[1])
+      else:
+        if type(col) == str: col = int(col)
+        x = float(tok[col - 1])
+    except Exception:
+      print "error in %s: %s" % (fn, ln)
       break
-    if tm < t0: break
+    if tm <= t0: continue
     if not hist:
       hist = Hist(x, x, dx)
     hist.add(x)
-  if hist:
+  if hist: 
     hist.save(fnout)
 
 
@@ -300,15 +326,19 @@ def mkhist_reweight(s, fnout):
   for i in range(n):
     ln = s[i].strip()
     # skip a comment line
-    if ln.startswith("#"): continue
+    if ln == "" or ln.startswith("#"): continue
     tok = ln.split()
     try:
       tm = float(tok[0])
       tp = float(tok[colT - 1])
     except:
       break
-    if tm < t0: break
-    x = float(tok[col - 1])
+    if tm <= t0: continue
+    if type(col) == str and col.startswith("dif"):
+      x = float(tok[2]) - float(tok[1])
+    else:
+      if type(col) == str: col = int(col)
+      x = float(tok[col - 1])
     ene = float(tok[colE - 1])
     if wham.is_open: # use WHAM
       w = wham.getweight(ene)
@@ -331,16 +361,23 @@ def mkhist(fnin):
   if not fno:
     fno = os.path.splitext(fnin)[0] + ".his"
 
-  if col == 2: # determine file type
+  if col == 2 or col == "2":
+    # automatically determine file type
     for ln in s:
       if ln.startswith("#"): continue
-      num = len( ln.split() )
-      if num == 3: # step energy temperature
-        colT = 3
+      arr = ln.split()
+      num = len( arr )
+      if num == 2:
+        colT = 0
         colE = 2
-      elif num == 4: # step x temperature energy
-        colT = 3
-        colE = 4
+      else:
+        temp = float(arr[2])
+        if num == 3 and (temp >= 100 and temp <= 600): # step energy temperature
+          colT = 3
+          colE = 2
+        elif num == 4: # step x temperature energy
+          colT = 3
+          colE = 4
       break
 
   if colT > 0:

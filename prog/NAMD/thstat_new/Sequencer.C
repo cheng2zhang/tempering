@@ -318,6 +318,10 @@ void Sequencer::integrate(int scriptTask) {
 
   } // scriptTask == SCRIPT_RUN
 
+    if ( simParams->rescaleInitTotal != 0 ) {
+      rescaleForTotalEnergy();
+    }
+
     for ( ++step; step <= numberOfSteps; ++step )
     {
       rescaleVelocities(step);
@@ -1144,6 +1148,17 @@ void Sequencer::rescaleVelocities(int step)
       }
       rescaleVelocities_numTemps = 0;
     }
+  }
+}
+
+void Sequencer::rescaleForTotalEnergy()
+{
+  FullAtom *a = patch->atom.begin();
+  int numAtoms = patch->numAtoms;
+  BigReal factor = broadcast->velocityRescaleFactor.get(0);
+  for ( int i = 0; i < numAtoms; ++i )
+  {
+    a[i].velocity *= factor;
   }
 }
 

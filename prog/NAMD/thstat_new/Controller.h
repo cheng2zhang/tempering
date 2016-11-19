@@ -150,12 +150,17 @@ protected:
       Tensor controlPressure;
     void enqueueCollections(int);
     void correctMomentum(int step);
+    void rescaleForTotalEnergy();
     void rescaleVelocities(int);
     void rescaleVelocitiesInit(void);
     void rescaleVelocitiesLoad(void);
     void rescaleVelocitiesSave(int);
       BigReal rescaleVelocities_sumTemps;
       int rescaleVelocities_numTemps;
+      // the following quantities are used to compute the block average of beta
+      BigReal rescaleVelocities_count;
+      BigReal rescaleVelocities_sbeta;
+      // the following quantities are used to compute beta'(E)
       BigReal rescaleVelocities_sum1;
       BigReal rescaleVelocities_sumBeta;
       BigReal rescaleVelocities_sumBeta2;

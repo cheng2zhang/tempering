@@ -188,7 +188,6 @@ void SimParameters::scriptSet(const char *param, const char *value) {
   SCRIPT_PARSE_FLOAT("reassignTemp",reassignTemp)
   SCRIPT_PARSE_FLOAT("rescaleTemp",rescaleTemp)
   SCRIPT_PARSE_BOOL("rescaleAdaptive",rescaleAdaptiveOn)
-  SCRIPT_PARSE_FLOAT("rescaleAdaptiveDedk",rescaleAdaptiveDedk)
   SCRIPT_PARSE_FLOAT("langRescaleTemp",langRescaleTemp)
   SCRIPT_PARSE_FLOAT("langRescaleDt",langRescaleDt)
   SCRIPT_PARSE_FLOAT("tNHCTemp",langRescaleTemp)
@@ -1185,15 +1184,15 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
      "default is 'O'", PARSE_STRING);
 
    //  Get parameters for the Langevin velocity-rescaling thermostat
-   opts.optionalB("main", "langrescale", 
+   opts.optionalB("main", "langRescale", 
       "Should Langevin velocity-rescaling thermostat be turned on?",
       &langRescaleOn, FALSE);
-   opts.require("langrescale", "langRescaleTemp",
+   opts.require("langRescale", "langRescaleTemp",
     "Temperature for Langevin velocity-rescaling thermostat",
     &langRescaleTemp);
    opts.range("langRescaleTemp", NOT_NEGATIVE);
    opts.units("langRescaleTemp", N_KELVIN);
-   opts.optional("langrescale", "langRescaleDt",
+   opts.optional("langRescale", "langRescaleDt",
     "Inverse viscosity in femtoseconds for Langevin velocity-rescaling thermostat",
     &langRescaleDt, 20.0);
 
@@ -1235,6 +1234,8 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
    opts.optional("energyLogFile", "energyLogFreq", "Frequency of writing the energy log file",
        &energyLogFreq, 1);
    opts.range("energyLogFreq", POSITIVE);
+   opts.optionalB("energyLogFile", "energyLogTotal", "Logging the total energy as well",
+       &energyLogTotal, FALSE);
 
    opts.optional("main", "rescaleFreq", "Number of steps between "
     "velocity rescaling", &rescaleFreq);
@@ -1245,8 +1246,14 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
    opts.units("rescaleTemp", N_KELVIN);
    opts.optionalB("main", "rescaleAdaptive", "Adaptively reduce the magnitude "
     "of the velocity rescaling", &rescaleAdaptiveOn, FALSE);
-   opts.optional("rescaleAdaptive", "rescaleAdaptiveDedk", "Heuristic multiple of the reduction factor ",
-    &rescaleAdaptiveDedk, 0.0);
+   opts.optional("rescaleAdaptive", "rescaleAdaptiveDKdE", "Heuristic ratio of the reduction factor",
+    &rescaleAdaptiveDKdE, 0.0);
+   opts.optional("rescaleAdaptive", "rescaleAdaptiveDKdEMin", "Lower bound of the above ratio",
+    &rescaleAdaptiveDKdEMin, 0.1);
+   opts.optional("rescaleAdaptive", "rescaleAdaptiveZoom", "Relative scaling strength",
+    &rescaleAdaptiveZoom, 1.0);
+   opts.optional("rescaleAdaptive", "rescaleAdaptiveMag", "Fixed scaling magnitude",
+    &rescaleAdaptiveMag, 0.0);
    opts.optional("rescaleAdaptive", "rescaleAdaptiveFile",
        "File for writing the adaptive velocity-rescaling restart information",
        rescaleAdaptiveFile);
@@ -1254,6 +1261,10 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
        "Frequency of writing the adaptive velocity-rescaling restart information",
        &rescaleAdaptiveFileFreq, 10000);
    opts.range("rescaleAdaptiveFileFreq", POSITIVE);
+   opts.optional("main", "rescaleInitTotal", "Initial total energy",
+       &rescaleInitTotal, 0.0);
+   opts.optional("main", "rescaleInitDev", "Standard deviation of the initial total energy",
+       &rescaleInitDev, 0.0);
 
    opts.optional("main", "reassignFreq", "Number of steps between "
     "velocity reassignment", &reassignFreq);
@@ -3105,10 +3116,11 @@ void SimParameters::check_config(ParseOptions &opts, ConfigList *config, char *&
    if ( opts.defined("rescaleFreq") ) thstat_cnt++;
    if ( langRescaleOn ) thstat_cnt++;
    if ( tNHCOn ) thstat_cnt++;
+   if ( langevinOn ) thstat_cnt++;
 
    if ( thstat_cnt > 1 )
    {
-      NAMD_die("Temperature coupling, temperature rescaling, Langevin-style velocity rescaling thermostat, and Nose-Hoover chain thermostat are mutually exclusive");
+      NAMD_die("Temperature coupling, temperature rescaling, Langevin-style velocity rescaling thermostat, Nose-Hoover chain thermostat, and Langevin dynamics are mutually exclusive");
    }
 
    if (globalOn && CkNumPes() > 1)
@@ -3243,7 +3255,7 @@ void SimParameters::check_config(ParseOptions &opts, ConfigList *config, char *&
 
     if ( rescaleAdaptiveOn ) {
       if ( !opts.defined("rescaleAdaptiveFile") ) {
-        strcpy(rescaleAdaptiveFile, "adaptvrescale.dat");
+        strcpy(rescaleAdaptiveFile, "avrescale.dat");
       }
     }
 
@@ -3305,7 +3317,7 @@ void SimParameters::check_config(ParseOptions &opts, ConfigList *config, char *&
 
    if (!opts.defined("seed")) 
    {
-      randomSeed = (unsigned int) time(NULL) + 31530001 * CmiMyPartition();
+      randomSeed = (unsigned int) (time(NULL) + 314159 * clock()) + 31530001 * CmiMyPartition();
    }
 
 //Modifications for alchemical fep

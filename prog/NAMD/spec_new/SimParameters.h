@@ -519,13 +519,19 @@ public:
 
         char energyLogFile[128];        // Energy log file
         int energyLogFreq;              // Frequency of writing the energy log file
+        Bool energyLogTotal;            // Logging the total energy as well
 
 	int rescaleFreq;		//  Velocity rescale frequency
 	BigReal rescaleTemp;		//  Temperature to rescale to
 	Bool rescaleAdaptiveOn;		//  Adaptively reduce the velocity-rescaling factor
-	BigReal rescaleAdaptiveDedk;	//  Heuristic multiple of the reduction factor
+	BigReal rescaleAdaptiveDKdE;	//  Heuristic ratio of kinetic energy to total energy
+	BigReal rescaleAdaptiveDKdEMin;	//  Lower bound of the above ratio
+        BigReal rescaleAdaptiveZoom;    //  Relative scaling strength
+        BigReal rescaleAdaptiveMag;     //  Fixed scaling magnitude
 	char rescaleAdaptiveFile[128];	//  File to save the adaptive veloctiy-rescaling data
 	int rescaleAdaptiveFileFreq;	//  Frequency to save the adaptive veloctiy-rescaling restart file
+        BigReal rescaleInitTotal;       //  Total energy at the beginning of simulation
+        BigReal rescaleInitDev;         //  Standard deviation of the total energy at the beginning of simulation
 
         Bool accelMDOn;                 //  Perform accelerated MD
         Bool accelMDdihe;               //  Apply boost to the dihedral potential
