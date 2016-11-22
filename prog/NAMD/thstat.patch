@@ -249,7 +249,7 @@ diff -u -wdB thstat_old/common.C thstat_new/common.C
    while ( close(fd) ) {
 diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 --- thstat_old/Controller.C	2015-12-17 15:22:03.000000000 -0600
-+++ thstat_new/Controller.C	2016-11-18 20:05:30.876619892 -0600
++++ thstat_new/Controller.C	2016-11-22 12:30:24.880736478 -0600
 @@ -184,6 +184,12 @@
      random->split(0,PatchMap::Object()->numPatches()+1);
  
@@ -796,7 +796,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
  static char *FORMAT(BigReal X)
  {
    static char tmp_string[25];
-@@ -1574,49 +2023,133 @@
+@@ -1574,73 +2023,153 @@
  void Controller::adaptTempInit(int step) {
      if (!simParams->adaptTempOn) return;
      iout << iINFO << "INITIALISING ADAPTIVE TEMPERING\n" << endi;
@@ -962,7 +962,8 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
          } 
          adaptTempRead.close();
        }
-@@ -1624,23 +2157,18 @@
+       else NAMD_die("Could not open ADAPTIVE TEMPERING restart file.\n");
++      broadcast->adaptTemperature.publish(-1, adaptTempT);
      } 
      else {
        adaptTempBins = simParams->adaptTempBins;
@@ -994,7 +995,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
        for(int j = 0; j < adaptTempBins; ++j){
            adaptTempPotEnergyAveNum[j] = 0.;
            adaptTempPotEnergyAveDen[j] = 0.;
-@@ -1648,16 +2176,38 @@
+@@ -1648,16 +2177,38 @@
            adaptTempPotEnergyVarNum[j] = 0.;
            adaptTempPotEnergyVar[j] = 0.;
            adaptTempPotEnergyAve[j] = 0.;
@@ -1039,7 +1040,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
      iout << iINFO << "ADAPTIVE TEMPERING: TEMPERATURE RANGE: [" << 1./adaptTempBetaMax << "," << 1./adaptTempBetaMin << "] KELVIN\n";
      iout << iINFO << "ADAPTIVE TEMPERING: NUMBER OF BINS TO STORE POT. ENERGY: " << adaptTempBins << "\n";
      iout << iINFO << "ADAPTIVE TEMPERING: ADAPTIVE BIN AVERAGING PARAMETER: " << adaptTempCg << "\n";
-@@ -1671,12 +2221,35 @@
+@@ -1671,12 +2222,35 @@
      }
  }
  
@@ -1078,7 +1079,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
          adaptTempRestartFile << adaptTempT<< " ";     // KELVIN
          adaptTempRestartFile << 1./adaptTempBetaMin << " ";  // KELVIN
          adaptTempRestartFile << 1./adaptTempBetaMax << " ";  // KELVIN
-@@ -1685,165 +2258,134 @@
+@@ -1685,165 +2259,134 @@
          adaptTempRestartFile << adaptTempDt ;
          adaptTempRestartFile << "\n" ;
          for(int j = 0; j < adaptTempBins; ++j) {
@@ -1344,7 +1345,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
              << "     nMinus:    " << nMinus << "\n"
              << "     nPlus:     " << nPlus << "\n"
              << "     A0:        " << A0 << "\n"
-@@ -1851,147 +2393,301 @@
+@@ -1851,147 +2394,301 @@
              << "     A2:        " << A2 << "\n"
              << "     a+:        " << aplus << "\n"
              << "     a-:        " << aminus << "\n"
@@ -1756,7 +1757,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
  }
  
  
-@@ -2277,6 +2973,15 @@
+@@ -2277,6 +2974,15 @@
        electEnergy = reduction->item(REDUCTION_ELECT_ENERGY);
        ljEnergy = reduction->item(REDUCTION_LJ_ENERGY);
  
@@ -1772,7 +1773,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
        // JLai
        groLJEnergy = reduction->item(REDUCTION_GRO_LJ_ENERGY);
        groGaussEnergy = reduction->item(REDUCTION_GRO_GAUSS_ENERGY);
-@@ -2310,16 +3015,6 @@
+@@ -2310,16 +3016,6 @@
  //fepe
      }
  
@@ -1789,7 +1790,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
      momentum.x = reduction->item(REDUCTION_MOMENTUM_X);
      momentum.y = reduction->item(REDUCTION_MOMENTUM_Y);
      momentum.z = reduction->item(REDUCTION_MOMENTUM_Z);
-@@ -3147,6 +3842,7 @@
+@@ -3147,6 +3843,7 @@
      ldbSteps = LdbCoordinator::Object()->getNumStepsToRun();
    }
    if ( ! --ldbSteps ) {
@@ -2128,7 +2129,7 @@ diff -u -wdB thstat_old/Random.h thstat_new/Random.h
      skip();
 diff -u -wdB thstat_old/Sequencer.C thstat_new/Sequencer.C
 --- thstat_old/Sequencer.C	2016-06-01 17:24:35.531579311 -0500
-+++ thstat_new/Sequencer.C	2016-10-25 18:46:29.930389974 -0500
++++ thstat_new/Sequencer.C	2016-11-22 13:15:31.674305631 -0600
 @@ -223,12 +223,7 @@
  
      // Is adaptive tempering on?
@@ -2218,7 +2219,7 @@ diff -u -wdB thstat_old/Sequencer.C thstat_new/Sequencer.C
  void Sequencer::rescaleaccelMD (int step, int doNonbonded, int doFullElectrostatics)
  {
     if (!simParams->accelMDOn) return;
-@@ -1182,19 +1204,28 @@
+@@ -1182,19 +1204,49 @@
  
  }
  
@@ -2230,6 +2231,7 @@ diff -u -wdB thstat_old/Sequencer.C thstat_new/Sequencer.C
     //check if adaptive tempering is enabled and in the right timestep range
 -   if (!simParams->adaptTempOn) return;
 +   if (!simParams->adaptTempOn) return scaled;
++
     if ( (step < simParams->adaptTempFirstStep ) || 
       ( simParams->adaptTempLastStep > 0 && step > simParams->adaptTempLastStep )) {
 -        if (simParams->langevinOn) // restore langevin temperature
@@ -2239,6 +2241,26 @@ diff -u -wdB thstat_old/Sequencer.C thstat_new/Sequencer.C
 +        adaptTempT = simParams->thermostatTemp();
 +        return scaled;
     }
++
++   if ( step == simParams->firstTimestep ) {
++     // initialization
++     if ( simParams->adaptTempInFile[0] != '\0' ) {
++       // use the temperature from the input restart file
++       adaptTempT = broadcast->adaptTemperature.get(-1);
++       // if initialTemp is set, the initial velocities are randomly
++       // set according to initialTemp, we need to scale velocities
++       // to match adaptTempT
++       // cf. WorkDistrib.C, createAtomLists() -> random_velocities()
++       //   random_velocities(params->initialTemp, ...);
++       if ( simParams->initialTemp > 0 ) {
++         BigReal s = sqrt(adaptTempT / simParams->initialTemp);
++         rescaleVelocitiesByFactor( s );
++       }
++       // otherwise, we have reloaded the velocities from the
++       // previous run, and no scaling is needed
++     }
++   }
++
     // Get Updated Temperature
     if ( !(step % simParams->adaptTempFreq ) && (step > simParams->firstTimestep ))
 +   {
@@ -2252,7 +2274,7 @@ diff -u -wdB thstat_old/Sequencer.C thstat_new/Sequencer.C
  }
  
  void Sequencer::reassignVelocities(BigReal timestep, int step)
-@@ -1289,6 +1320,26 @@
+@@ -1289,6 +1341,26 @@
    }
  }
  
@@ -2279,7 +2301,7 @@ diff -u -wdB thstat_old/Sequencer.C thstat_new/Sequencer.C
  void Sequencer::saveForce(const int ftag)
  {
    patch->saveForce(ftag);
-@@ -2127,6 +2178,7 @@
+@@ -2127,6 +2199,7 @@
      ldbSteps = LdbCoordinator::Object()->getNumStepsToRun();
    }
    if ( ! --ldbSteps ) {

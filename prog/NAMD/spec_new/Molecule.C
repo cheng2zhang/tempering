@@ -5335,7 +5335,7 @@ void Molecule::send_Molecule(MOStream *msg){
     // print out the special atoms
     for ( int i = 0; i < spcnt; i++ ) {
       specids[i] = specIDs[i];
-      CkPrintf("Mol CA %d: %d\n", i+1, specIDs[i]);
+      CkPrintf("Mol Spec Atom %d: %d\n", i+1, specIDs[i]);
     }
 
     msg->put(spcnt);

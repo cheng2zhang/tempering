@@ -21,12 +21,21 @@ set the following options
 ```
 specAtoms             on
 specAtomsFile         end2end.log
-specAtomsList         CAY|CA|CAT
-specAtomsType         end-to-end distance, radius of gyration
+specAtomsList         CAY|CA,CH3|CAT
+specAtomsType         end-to-end distance
 specAtomsFreq         4
 ```
 By default `specAtomsFreq` is set to `dcdFrequency`.
 
+To compute the backbone atom radius of gyration and also coordinates of all backbone atoms,
+set the following options
+```
+specAtoms             on
+specAtomsFile         radcoor.log
+specAtomsList         CAY|CA,CH3,C,N|CAT
+specAtomsType         radius of gyration, coordinates
+specAtomsFreq         4
+```
 To compute the dihedral of butane,
 set the following options
 ```
@@ -56,6 +65,8 @@ CAY, CA, CA, ..., CAT, CA
 the N-terminal cap "CAY" will be searched first,
 regular alpha-carbon "CA" will be searched next,
 the C-terminal cap "CAT" will be searched last.
+
+For the AMBER force field, the carbon atoms in the caps are called CH3.
 
 The actual code in CollectionMaster.C and CollectionMgr.h.
 Particularly, the new routines

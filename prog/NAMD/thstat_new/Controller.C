@@ -2154,6 +2154,7 @@ void Controller::adaptTempInit(int step) {
         adaptTempRead.close();
       }
       else NAMD_die("Could not open ADAPTIVE TEMPERING restart file.\n");
+      broadcast->adaptTemperature.publish(-1, adaptTempT);
     } 
     else {
       adaptTempBins = simParams->adaptTempBins;

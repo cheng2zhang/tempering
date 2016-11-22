@@ -22,7 +22,7 @@ This patch contains several modifications to NAMD 2.11:
   * Disabling the code for `adaptTempRandom` and `adaptTempAutoDt`.
   * Miscellaneous modifications.
 
- + New thermostats
+ + New thermostats and temperature control schemes
   * Integrating the Langevin-style velocity-rescaling thermostat and Nose-Hoover thermostat.
   * Adaptively rescaling the velocity to approach an asymptotic microcanonical ensemble.
 
@@ -285,12 +285,14 @@ In initial runs please delete this file.
 
 By default, we use the exact method to compute dbeta/dE.
 But this can be too demanding on the precision,
-a workaround is to set `rescaleAdaptiveDedk` to a number greater than 1.0,
-which is roughly the change of the total energy divided by the
-change of the kinetic energy in response to a temperature change
+a workaround is to set `rescaleAdaptiveDKdE` to a number less than 1.0,
+which is roughly the share of the kinetic energy gain
+upon a unit increase of the total energy.
 ```
-rescaleAdaptiveDedk 1.5
+rescaleAdaptiveDKdE 0.33
 ```
+The above values works for a typical 300K TIP3P water simulation.
+For higher temperatures, a larger value is needed.
 
 #### Monitoring the distribution of the (reduced) kinetic energy
 
@@ -319,7 +321,7 @@ For adaptive tempering, the temperature is a variable, so the kinetic energy
 is multiplied by a factor of (the thermostat reference temperature / the instantaneous temperature).
 The instantaneous temperature is defined as twice the kinetic energy
 divided by the number of degrees of freedom divided by the Boltzmann constant.
-Please see ../test/Argon_NAMD_ST/ke.png for an example.
+Please see `../test/Argon_NAMD_ST/ke.png` for an example.
 
 #### Logging the potential energy
 
@@ -330,6 +332,11 @@ energyLogFreq      1
 ```
 By default the frequency of logging the potential energy is 1.
 For a regular simulation, the logging outputs the MD step and the potential energy.
+If the total energy energy is needed, use
+```
+energyLogTotal
+```
+Then, a third column will be produced for the total energy.
 For a simulation using adaptive tempering, the logging also outputs the temperature as the last column.
 
 #### Converting log files to distributions: `mkhist.py`
@@ -347,6 +354,12 @@ to better use data
 ./mkhist.py -d5 --rst=narrow1.rst -T300 ene1.log
 ```
 If the input log file is omitted, all `ene*.log` files under the current directory will be processed.
+
+This script can also compute the autocorrelation function.  For example,
+```
+./mkhist.py --corr --col=3 ene.log
+```
+yields `ene_col3.acf` as the autocorrelation function.
 
 For more information about the tool `mkhist.py`, please see the help message displayed from the command
 ```

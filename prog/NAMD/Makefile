@@ -48,7 +48,13 @@ testfiles = test/alanin/*.conf \
 	    test/butane/*ethers* \
 	    test/butane/butane.* \
 	    test/butane/Makefile \
-	    test/butane/*.gp
+	    test/butane/*.gp \
+	    test/gly5/*.conf \
+	    test/gly5/par*.inp \
+	    test/gly5/gly5.psf \
+	    test/gly5/gly5.pdb \
+	    test/gly5/Makefile \
+	    test/gly5/*.gp
 
 NAMD_thstat.zip::
 	$(RM) -f $@

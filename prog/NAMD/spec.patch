@@ -363,7 +363,7 @@ diff -u -wdB spec_old/common.C spec_new/common.C
    while ( close(fd) ) {
 diff -u -wdB spec_old/Controller.C spec_new/Controller.C
 --- spec_old/Controller.C	2015-12-17 15:22:03.000000000 -0600
-+++ spec_new/Controller.C	2016-11-18 20:05:26.534599903 -0600
++++ spec_new/Controller.C	2016-11-23 15:42:15.012651819 -0600
 @@ -184,6 +184,12 @@
      random->split(0,PatchMap::Object()->numPatches()+1);
  
@@ -931,7 +931,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  static char *FORMAT(BigReal X)
  {
    static char tmp_string[25];
-@@ -1574,49 +2037,136 @@
+@@ -1574,73 +2037,156 @@
  void Controller::adaptTempInit(int step) {
      if (!simParams->adaptTempOn) return;
      iout << iINFO << "INITIALISING ADAPTIVE TEMPERING\n" << endi;
@@ -1100,7 +1100,8 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
          } 
          adaptTempRead.close();
        }
-@@ -1624,23 +2174,18 @@
+       else NAMD_die("Could not open ADAPTIVE TEMPERING restart file.\n");
++      broadcast->adaptTemperature.publish(-1, adaptTempT);
      } 
      else {
        adaptTempBins = simParams->adaptTempBins;
@@ -1132,7 +1133,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
        for(int j = 0; j < adaptTempBins; ++j){
            adaptTempPotEnergyAveNum[j] = 0.;
            adaptTempPotEnergyAveDen[j] = 0.;
-@@ -1648,16 +2193,38 @@
+@@ -1648,16 +2194,38 @@
            adaptTempPotEnergyVarNum[j] = 0.;
            adaptTempPotEnergyVar[j] = 0.;
            adaptTempPotEnergyAve[j] = 0.;
@@ -1177,7 +1178,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
      iout << iINFO << "ADAPTIVE TEMPERING: TEMPERATURE RANGE: [" << 1./adaptTempBetaMax << "," << 1./adaptTempBetaMin << "] KELVIN\n";
      iout << iINFO << "ADAPTIVE TEMPERING: NUMBER OF BINS TO STORE POT. ENERGY: " << adaptTempBins << "\n";
      iout << iINFO << "ADAPTIVE TEMPERING: ADAPTIVE BIN AVERAGING PARAMETER: " << adaptTempCg << "\n";
-@@ -1671,12 +2238,39 @@
+@@ -1671,12 +2239,39 @@
      }
  }
  
@@ -1220,7 +1221,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
          adaptTempRestartFile << adaptTempT<< " ";     // KELVIN
          adaptTempRestartFile << 1./adaptTempBetaMin << " ";  // KELVIN
          adaptTempRestartFile << 1./adaptTempBetaMax << " ";  // KELVIN
-@@ -1685,165 +2279,133 @@
+@@ -1685,165 +2280,133 @@
          adaptTempRestartFile << adaptTempDt ;
          adaptTempRestartFile << "\n" ;
          for(int j = 0; j < adaptTempBins; ++j) {
@@ -1485,7 +1486,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
              << "     nMinus:    " << nMinus << "\n"
              << "     nPlus:     " << nPlus << "\n"
              << "     A0:        " << A0 << "\n"
-@@ -1851,147 +2413,300 @@
+@@ -1851,147 +2414,300 @@
              << "     A2:        " << A2 << "\n"
              << "     a+:        " << aplus << "\n"
              << "     a-:        " << aminus << "\n"
@@ -1896,7 +1897,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
  }
  
  
-@@ -2256,7 +2971,6 @@
+@@ -2256,7 +2972,6 @@
      BigReal crosstermEnergy;
      BigReal boundaryEnergy;
      BigReal miscEnergy;
@@ -1904,7 +1905,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
      BigReal flatEnergy;
      BigReal smoothEnergy;
  
-@@ -2277,6 +2991,15 @@
+@@ -2277,6 +2992,15 @@
        electEnergy = reduction->item(REDUCTION_ELECT_ENERGY);
        ljEnergy = reduction->item(REDUCTION_LJ_ENERGY);
  
@@ -1920,7 +1921,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
        // JLai
        groLJEnergy = reduction->item(REDUCTION_GRO_LJ_ENERGY);
        groGaussEnergy = reduction->item(REDUCTION_GRO_GAUSS_ENERGY);
-@@ -2310,16 +3033,6 @@
+@@ -2310,16 +3034,6 @@
  //fepe
      }
  
@@ -1937,7 +1938,7 @@ diff -u -wdB spec_old/Controller.C spec_new/Controller.C
      momentum.x = reduction->item(REDUCTION_MOMENTUM_X);
      momentum.y = reduction->item(REDUCTION_MOMENTUM_Y);
      momentum.z = reduction->item(REDUCTION_MOMENTUM_Z);
-@@ -3147,6 +3860,7 @@
+@@ -3147,6 +3861,7 @@
      ldbSteps = LdbCoordinator::Object()->getNumStepsToRun();
    }
    if ( ! --ldbSteps ) {
@@ -2242,7 +2243,7 @@ diff -u -wdB spec_old/fstream_namd.h spec_new/fstream_namd.h
    bool bad() const { return false; }
 diff -u -wdB spec_old/Molecule.C spec_new/Molecule.C
 --- spec_old/Molecule.C	2015-12-07 16:17:19.000000000 -0600
-+++ spec_new/Molecule.C	2016-09-05 17:24:01.172387541 -0500
++++ spec_new/Molecule.C	2016-11-21 18:55:02.506824897 -0600
 @@ -5297,6 +5297,51 @@
    }
  #endif
@@ -2285,7 +2286,7 @@ diff -u -wdB spec_old/Molecule.C spec_new/Molecule.C
 +    // print out the special atoms
 +    for ( int i = 0; i < spcnt; i++ ) {
 +      specids[i] = specIDs[i];
-+      CkPrintf("Mol CA %d: %d\n", i+1, specIDs[i]);
++      CkPrintf("Mol Spec Atom %d: %d\n", i+1, specIDs[i]);
 +    }
 +
 +    msg->put(spcnt);
@@ -2324,16 +2325,17 @@ diff -u -wdB spec_old/Molecule.h spec_new/Molecule.h
  
 diff -u -wdB spec_old/Output.C spec_new/Output.C
 --- spec_old/Output.C	2015-11-04 11:20:25.000000000 -0600
-+++ spec_new/Output.C	2016-09-05 19:16:45.718588774 -0500
-@@ -10,6 +10,7 @@
++++ spec_new/Output.C	2016-11-22 16:20:49.884535679 -0600
+@@ -10,6 +10,8 @@
  
  #include "largefiles.h"  // must be first!
  
 +#include <fstream>
++#include <iomanip>
  #include <string.h>
  #include <stdlib.h>
  
-@@ -1332,6 +1333,101 @@
+@@ -1332,6 +1334,110 @@
  }
  /*      END OF FUNCTION scale_vels      */
  
@@ -2388,9 +2390,10 @@ diff -u -wdB spec_old/Output.C spec_new/Output.C
 +  char s[1024];
 +  int j;
 +  static std::vector<std::string> specTypes;
-+  static std::vector<BigReal> x;
++  std::vector<BigReal> x;
 +  static int once;
 +  static std::ofstream fs;
++  std::stringstream sscoor("");
 +
 +  if ( !once ) {
 +    if ( simParams->specAtomsFile[0] != '\0' )
@@ -2398,29 +2401,37 @@ diff -u -wdB spec_old/Output.C spec_new/Output.C
 +    specTypes = NAMD_splitstr(simParams->specAtomsType, ',');
 +    for ( j = 0; j < specTypes.size(); j++ ) // strip spaces
 +      specTypes[j] = NAMD_strip(specTypes[j].c_str());
-+    x.resize( specTypes.size() );
 +    once = 1;
 +  }
 +
++  // for coordinates, keep three digits after the decimal point as in PDB file
++  sscoor << std::fixed << std::setprecision(3);
 +  for ( j = 0; j < specTypes.size(); j++ ) {
 +    if ( strncasecmp(specTypes[j].c_str(), "end", 3) == 0 ) {
 +      // Compute the end-to-end distance from the positions
 +      Vector del(0, 0, 0), endtoend(0, 0, 0);
 +      for ( int k = 0; k < numAtoms - 1; k++ )
 +        endtoend += lattice->delta(arr[k+1], arr[k]); 
-+      x[j] = endtoend.length();
++      x.push_back( endtoend.length() );
 +    } else if ( strncasecmp(specTypes[j].c_str(), "rad", 3) == 0 ) {
 +      // Compute the radius of gyration distance from the positions
-+      x[j] = getrad(numAtoms, arr, lattice);
++      x.push_back( getrad(numAtoms, arr, lattice) );
 +    } else if ( strncasecmp(specTypes[j].c_str(), "dih", 3) == 0 ) {
 +      // Compute the dihedral
-+      x[j] = getdih(arr[0], arr[1], arr[2], arr[3], lattice);
++      x.push_back( getdih(arr[0], arr[1], arr[2], arr[3], lattice) );
++    } else if ( strncasecmp(specTypes[j].c_str(), "coor", 4) == 0 ) {
++      // Form a string of coordinates
++      for ( int k = 0; k < numAtoms; k++ ) {
++        sscoor << arr[k].x << "," << arr[k].y << "," << arr[k].z << ";";
++      }
 +    }
 +  }
 +
 +  if ( fs.is_open() ) { // write to file
 +    fs << step;
 +    for ( j = 0; j < x.size(); j++ ) fs << "\t" << x[j];
++    if ( sscoor.str().size() > 0 )
++      fs << "\t" << sscoor.str();
 +    if ( simParams->adaptTempOn ) fs << "\t" << tp << "\t" << ep;
 +    fs << std::endl;
 +    if ( step + simParams->specAtomsFreq > simParams->N )
@@ -2428,7 +2439,7 @@ diff -u -wdB spec_old/Output.C spec_new/Output.C
 +  } else { // print to screen
 +    CkPrintf("step %d", step);
 +    for ( j = 0; j < x.size(); j++ )
-+      CkPrintf(", %s %g", simParams->specAtomsType[j], x[j]);
++      CkPrintf(", %s %g", specTypes[j].c_str(), x[j]);
 +    CkPrintf("\n");
 +  }
 +}
@@ -2495,7 +2506,7 @@ diff -u -wdB spec_old/Random.h spec_new/Random.h
      skip();
 diff -u -wdB spec_old/Sequencer.C spec_new/Sequencer.C
 --- spec_old/Sequencer.C	2016-06-01 17:24:35.531579311 -0500
-+++ spec_new/Sequencer.C	2016-11-18 20:07:54.725629880 -0600
++++ spec_new/Sequencer.C	2016-11-23 15:41:43.150780895 -0600
 @@ -223,12 +223,7 @@
  
      // Is adaptive tempering on?
@@ -2593,7 +2604,7 @@ diff -u -wdB spec_old/Sequencer.C spec_new/Sequencer.C
  void Sequencer::rescaleaccelMD (int step, int doNonbonded, int doFullElectrostatics)
  {
     if (!simParams->accelMDOn) return;
-@@ -1182,19 +1211,28 @@
+@@ -1182,19 +1211,48 @@
  
  }
  
@@ -2614,6 +2625,26 @@ diff -u -wdB spec_old/Sequencer.C spec_new/Sequencer.C
 +        adaptTempT = simParams->thermostatTemp();
 +        return scaled;
     }
++
++   if ( step == simParams->firstTimestep ) {
++     // initialization
++     if ( simParams->adaptTempInFile[0] != '\0' ) {
++       // use the temperature from the input restart file
++       adaptTempT = broadcast->adaptTemperature.get(-1);
++       // if initialTemp is set, the initial velocities are randomly
++       // set according to initialTemp, we need to scale velocities
++       // to match adaptTempT
++       // cf. WorkDistrib.C, createAtomLists() -> random_velocities()
++       //   random_velocities(params->initialTemp, ...);
++       if ( simParams->initialTemp > 0 ) {
++         BigReal s = sqrt(adaptTempT / simParams->initialTemp);
++         rescaleVelocitiesByFactor( s );
++       }
++       // otherwise, we have reloaded the velocities from the
++       // previous run, and no scaling is needed
++     }
++   }
++
     // Get Updated Temperature
     if ( !(step % simParams->adaptTempFreq ) && (step > simParams->firstTimestep ))
 +   {
@@ -2627,7 +2658,7 @@ diff -u -wdB spec_old/Sequencer.C spec_new/Sequencer.C
  }
  
  void Sequencer::reassignVelocities(BigReal timestep, int step)
-@@ -1289,6 +1327,26 @@
+@@ -1289,6 +1347,26 @@
    }
  }
  
@@ -2654,7 +2685,7 @@ diff -u -wdB spec_old/Sequencer.C spec_new/Sequencer.C
  void Sequencer::saveForce(const int ftag)
  {
    patch->saveForce(ftag);
-@@ -1952,6 +2010,28 @@
+@@ -1952,6 +2030,28 @@
    }
  }
  
@@ -2683,7 +2714,7 @@ diff -u -wdB spec_old/Sequencer.C spec_new/Sequencer.C
  void Sequencer::runComputeObjects(int migration, int pairlists)
  {
    if ( migration ) pairlistsAreValid = 0;
-@@ -2127,6 +2207,7 @@
+@@ -2127,6 +2227,7 @@
      ldbSteps = LdbCoordinator::Object()->getNumStepsToRun();
    }
    if ( ! --ldbSteps ) {
@@ -2725,7 +2756,7 @@ diff -u -wdB spec_old/Sequencer.h spec_new/Sequencer.h
        int checkpoint_berendsenPressure_count;
 diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
 --- spec_old/SimParameters.C	2015-12-08 09:41:37.000000000 -0600
-+++ spec_new/SimParameters.C	2016-11-18 19:51:27.458450038 -0600
++++ spec_new/SimParameters.C	2016-11-21 18:55:46.751680458 -0600
 @@ -187,6 +187,11 @@
    }
    SCRIPT_PARSE_FLOAT("reassignTemp",reassignTemp)
@@ -2917,7 +2948,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
     }
  
     if (globalOn && CkNumPes() > 1)
-@@ -3033,16 +3162,51 @@
+@@ -3033,16 +3162,53 @@
        maximumMove = 0.75 * pairlistDist/stepsPerCycle;
     }
     if (adaptTempOn) {
@@ -2957,7 +2988,9 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
 +     }
 +     if ( strncasecmp(specAtomsType, "end", 3) == 0 ) {
 +       if ( !opts.defined("specAtomsList") ) // for amino acids
-+         strcpy(specAtomsList, "CAY:CA:CAT");
++         strcpy(specAtomsList, "CAY|CA,CH3|CAT");
++         // for heavy atoms CAY|CA,CH3,C,N|CAT
++         //strcpy(specAtomsList, "CAY|CA,CH3|CAT");
 +     } else if ( strncasecmp(specAtomsType, "dih", 3) == 0 ) {
 +       if ( !opts.defined("specAtomsList") ) { // for butane
 +         strcpy(specAtomsList, "C1,C2,C3,C4");
@@ -2975,7 +3008,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
     }
     if (langevinOn) {
       if ( ! opts.defined("langevinDamping") ) langevinDamping = 0.0;
-@@ -3089,6 +3253,16 @@
+@@ -3089,6 +3255,16 @@
    }
     }
  
@@ -2992,7 +3025,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
     if (opts.defined("reassignFreq"))
     {
    if (!opts.defined("reassignTemp"))
-@@ -3143,7 +3317,7 @@
+@@ -3143,7 +3319,7 @@
  
     if (!opts.defined("seed")) 
     {
@@ -3001,7 +3034,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
     }
  
  //Modifications for alchemical fep
-@@ -3188,6 +3362,8 @@
+@@ -3188,6 +3364,8 @@
       else if (reassignFreq > 0)	alchTemp = reassignTemp;
       else if (langevinOn) 	alchTemp = langevinTemp;
       else if (tCoupleOn) 	alchTemp = tCoupleTemp;
@@ -3010,7 +3043,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
       else NAMD_die("Alchemical FEP can be performed only in constant temperature simulations\n");
  
       if (reassignFreq > 0 && reassignIncr != 0)
-@@ -3820,6 +3996,16 @@
+@@ -3820,6 +3998,16 @@
    tCoupleTemp = 0.0;
     }
  
@@ -3027,7 +3060,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
     if (HydrogenBonds)
     {
       if (daCutoffDist > pairlistDist)
-@@ -4890,6 +5076,26 @@
+@@ -4890,6 +5078,26 @@
        iout << endi;
     }
  
@@ -3054,7 +3087,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
     if (minimizeOn)
     {
        iout << iINFO << "OLD STYLE MINIMIZATION ACTIVE\n";
-@@ -5088,6 +5294,7 @@
+@@ -5088,6 +5296,7 @@
       iout << iINFO << "ADAPTIVE TEMPERING ACTIVE:\n";
       iout << iINFO << "      OUTPUT FREQUENCY: " << adaptTempOutFreq << "\n";
       iout << iINFO << "      TEMPERATURE UPDATE FREQUENCY: " << adaptTempFreq << "\n";
@@ -3062,7 +3095,7 @@ diff -u -wdB spec_old/SimParameters.C spec_new/SimParameters.C
       if ( adaptTempLastStep > 0 )
          iout << iINFO << "      ADAPTIVE TEMPERING WILL BE DONE FROM STEP " << adaptTempFirstStep  << " TO " << adaptTempLastStep << "\n";
       else
-@@ -5096,12 +5303,21 @@
+@@ -5096,12 +5305,21 @@
          iout << iINFO << "      ADAPTIVE TEMPERING COUPLED TO LANGEVIN THERMOSTAT\n";
       if ( adaptTempRescale )
          iout << iINFO << "      ADAPTIVE TEMPERING COUPLED TO VELOCITY RESCALING\n";

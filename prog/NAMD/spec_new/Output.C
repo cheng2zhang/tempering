@@ -11,6 +11,7 @@
 #include "largefiles.h"  // must be first!
 
 #include <fstream>
+#include <iomanip>
 #include <string.h>
 #include <stdlib.h>
 
@@ -1384,9 +1385,10 @@ void Output::specAtoms(int step, int numAtoms, Vector* arr, Lattice* lattice,
   char s[1024];
   int j;
   static std::vector<std::string> specTypes;
-  static std::vector<BigReal> x;
+  std::vector<BigReal> x;
   static int once;
   static std::ofstream fs;
+  std::stringstream sscoor("");
 
   if ( !once ) {
     if ( simParams->specAtomsFile[0] != '\0' )
@@ -1394,29 +1396,37 @@ void Output::specAtoms(int step, int numAtoms, Vector* arr, Lattice* lattice,
     specTypes = NAMD_splitstr(simParams->specAtomsType, ',');
     for ( j = 0; j < specTypes.size(); j++ ) // strip spaces
       specTypes[j] = NAMD_strip(specTypes[j].c_str());
-    x.resize( specTypes.size() );
     once = 1;
   }
 
+  // for coordinates, keep three digits after the decimal point as in PDB file
+  sscoor << std::fixed << std::setprecision(3);
   for ( j = 0; j < specTypes.size(); j++ ) {
     if ( strncasecmp(specTypes[j].c_str(), "end", 3) == 0 ) {
       // Compute the end-to-end distance from the positions
       Vector del(0, 0, 0), endtoend(0, 0, 0);
       for ( int k = 0; k < numAtoms - 1; k++ )
         endtoend += lattice->delta(arr[k+1], arr[k]); 
-      x[j] = endtoend.length();
+      x.push_back( endtoend.length() );
     } else if ( strncasecmp(specTypes[j].c_str(), "rad", 3) == 0 ) {
       // Compute the radius of gyration distance from the positions
-      x[j] = getrad(numAtoms, arr, lattice);
+      x.push_back( getrad(numAtoms, arr, lattice) );
     } else if ( strncasecmp(specTypes[j].c_str(), "dih", 3) == 0 ) {
       // Compute the dihedral
-      x[j] = getdih(arr[0], arr[1], arr[2], arr[3], lattice);
+      x.push_back( getdih(arr[0], arr[1], arr[2], arr[3], lattice) );
+    } else if ( strncasecmp(specTypes[j].c_str(), "coor", 4) == 0 ) {
+      // Form a string of coordinates
+      for ( int k = 0; k < numAtoms; k++ ) {
+        sscoor << arr[k].x << "," << arr[k].y << "," << arr[k].z << ";";
+      }
     }
   }
 
   if ( fs.is_open() ) { // write to file
     fs << step;
     for ( j = 0; j < x.size(); j++ ) fs << "\t" << x[j];
+    if ( sscoor.str().size() > 0 )
+      fs << "\t" << sscoor.str();
     if ( simParams->adaptTempOn ) fs << "\t" << tp << "\t" << ep;
     fs << std::endl;
     if ( step + simParams->specAtomsFreq > simParams->N )
@@ -1424,7 +1434,7 @@ void Output::specAtoms(int step, int numAtoms, Vector* arr, Lattice* lattice,
   } else { // print to screen
     CkPrintf("step %d", step);
     for ( j = 0; j < x.size(); j++ )
-      CkPrintf(", %s %g", simParams->specAtomsType[j], x[j]);
+      CkPrintf(", %s %g", specTypes[j].c_str(), x[j]);
     CkPrintf("\n");
   }
 }

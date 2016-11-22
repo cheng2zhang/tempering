@@ -1,0 +1,5 @@
+The system is prepared using the script `mkspx.html`
+
+
+package require solvate
+solvate out.psf out.pdb -minmax {{0 0 0} {30 30 30}} -o gly5

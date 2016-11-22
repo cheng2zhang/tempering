@@ -3192,7 +3192,9 @@ void SimParameters::check_config(ParseOptions &opts, ConfigList *config, char *&
      }
      if ( strncasecmp(specAtomsType, "end", 3) == 0 ) {
        if ( !opts.defined("specAtomsList") ) // for amino acids
-         strcpy(specAtomsList, "CAY:CA:CAT");
+         strcpy(specAtomsList, "CAY|CA,CH3|CAT");
+         // for heavy atoms CAY|CA,CH3,C,N|CAT
+         //strcpy(specAtomsList, "CAY|CA,CH3|CAT");
      } else if ( strncasecmp(specAtomsType, "dih", 3) == 0 ) {
        if ( !opts.defined("specAtomsList") ) { // for butane
          strcpy(specAtomsList, "C1,C2,C3,C4");

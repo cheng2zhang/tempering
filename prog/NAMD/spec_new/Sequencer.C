@@ -1223,6 +1223,26 @@ Bool Sequencer::adaptTempUpdate(int step)
         adaptTempT = simParams->thermostatTemp();
         return scaled;
    }
+
+   if ( step == simParams->firstTimestep ) {
+     // initialization
+     if ( simParams->adaptTempInFile[0] != '\0' ) {
+       // use the temperature from the input restart file
+       adaptTempT = broadcast->adaptTemperature.get(-1);
+       // if initialTemp is set, the initial velocities are randomly
+       // set according to initialTemp, we need to scale velocities
+       // to match adaptTempT
+       // cf. WorkDistrib.C, createAtomLists() -> random_velocities()
+       //   random_velocities(params->initialTemp, ...);
+       if ( simParams->initialTemp > 0 ) {
+         BigReal s = sqrt(adaptTempT / simParams->initialTemp);
+         rescaleVelocitiesByFactor( s );
+       }
+       // otherwise, we have reloaded the velocities from the
+       // previous run, and no scaling is needed
+     }
+   }
+
    // Get Updated Temperature
    if ( !(step % simParams->adaptTempFreq ) && (step > simParams->firstTimestep ))
    {
