@@ -42,7 +42,7 @@ def showhelp():
   print "  -c, --col=:          set the column for the quantity, can also be --col=dif for the difference between column 3 and 2, or --col=invK for the inverse (for autocorrelations)"
   print "  --t0=:               set the first time step"
   print "  --i0=:               set the first frame"
-  print "  --every=:            set the stride of frames"
+  print "  -e, --every=:        set the stride of frames"
   print "  --colT=:             set the column for temperature"
   print "  --rst=:              set the restart file for WHAM (weighted histogram analysis method)"
   print "  --tm=:               set the number of subdivisions for each temperature bin (for WHAM)"
@@ -58,12 +58,13 @@ def showhelp():
 
 
 def doargs():
-  global fnins, fnout, dx, dE, dT, T, col, colT, colE, fnrst, t0, i0, every, tpinterp, drop1
+  global fnins, fnout, dx, dE, dT, T, col, colT, colE, fnrst
+  global t0, i0, every, tpinterp, drop1
   global docorr, fncorr, corrmax, nohist
 
   try:
     opts, args = getopt.gnu_getopt(sys.argv[1:],
-        "hd:T:o:i:c:1",
+        "hd:T:o:i:c:e:1",
         ["dx=", "dE=", "de=", "dT=", "dt=", "tp=", "input=", "output=",
          "col=", "colT=", "colE=", "rst=", "t0=", "tm=", "drop=",
          "corr", "acf", "fncorr=", "fnacf=", "corrmax=", "nohist"])
@@ -101,7 +102,7 @@ def doargs():
       t0 = float(a)
     elif o in ("--i0",):
       i0 = int(a)
-    elif o in ("--every",):
+    elif o in ("-e", "--every",):
       every = int(a)
     elif o in ("--tm",):
       tm = int(a)
@@ -334,7 +335,7 @@ def getcol(col, arr):
 
 
 def mkhist_simple(s, fnout):
-  global col
+  global col, i0, every
   n = len(s)
   if drop1: n -= 1 # drop the last frame
   hist = None
@@ -342,6 +343,8 @@ def mkhist_simple(s, fnout):
     ln = s[i].strip()
     # skip a comment line
     if ln == "" or ln.startswith("#"): continue
+    i += 1
+    if i <= i0 or i % every != 0: continue
     tok = [float(y) for y in ln.split()]
     try:
       tm = tok[0]
@@ -360,7 +363,7 @@ def mkhist_simple(s, fnout):
 
 def mkhist_reweight(s, fnout):
   ''' temperature selected/reweighted histogram '''
-  global col, colT, colE, fnrst
+  global col, colT, colE, fnrst, i0, every
   n = len(s) - 1 # drop the last frame
   hist = None
   wham = WHAM(T, fnrst) # make a WHAM object
@@ -368,6 +371,8 @@ def mkhist_reweight(s, fnout):
     ln = s[i].strip()
     # skip a comment line
     if ln == "" or ln.startswith("#"): continue
+    i += 1
+    if i <= i0 or i % every != 0: continue
     tok = [float(x) for x in ln.split()]
     try:
       tm = tok[0]
@@ -430,8 +435,10 @@ def getcorr(fnin):
   t = []
   x = []
   i = 0
-  for ln in open(fnin).readlines():
-    if ln.strip() == "": continue
+  for ln0 in open(fnin).readlines():
+    ln = ln0.strip()
+    # skip a comment line
+    if ln == "" or ln.startswith("#"): continue
     i += 1
     if i <= i0 or i % every != 0: continue
     tok = [float(y) for y in ln.strip().split()]
@@ -448,7 +455,7 @@ def getcorr(fnin):
   dx = [y - ave for y in x]
   xx = []
   imax = min(corrmax + 1, n - 1)
-  for i in range(corrmax+1):
+  for i in range(imax):
     xxv = sum(dx[j]*dx[j+i] for j in range(n - i))/(n - i)
     xx.append(xxv)
   var = xx[0]
@@ -470,8 +477,16 @@ def getcorr(fnin):
   # add a tag line
   sout = "# %s %s %s %s %s %s\n" % (n, ave, var, dt, len(xx) - 1, ss) + sout
 
-  scol = col if type(col) == str else ("col" + str(col))
-  fnout = fncorr if fncorr != None else os.path.splitext(fnin)[0] + "_" + scol + ".acf"
+  if type(col) == str:
+    scol = col
+  else:
+    scol = "col" + str(col)
+
+  if fncorr != None:
+    fnout = fncorr
+  else:
+    fnout = os.path.splitext(fnin)[0] + "_" + scol + ".acf"
+
   open(fnout, "w").write(sout)
   print "saved correlation function to %s, n %s, ave %s, var %s, correlation integral %s" % (
       fnout, n, ave, var, ss)

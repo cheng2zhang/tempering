@@ -2420,7 +2420,7 @@ diff -u -wdB spec_old/Molecule.h spec_new/Molecule.h
  
 diff -u -wdB spec_old/Output.C spec_new/Output.C
 --- spec_old/Output.C	2015-11-04 11:20:25.000000000 -0600
-+++ spec_new/Output.C	2016-11-22 16:20:49.884535679 -0600
++++ spec_new/Output.C	2016-11-30 12:30:52.297306500 -0600
 @@ -10,6 +10,8 @@
  
  #include "largefiles.h"  // must be first!
@@ -2430,7 +2430,7 @@ diff -u -wdB spec_old/Output.C spec_new/Output.C
  #include <string.h>
  #include <stdlib.h>
  
-@@ -1332,6 +1334,110 @@
+@@ -1332,6 +1334,116 @@
  }
  /*      END OF FUNCTION scale_vels      */
  
@@ -2491,12 +2491,18 @@ diff -u -wdB spec_old/Output.C spec_new/Output.C
 +  std::stringstream sscoor("");
 +
 +  if ( !once ) {
-+    if ( simParams->specAtomsFile[0] != '\0' )
-+      fs.open(simParams->specAtomsFile, std::ios::app);
 +    specTypes = NAMD_splitstr(simParams->specAtomsType, ',');
 +    for ( j = 0; j < specTypes.size(); j++ ) // strip spaces
 +      specTypes[j] = NAMD_strip(specTypes[j].c_str());
 +    once = 1;
++    if ( simParams->specAtomsFile[0] != '\0' ) {
++      fs.open(simParams->specAtomsFile, std::ios::app);
++      // print basic information
++      fs << "# step";
++      for ( j = 0; j < specTypes.size(); j++ )
++        fs << " " << specTypes[j];
++      fs << " | " << numAtoms << "\n"; 
++    }
 +  }
 +
 +  // for coordinates, keep three digits after the decimal point as in PDB file

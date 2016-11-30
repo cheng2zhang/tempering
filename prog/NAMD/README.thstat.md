@@ -157,7 +157,7 @@ In terms of the distribution of the inverse-temperature, beta, this parameter co
 Equivalently, the distribution of temperature T, is proportional to T^(x - 2).
 Thus, to achieve a flat-T histogram, we need to set x = 2.
 To achieve a flat-beta histogram, we need to set x = 0.
-The default value is 1.0, which corresponds to a flat-lnT histogram. 
+The default value is 1.0, which corresponds to a flat-lnT histogram.
 ```
 adaptTempWeightExp    1
 ```
@@ -174,7 +174,7 @@ Several options are added to the output restart file.
   * Increasing the precision of the restart file.
 The product of column 4 (histogram) and column 8 (inverse weight) should be roughly a constant after a long run.
 
-Two options are added to use the input restart file. 
+Two options are added to use the input restart file.
 The option `adaptTempFixedAve` can fix the average energies read from the input restart file (due to Justin).
 During the simulation, the number of visits and other data will still be accumulated,
 but the second column of the output restart file regarding the average energy will be fixed.

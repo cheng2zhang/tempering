@@ -79,7 +79,7 @@ NAMD_spec.zip::
 Bossman:
 	make NAMD_thstat.zip
 	make NAMD_spec.zip
-	rsync -avz NAMD_*.zip /Bossman/cz1/tempering/ 
+	rsync -avz NAMD_*.zip /Bossman/cz1/tempering/
 
 clean:
 	rm -f NAMD_*.zip *~ .*~ */*~ */.*~
