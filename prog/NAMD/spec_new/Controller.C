@@ -1209,7 +1209,7 @@ void Controller::rescaleVelocitiesSave(int step)
 }
 
 // scale velocities to achieve a pre-specified total energy
-void Controller::rescaleForTotalEnergy()
+void Controller::rescaleForTotalEnergy(void)
 {
   BigReal pe = totalEnergy - kineticEnergy;
   BigReal target = simParams->rescaleInitTotal
@@ -2043,6 +2043,9 @@ void Controller::adaptTempInit(int step) {
     adaptTempDt = simParams->adaptTempDt;
     adaptTempLangTot = adaptTempLangAcc = 0;
     adaptTempLangDAcc = adaptTempLangFail = 0;
+    adaptTempAnaDirty = TRUE;
+    adaptTempAnaSlope = 0;
+    adaptTempAnaIntercept = 0;
     if (simParams->adaptTempInFile[0] != '\0') {
       iout << iINFO << "READING ADAPTIVE TEMPERING RESTART FILE\n" << endi;
       std::ifstream adaptTempRead(simParams->adaptTempInFile);
@@ -2065,9 +2068,19 @@ void Controller::adaptTempInit(int step) {
           // In case file is manually edited
           if (adaptTempBetaMin > adaptTempBetaMax)
             std::swap(adaptTempBetaMin, adaptTempBetaMax);
+          if ( adaptTempT > 1./adaptTempBetaMin )
+            adaptTempT = 1./adaptTempBetaMin;
+          if ( adaptTempT < 1./adaptTempBetaMax )
+            adaptTempT = 1./adaptTempBetaMax;
           ss >> adaptTempBins;     
           ss >> adaptTempCg;
           ss >> adaptTempDt;
+          try { // try to read analytic slope and intercept
+            ss >> adaptTempAnaSlope >> adaptTempAnaIntercept;
+          } catch ( std::ios::failure& e ) {
+            adaptTempAnaSlope = 0;
+            adaptTempAnaIntercept = 0;
+          }
           ss.clear(); // clear eof
           adaptTempPotEnergyAveNum  = new double[adaptTempBins];
           adaptTempPotEnergyAveDen  = new double[adaptTempBins];
@@ -2165,13 +2178,17 @@ void Controller::adaptTempInit(int step) {
           } catch ( const std::ios::failure& e ) {
             iout << "Failed to read MC/Langevin data from " <<  simParams->adaptTempInFile << "\n" << endi;
           }
+          if ( simParams->adaptTempAnalytic && adaptTempAnaSlope <= 0 ) {
+            // recompute the slope and intercept
+            adaptTempRegression();
+          }
         } catch ( const std::ios::failure& e ) {
           NAMD_die("Failed to read the ADAPTIVE TEMPERING restart file.\n");
         }
         adaptTempRead.close();
       }
       else NAMD_die("Could not open ADAPTIVE TEMPERING restart file.\n");
-      broadcast->adaptTemperature.publish(-1, adaptTempT);
+      broadcast->adaptTemperature.publish(0, adaptTempT);
     } 
     else {
       adaptTempBins = simParams->adaptTempBins;
@@ -2258,6 +2275,9 @@ void Controller::adaptTempDone(int step) {
 void Controller::adaptTempWriteRestart(int step) {
     if ( simParams->adaptTempOn ) {
         char s[1024];
+        if ( simParams->adaptTempAnalytic && !simParams->adaptTempFixedAve ) {
+          adaptTempRegression();
+        }
         if ( !simParams->adaptTempFixedAve ) {
           // compute the average values
           for ( int i = 0; i < adaptTempBins; i++ )
@@ -2278,6 +2298,7 @@ void Controller::adaptTempWriteRestart(int step) {
         adaptTempRestartFile << adaptTempBins << " ";     
         adaptTempRestartFile << adaptTempCg << " ";
         adaptTempRestartFile << adaptTempDt;
+        adaptTempRestartFile << " " << adaptTempAnaSlope << " " << adaptTempAnaIntercept;
         adaptTempRestartFile << "\n";
         for(int j = 0; j < adaptTempBins; ++j) {
           BigReal bet = adaptTempBetaMin + (j + 0.5) * adaptTempDBeta;
@@ -2325,10 +2346,63 @@ BigReal Controller::adaptTempGetInvW(BigReal tp)
     return pow(BOLTZMANN * tp, -simParams->adaptTempWeightExp);
 }
 
-BigReal Controller::adaptTempGetPEAve(int i, BigReal def)
+// use regression to estimate the average potential energy
+BigReal Controller::adaptTempRegression(void)
+{
+  int i, j, bins = 0;
+  BigReal e = simParams->adaptTempExponent;
+  BigReal beta, cnt, b, bb, u, ub, uu;
+  BigReal sum1 = 0, sumb = 0, sumbb = 0, sumu = 0, sumub = 0, sumuu = 0;
+
+  for ( j = 0; j < adaptTempBins; j++ ) {
+    beta = adaptTempBetaN[j] + 0.5 * adaptTempDBeta;
+    if ( fabs(e) > 1e-12 ) {
+      b = (pow(beta, e) - 1) / e;
+    } else {
+      b = log(beta);
+    }
+    cnt = adaptTempPotEnergyAveDen[j];
+    bins += 1;
+    if ( cnt <= 0 ) continue;
+    u = adaptTempPotEnergyAveNum[j] / cnt;
+    sum1  += cnt;
+    sumb  += cnt * b;
+    sumbb += cnt * b * b;
+    sumu  += cnt * u;
+    sumub += cnt * u * b;
+    sumuu += cnt * u * u * pow(beta, 1 - e);
+  }
+  b  = sumb  / sum1;
+  bb = sumbb / sum1 - b * b; // var(beta^e)
+  u  = sumu  / sum1;
+  ub = sumub / sum1 - u * b; // cov(U, beta^e)
+  uu = sumuu / sum1 - u * u; // var(U)
+  adaptTempAnaSlope = -uu; // backup value for the slope
+  if ( bins == 1 && ub < 0 ) {
+    adaptTempAnaSlope = ub / bb;
+  }
+  adaptTempAnaIntercept = u - b * adaptTempAnaSlope;
+  adaptTempAnaDirty = FALSE;
+}
+
+BigReal Controller::adaptTempGetPEAve(int i, BigReal def, BigReal beta)
 {
     const BigReal varCntMin = simParams->adaptTempFreq * 10;
     BigReal potEnergyAverage;
+
+    if ( simParams->adaptTempAnalytic ) {
+      if ( adaptTempAnaDirty ) adaptTempRegression();
+      BigReal e = simParams->adaptTempExponent, b;
+      if ( beta <= 0 ) {
+        beta = adaptTempBetaMin + (i + 0.5) * adaptTempDBeta;
+      }
+      if ( fabs(e) > 1e-12 ) {
+        b = (pow(beta, e) - 1) / e;
+      } else {
+        b = log(beta);
+      }
+      return adaptTempAnaIntercept + adaptTempAnaSlope * b;
+    }
 
     if ( simParams->adaptTempSepOn ) {
       potEnergyAverage = adaptTempSepAcc[i].iiave(varCntMin, def);
@@ -2431,6 +2505,14 @@ BigReal Controller::adaptTempGetIntE(BigReal beta, int i, BigReal nbeta, int ni)
 {
     double delta = 0, epave = 0, beta_n;
     int j, sgn = ( i <= ni ) ? 1 : -1;
+
+    if ( simParams->adaptTempAnalytic ) {
+      double e = simParams->adaptTempExponent;
+      delta = adaptTempAnaSlope / (e*(e+1)) * (pow(nbeta, e+1) - pow(beta, e+1))
+            + (nbeta - beta) * (adaptTempAnaIntercept - adaptTempAnaSlope/e);
+      return delta / BOLTZMANN;
+    }
+
     for ( j = i; ; j += sgn ) {
       if ( !simParams->adaptTempFixedAve ) // recompute the average energy
         adaptTempPotEnergyAve[j] = epave = adaptTempGetPEAve(j, epave);
@@ -2491,7 +2573,7 @@ BigReal Controller::adaptTempLangevin(BigReal tp, BigReal ep)
     double kB = BOLTZMANN, x = simParams->adaptTempWeightExp;
     double beta = 1./tp, Beta = beta/kB;
     int i = (int) ( (beta - adaptTempBetaMin) / adaptTempDBeta );
-    double epave = adaptTempGetPEAve(i, 0);
+    double epave = adaptTempGetPEAve(i, 0, beta);
     double r = random->gaussian();
     double dt = adaptTempDt, a = sqrt(2. * dt);
     double de = ep - epave + x / Beta;
@@ -2504,6 +2586,8 @@ BigReal Controller::adaptTempLangevin(BigReal tp, BigReal ep)
     if ( nbeta >= adaptTempBetaMin && ni < adaptTempBins ) {
       double delta = adaptTempGetIntE(beta, i, nbeta, ni);
       double nepave = adaptTempPotEnergyAve[ni];
+      if ( simParams->adaptTempAnalytic ) // use the continuous value
+        nepave = adaptTempGetPEAve(ni, 0, nbeta);
       double nde = ep - nepave + x / nBeta;
       double nr = (-dtp/ntp - dt*nde*nBeta) / a;
       delta = (Beta - nBeta) * ep + delta
@@ -2632,6 +2716,11 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
       }
     }
 
+    if ( !simParams->adaptTempFixedAve ) {
+      // adaptTempAnaDirty = TRUE;
+      adaptTempRegression();
+    }
+
     // Weighted integral of <Delta E^2>_beta dbeta <= Eq 4 of JCP 132 244101
     // Integrals of Eqs 5 and 6 is done as piecewise assuming <Delta E^2>_beta
     // is constant for each bin. This is to estimate <E(beta)> where beta \in
@@ -2682,7 +2771,8 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
           dacc -= adaptTempMCFail / simParams->adaptTempMCSizeInc / adaptTempMCTot;
           BigReal ar = simParams->adaptTempMCAutoAR;
           if ( ar <= 0 ) ar = 0.5;
-          BigReal newsize = adaptTempMCSize + (ar - acc) / dacc;
+          BigReal newsize = adaptTempMCSize;
+          if ( fabs(dacc) > 0 ) newsize += (ar - acc) / dacc;
           if ( newsize < 0 ) newsize = 0;
           sprintf(info, " MC %.0f(%.0f) ACC. RATIO %.3f%% DAR %g SIZE %g -> %g",
               adaptTempMCTot, adaptTempMCFail, 100*acc, dacc, adaptTempMCSize, newsize);
@@ -2697,7 +2787,8 @@ Bool Controller::adaptTempUpdate(int step, int minimize)
           BigReal oldsize = sqrt(2*adaptTempDt);
           BigReal ar = simParams->adaptTempDtAutoAR;
           if ( ar <= 0 ) ar = 0.5;
-          BigReal newsize = oldsize + (ar - acc) / dacc;
+          BigReal newsize = oldsize;
+          if ( fabs(dacc) > 0 ) newsize += (ar - acc) / dacc;
           if ( newsize < 0 ) newsize = 0;
           BigReal newdt = newsize * newsize / 2;
           sprintf(info, " LANGEVIN %.0f(%.0f) ACC. RATIO %.3f%% DAR %g SIZE %g -> %g, DT %g -> %g",

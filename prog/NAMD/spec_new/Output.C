@@ -1391,12 +1391,18 @@ void Output::specAtoms(int step, int numAtoms, Vector* arr, Lattice* lattice,
   std::stringstream sscoor("");
 
   if ( !once ) {
-    if ( simParams->specAtomsFile[0] != '\0' )
-      fs.open(simParams->specAtomsFile, std::ios::app);
     specTypes = NAMD_splitstr(simParams->specAtomsType, ',');
     for ( j = 0; j < specTypes.size(); j++ ) // strip spaces
       specTypes[j] = NAMD_strip(specTypes[j].c_str());
     once = 1;
+    if ( simParams->specAtomsFile[0] != '\0' ) {
+      fs.open(simParams->specAtomsFile, std::ios::app);
+      // print basic information
+      fs << "# step";
+      for ( j = 0; j < specTypes.size(); j++ )
+        fs << " " << specTypes[j];
+      fs << " | " << numAtoms << "\n"; 
+    }
   }
 
   // for coordinates, keep three digits after the decimal point as in PDB file

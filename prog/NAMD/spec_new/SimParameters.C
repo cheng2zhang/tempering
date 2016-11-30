@@ -1485,6 +1485,8 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
    opts.optionalB("adaptTempMD", "adaptTempSep", "Using a separate multiple-bin estimator for each bin", &adaptTempSepOn, FALSE);
    opts.optional("adaptTempMD", "adaptTempSamplesMin", "Minimal number of samples in a bin to start temperature transitions", &adaptTempSamplesMin, 1000);
    opts.range("adaptTempSamplesMin", NOT_NEGATIVE);
+   opts.optionalB("adaptTempMD", "adaptTempAnalytic", "Assuming the potential energy and temperature follows the relation of U = a beta^e + b", &adaptTempAnalytic, FALSE);
+   opts.optional("adaptTempAnalytic", "adaptTempExponent", "The exponent e in the analytic assumption", &adaptTempExponent, 0.03);
    opts.optionalB("adaptTempMD", "adaptTempRandom", "Randomly assign a temperature if we step out of range", &adaptTempRandom, FALSE);
 
    // special atoms

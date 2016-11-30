@@ -150,7 +150,7 @@ protected:
       Tensor controlPressure;
     void enqueueCollections(int);
     void correctMomentum(int step);
-    void rescaleForTotalEnergy();
+    void rescaleForTotalEnergy(void);
     void rescaleVelocities(int);
     void rescaleVelocitiesInit(void);
     void rescaleVelocitiesLoad(void);
@@ -267,7 +267,8 @@ protected:
    void adaptTempInit(int step);
    void adaptTempDone(int step);
    BigReal adaptTempGetInvW(BigReal tp);
-   BigReal adaptTempGetPEAve(int i, BigReal def = 0);
+   BigReal adaptTempRegression(void);
+   BigReal adaptTempGetPEAve(int i, BigReal def = 0, BigReal beta = 0);
    BigReal adaptTempGetIntE(BigReal beta, int i, BigReal nbeta, int ni);
    BigReal adaptTempMCMove(BigReal tp, BigReal ep);
    BigReal adaptTempLangevin(BigReal tp, BigReal ep);
@@ -447,6 +448,9 @@ protected:
    BigReal adaptTempDBeta;
    BigReal adaptTempCg;
    BigReal adaptTempDt;
+   Bool    adaptTempAnaDirty;
+   BigReal adaptTempAnaSlope;
+   BigReal adaptTempAnaIntercept;
    ofstream_namd adaptTempRestartFile;
   
 private:

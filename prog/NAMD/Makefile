@@ -63,7 +63,8 @@ NAMD_thstat.zip::
 	  README.thstat.md \
 	  doc/vsTmove.tex doc/*.pdf \
 	  doc/fig/*.gp doc/fig/*.eps doc/fig/*.pdf \
-	  $(testfiles) ./mkhist.py \
+	  $(testfiles) \
+	  ./mkhist.py ./calcspec.py
 
 NAMD_spec.zip::
 	$(RM) -f $@
@@ -73,7 +74,7 @@ NAMD_spec.zip::
 	  doc/vsTmove.tex doc/*.pdf \
 	  doc/fig/*.gp doc/fig/*.eps doc/fig/*.pdf \
 	  $(testfiles) \
-	  ./mkhist.py
+	  ./mkhist.py ./calcspec.py
 
 Bossman:
 	make NAMD_thstat.zip
