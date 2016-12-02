@@ -1268,7 +1268,8 @@ private:
 
 public:
 // special-atom stuff
-int spcnt, *specids;
+int spcnt, *specids, *specresids;
+const char **specnames, **specresnames;
 
 // Go stuff
 public:

@@ -5298,7 +5298,9 @@ void Molecule::send_Molecule(MOStream *msg){
 #endif
 
   if ( simParams->specAtomsOn ) {
-    std::vector<int> specIDs;
+    std::vector<int> specIDs, resIDs;
+    std::vector<const char *> specNames, resNames;
+    PDB *pdb = Node::Object()->pdb;
 
     // here our sepcial atoms are the CA atoms
     // scan all atoms and search for atom names of "CA"
@@ -5314,6 +5316,9 @@ void Molecule::send_Molecule(MOStream *msg){
         for ( int j = 0; j < targetAtoms.size(); j++ ) {
           if ( strcasecmp(atomNamePool[idx], targetAtoms[j].c_str()) == 0 ) {
             specIDs.push_back(i);
+            specNames.push_back( atomNamePool[idx] );
+            resIDs.push_back(0);
+            resNames.push_back("");
             break;
           }
         }
@@ -5323,6 +5328,9 @@ void Molecule::send_Molecule(MOStream *msg){
         for ( int j = 0; j < targetAtoms.size(); j++ ) {
           if ( strcasecmp(atomNames[i].atomname, targetAtoms[j].c_str()) == 0 ) {
             specIDs.push_back(i);
+            specNames.push_back( atomNames[i].atomname );
+            resIDs.push_back( pdb->atom(i)->residueseq() );
+            resNames.push_back( pdb->atom(i)->residuename() );
             break;
           }
         }
@@ -5332,10 +5340,17 @@ void Molecule::send_Molecule(MOStream *msg){
 
     spcnt = specIDs.size();
     specids = new int[spcnt];
+    specresids = new int[spcnt];
+    specnames = new const char *[spcnt];
+    specresnames = new const char *[spcnt];
     // print out the special atoms
     for ( int i = 0; i < spcnt; i++ ) {
       specids[i] = specIDs[i];
-      CkPrintf("Mol Spec Atom %d: %d\n", i+1, specIDs[i]);
+      specresids[i] = resIDs[i];
+      specnames[i] = specNames[i];
+      specresnames[i] = resNames[i];
+      CkPrintf("Mol Spec Atom %d: %d %s %d %s\n",
+          i+1, specIDs[i], specNames[i], resIDs[i], resNames[i]);
     }
 
     msg->put(spcnt);

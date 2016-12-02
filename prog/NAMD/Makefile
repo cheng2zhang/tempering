@@ -54,7 +54,11 @@ testfiles = test/alanin/*.conf \
 	    test/gly5/gly5.psf \
 	    test/gly5/gly5.pdb \
 	    test/gly5/Makefile \
-	    test/gly5/*.gp
+	    test/gly5/*.gp \
+	    test/gly35/*.conf \
+	    test/gly35/gly35.psf \
+	    test/gly35/gly35.pdb \
+	    test/gly35/Makefile
 
 NAMD_thstat.zip::
 	$(RM) -f $@

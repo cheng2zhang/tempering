@@ -1487,6 +1487,7 @@ void SimParameters::config_parser_methods(ParseOptions &opts) {
    opts.range("adaptTempSamplesMin", NOT_NEGATIVE);
    opts.optionalB("adaptTempMD", "adaptTempAnalytic", "Assuming the potential energy and temperature follows the relation of U = a beta^e + b", &adaptTempAnalytic, FALSE);
    opts.optional("adaptTempAnalytic", "adaptTempExponent", "The exponent e in the analytic assumption", &adaptTempExponent, 0.03);
+   opts.optionalB("adaptTempAnalytic", "adaptTempVarSlope", "Use variance instead of finite difference to estimate the slope, a", &adaptTempVarSlope, FALSE);
    opts.optionalB("adaptTempMD", "adaptTempRandom", "Randomly assign a temperature if we step out of range", &adaptTempRandom, FALSE);
 
    // special atoms

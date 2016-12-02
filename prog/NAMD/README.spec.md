@@ -10,7 +10,7 @@ This patch contains all modifications to NAMD 2.11 included in `thstat`.
 It also includes
 
  * Reporting quantities of a set of special atoms
-
+ * Processing quantities from the coordinates of speical atoms
  * Note on reconstructing distributions using WHAM
 
 #### Reporting a quantity of a set of special atoms
@@ -73,6 +73,47 @@ Particularly, the new routines
 `CollectionMaster::receiveSpecPositions()`, `CollectionMaster::enqueueSpecPositions()`,
 `CollectionMaster::disposeSpecPositions()`, and `CollectionMgr::submitSpecPositions()`.
 
+
+#### Processing quantities from the coordinates of speical atoms
+
+Once `spec.log` is created with the coordinates of speical atoms,
+one can postprocess the coordiates with the python script `calcspec.py`,
+and compute the radial distribution function, the distribution of contacts, etc.
+
+##### Radial distribution function
+
+To compute the radial of distribution function
+```
+calcspec.py spec.log -e 100 --rdf
+```
+This command computes the radial distribution of the special atoms,
+with a stride of 100 frames.
+The output is saved as `spec.rdf`.
+
+##### Number of contacts
+
+To compute the number of contacts with a cutoff of 7.5 angstrom, use
+```
+calcspec.py spec.log --nc=7.5 --nn=3
+```
+The option `--nn=3` excludes the nearest neighbor (i -- i+1),
+next-nearest neighbors (i -- i+2), and next-next-nearest neighbors (i -- i+3).
+The column in `spec.log` for coordinates will be replaced by the number of contacts
+in the output file `spec_nc.log`.
+
+##### Number of separations
+
+To compute the distance vs. the separation of residues, use
+```
+calcspec.py spec.log --dsep
+```
+The output is `dsep.dat`.
+The first column is the residue separation,
+the second column is the average distance,
+the third column is the variance of distance,
+the fourth column is the number of samples.
+
+From this file, we can compute the exponent nu.
 
 #### Note on reconstructing distributions using WHAM
 

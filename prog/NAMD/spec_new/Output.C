@@ -1392,16 +1392,28 @@ void Output::specAtoms(int step, int numAtoms, Vector* arr, Lattice* lattice,
 
   if ( !once ) {
     specTypes = NAMD_splitstr(simParams->specAtomsType, ',');
-    for ( j = 0; j < specTypes.size(); j++ ) // strip spaces
+    for ( j = 0; j < specTypes.size(); j++ ) { // strip spaces
       specTypes[j] = NAMD_strip(specTypes[j].c_str());
+      int k, m = specTypes[j].size();
+      for ( k = 0; k < m; k++ ) // convert space to '-'
+        if ( specTypes[j][k] == ' ' )
+          specTypes[j][k] = '-';
+    }
     once = 1;
     if ( simParams->specAtomsFile[0] != '\0' ) {
       fs.open(simParams->specAtomsFile, std::ios::app);
       // print basic information
       fs << "# step";
       for ( j = 0; j < specTypes.size(); j++ )
-        fs << " " << specTypes[j];
-      fs << " | " << numAtoms << "\n"; 
+        fs << "\t" << specTypes[j];
+      fs << " | " << numAtoms << " ";
+      // print the residue names
+      Molecule *mol = Node::Object()->molecule;
+      for ( j = 0; j < mol->spcnt; j++ ) {
+        fs << mol->specnames[j] << mol->specresids[j] << mol->specresnames[j];
+        if ( j < mol->spcnt - 1 ) fs << ";";
+      }
+      fs << "\n"; 
     }
   }
 
@@ -1412,7 +1424,7 @@ void Output::specAtoms(int step, int numAtoms, Vector* arr, Lattice* lattice,
       // Compute the end-to-end distance from the positions
       Vector del(0, 0, 0), endtoend(0, 0, 0);
       for ( int k = 0; k < numAtoms - 1; k++ )
-        endtoend += lattice->delta(arr[k+1], arr[k]); 
+        endtoend += lattice->delta(arr[k+1], arr[k]);
       x.push_back( endtoend.length() );
     } else if ( strncasecmp(specTypes[j].c_str(), "rad", 3) == 0 ) {
       // Compute the radius of gyration distance from the positions

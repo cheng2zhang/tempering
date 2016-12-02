@@ -249,7 +249,7 @@ diff -u -wdB thstat_old/common.C thstat_new/common.C
    while ( close(fd) ) {
 diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 --- thstat_old/Controller.C	2015-12-17 15:22:03.000000000 -0600
-+++ thstat_new/Controller.C	2016-11-29 16:20:33.475777712 -0600
++++ thstat_new/Controller.C	2016-12-02 15:55:40.212737081 -0600
 @@ -184,6 +184,12 @@
      random->split(0,PatchMap::Object()->numPatches()+1);
  
@@ -448,7 +448,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 +      rescaleVelocities_sbeta = 0;
 +    }
 +  }
-     }
++}
 +
 +void Controller::rescaleVelocitiesInit(void)
 +{
@@ -457,7 +457,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 +  if ( simParams->rescaleFreq <= 0 || !simParams->rescaleAdaptiveOn )
 +    return;
 +  rescaleVelocitiesLoad();
-   }
++}
 +
 +void Controller::rescaleVelocitiesLoad(void)
 +{
@@ -475,12 +475,12 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 +  beta2 += beta * beta;
 +  if ( fmod(cnt, simParams->rescaleFreq) > 0.5 ) {
 +    cnt = cnt / simParams->rescaleFreq * simParams->rescaleFreq;
-+  }
+     }
 +  rescaleVelocities_sum1 = cnt;
 +  rescaleVelocities_sumBeta = cnt * beta;
 +  rescaleVelocities_sumBeta2 = cnt * beta2;
 +  rescaleVelocities_sumDbde = cnt * dbde;
-+}
+   }
 +
 +void Controller::rescaleVelocitiesSave(int step)
 +{
@@ -1056,7 +1056,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
      iout << iINFO << "ADAPTIVE TEMPERING: TEMPERATURE RANGE: [" << 1./adaptTempBetaMax << "," << 1./adaptTempBetaMin << "] KELVIN\n";
      iout << iINFO << "ADAPTIVE TEMPERING: NUMBER OF BINS TO STORE POT. ENERGY: " << adaptTempBins << "\n";
      iout << iINFO << "ADAPTIVE TEMPERING: ADAPTIVE BIN AVERAGING PARAMETER: " << adaptTempCg << "\n";
-@@ -1671,179 +2239,228 @@
+@@ -1671,179 +2239,229 @@
      }
  }
  
@@ -1182,47 +1182,48 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 -    BigReal potEnergyAverage;
 -    BigReal potEnergyVariance;
 -    potentialEnergy = totalEnergy-kineticEnergy;
-+// use regression to estimate the average potential energy 
++// use regression to estimate the average potential energy
 +BigReal Controller::adaptTempRegression(void)
 +{
-+  int i, j, bins = 0;
-+  BigReal e = simParams->adaptTempExponent;
-+  BigReal beta, cnt, b, bb, u, ub, uu;
-+  BigReal sum1 = 0, sumb = 0, sumbb = 0, sumu = 0, sumub = 0, sumuu = 0;
++    int i, j, bins = 0;
++    BigReal e = simParams->adaptTempExponent;
++    BigReal beta, cnt, b, bb, u, ub, uu;
++    BigReal sum1 = 0, sumb = 0, sumbb = 0, sumu = 0, sumub = 0, sumuu = 0;
  
 -    //calculate new bin average and variance using adaptive averaging
 -    adaptTempPotEnergyAveNum[adaptTempBin] = adaptTempPotEnergyAveNum[adaptTempBin]*gammaAve + potentialEnergy;
 -    adaptTempPotEnergyAveDen[adaptTempBin] = adaptTempPotEnergyAveDen[adaptTempBin]*gammaAve + 1;
 -    adaptTempPotEnergyVarNum[adaptTempBin] = adaptTempPotEnergyVarNum[adaptTempBin]*gammaAve + potentialEnergy*potentialEnergy;
-+  for ( j = 0; j < adaptTempBins; j++ ) {
-+    beta = adaptTempBetaN[j] + 0.5 * adaptTempDBeta;
-+    if ( fabs(e) > 1e-12 ) {
-+      b = (pow(beta, e) - 1) / e;
-+    } else {
-+      b = log(beta);
++    for ( j = 0; j < adaptTempBins; j++ ) {
++      beta = (adaptTempBetaN[j] + 0.5 * adaptTempDBeta) / BOLTZMANN;
++      if ( fabs(e) > 1e-12 ) {
++        b = (pow(beta, e) - 1) / e;
++      } else {
++        b = log(beta);
++      }
++      cnt = adaptTempPotEnergyAveDen[j];
++      if ( cnt <= 0 ) continue;
++      bins += 1;
++      u = adaptTempPotEnergyAveNum[j] / cnt;
++      uu = adaptTempPotEnergyVarNum[j] / cnt - u * u;
++      sum1  += cnt;
++      sumb  += cnt * b;
++      sumbb += cnt * b * b;
++      sumu  += cnt * u;
++      sumub += cnt * u * b;
++      sumuu += cnt * uu * pow(beta, 1 - e);
 +    }
-+    cnt = adaptTempPotEnergyAveDen[j];
-+    bins += 1;
-+    if ( cnt <= 0 ) continue;
-+    u = adaptTempPotEnergyAveNum[j] / cnt;
-+    sum1  += cnt;
-+    sumb  += cnt * b;
-+    sumbb += cnt * b * b;
-+    sumu  += cnt * u;
-+    sumub += cnt * u * b;
-+    sumuu += cnt * u * u * pow(beta, 1 - e);
-+  }
-+  b  = sumb  / sum1;
-+  bb = sumbb / sum1 - b * b; // var(beta^e)
-+  u  = sumu  / sum1;
-+  ub = sumub / sum1 - u * b; // cov(U, beta^e)
-+  uu = sumuu / sum1 - u * u; // var(U)
-+  adaptTempAnaSlope = -uu; // backup value for the slope
-+  if ( bins == 1 && ub < 0 ) {
-+    adaptTempAnaSlope = ub / bb;
-+  }
-+  adaptTempAnaIntercept = u - b * adaptTempAnaSlope;
-+  adaptTempAnaDirty = FALSE;
++    b  = sumb  / sum1;
++    bb = sumbb / sum1 - b * b; // var(beta^e)
++    u  = sumu  / sum1;
++    ub = sumub / sum1 - u * b; // cov(U, beta^e)
++    uu = sumuu / sum1;
++    adaptTempAnaSlope = -uu; // backup value for the slope
++    if ( bins > 1 && bb > 1e-10 && ub < 0 ) {
++      adaptTempAnaSlope = ub / bb;
++    }
++    adaptTempAnaIntercept = u - b * adaptTempAnaSlope;
++    adaptTempAnaDirty = FALSE;
 +}
      
 -    potEnergyAverage = adaptTempPotEnergyAveNum[adaptTempBin]/adaptTempPotEnergyAveDen[adaptTempBin];
@@ -1239,7 +1240,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 +      if ( adaptTempAnaDirty ) adaptTempRegression();
 +      BigReal e = simParams->adaptTempExponent, b;
 +      if ( beta <= 0 ) {
-+        beta = adaptTempBetaMin + (i + 0.5) * adaptTempDBeta;
++        beta = (adaptTempBetaMin + (i + 0.5) * adaptTempDBeta) / BOLTZMANN;
 +      }
 +      if ( fabs(e) > 1e-12 ) {
 +        b = (pow(beta, e) - 1) / e;
@@ -1417,7 +1418,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
              << "     nMinus:    " << nMinus << "\n"
              << "     nPlus:     " << nPlus << "\n"
              << "     A0:        " << A0 << "\n"
-@@ -1851,147 +2468,318 @@
+@@ -1851,147 +2469,318 @@
              << "     A2:        " << A2 << "\n"
              << "     a+:        " << aplus << "\n"
              << "     a-:        " << aminus << "\n"
@@ -1458,7 +1459,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 -      BigReal dT = ((potentialEnergy-potEnergyAverage)/BOLTZMANN+adaptTempT)*adaptTempDt;
 -      dT += random->gaussian()*sqrt(2.*adaptTempDt)*adaptTempT;
 -      dT += adaptTempT;
-+// return Integral { beta to nbeta } E(beta) d beta = Z(beta) - Z(nbeta)
++// return Integral { beta to nbeta } E(beta) d beta = ln Z(beta) - ln Z(nbeta)
 +BigReal Controller::adaptTempGetIntE(BigReal beta, int i, BigReal nbeta, int ni)
 +{
 +    double delta = 0, epave = 0, beta_n;
@@ -1481,7 +1482,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 +    if ( simParams->adaptTempAnalytic ) {
 +      double e = simParams->adaptTempExponent;
 +      delta = adaptTempAnaSlope / (e*(e+1)) * (pow(nbeta, e+1) - pow(beta, e+1))
-+        + (nbeta - beta) * (adaptTempAnaIntercept - adaptTempAnaSlope/e);
++            + (nbeta - beta) * (adaptTempAnaIntercept - adaptTempAnaSlope/e);
 +      return delta / BOLTZMANN;
            }
 -          else {             
@@ -1586,7 +1587,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 +    double kB = BOLTZMANN, x = simParams->adaptTempWeightExp;
 +    double beta = 1./tp, Beta = beta/kB;
 +    int i = (int) ( (beta - adaptTempBetaMin) / adaptTempDBeta );
-+    double epave = adaptTempGetPEAve(i, 0, beta);
++    double epave = adaptTempGetPEAve(i, 0, Beta);
 +    double r = random->gaussian();
 +    double dt = adaptTempDt, a = sqrt(2. * dt);
 +    double de = ep - epave + x / Beta;
@@ -1600,7 +1601,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 +      double delta = adaptTempGetIntE(beta, i, nbeta, ni);
 +      double nepave = adaptTempPotEnergyAve[ni];
 +      if ( simParams->adaptTempAnalytic ) // use the continuous value
-+        nepave = adaptTempGetPEAve(ni, 0, nbeta);
++        nepave = adaptTempGetPEAve(ni, 0, nBeta);
 +      double nde = ep - nepave + x / nBeta;
 +      double nr = (-dtp/ntp - dt*nde*nBeta) / a;
 +      delta = (Beta - nBeta) * ep + delta
@@ -1753,7 +1754,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
 +      }
            }
            
-+    if ( !simParams->adaptTempFixedAve ) {
++    if ( simParams->adaptTempAnalytic && !simParams->adaptTempFixedAve ) {
 +      // adaptTempAnaDirty = TRUE;
 +      adaptTempRegression();
        }
@@ -1846,7 +1847,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
  }
  
  
-@@ -2277,6 +3065,15 @@
+@@ -2277,6 +3066,15 @@
        electEnergy = reduction->item(REDUCTION_ELECT_ENERGY);
        ljEnergy = reduction->item(REDUCTION_LJ_ENERGY);
  
@@ -1862,7 +1863,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
        // JLai
        groLJEnergy = reduction->item(REDUCTION_GRO_LJ_ENERGY);
        groGaussEnergy = reduction->item(REDUCTION_GRO_GAUSS_ENERGY);
-@@ -2310,16 +3107,6 @@
+@@ -2310,16 +3108,6 @@
  //fepe
      }
  
@@ -1879,7 +1880,7 @@ diff -u -wdB thstat_old/Controller.C thstat_new/Controller.C
      momentum.x = reduction->item(REDUCTION_MOMENTUM_X);
      momentum.y = reduction->item(REDUCTION_MOMENTUM_Y);
      momentum.z = reduction->item(REDUCTION_MOMENTUM_Z);
-@@ -3147,6 +3934,7 @@
+@@ -3147,6 +3935,7 @@
      ldbSteps = LdbCoordinator::Object()->getNumStepsToRun();
    }
    if ( ! --ldbSteps ) {
